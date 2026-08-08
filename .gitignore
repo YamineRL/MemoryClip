@@ -1,0 +1,12 @@
+.build/
+.swiftpm/
+dist/
+.DS_Store
+.qwen/
+
+# Generated icon intermediates (Resources/AppIcon.icns IS committed —
+# it is a build input for the .app bundle).
+*.iconset/
+
+# Internal roadmap / decisions log — local only.
+PLAN.md

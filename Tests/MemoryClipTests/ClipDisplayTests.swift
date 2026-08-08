@@ -1,0 +1,192 @@
+import XCTest
+
+@testable import MemoryClip
+
+/// Covers the pure display logic shared by ClipRowView and PreviewView:
+/// the instant-calc gate, VoiceOver label composition, truncation and
+/// file-URL prettifying.
+final class ClipDisplayTests: XCTestCase {
+    // MARK: - Instant-calc gate (must be identical in row and preview)
+
+    func testCalcAppliesToEveryTextBearingKind() {
+        for kind in [ClipKind.text, .richText, .link] {
+            XCTAssertEqual(
+                ClipDisplay.calcResult(kind: kind, text: "12*7"), "84",
+                "expected calc for \(kind)"
+            )
+        }
+    }
+
+    func testCalcIgnoresNonTextKinds() {
+        for kind in [ClipKind.image, .file, .color] {
+            XCTAssertNil(ClipDisplay.calcResult(kind: kind, text: "12*7"))
+        }
+    }
+
+    func testCalcSuppressesBareNumberEcho() {
+        XCTAssertNil(ClipDisplay.calcResult(kind: .text, text: "42"))
+        XCTAssertNil(ClipDisplay.calcResult(kind: .text, text: "  42  "))
+    }
+
+    func testCalcIgnoresNonExpressions() {
+        XCTAssertNil(ClipDisplay.calcResult(kind: .text, text: "hello world"))
+        XCTAssertNil(ClipDisplay.calcResult(kind: .text, text: nil))
+        XCTAssertNil(ClipDisplay.calcResult(kind: .text, text: "2026-08-07"))
+    }
+
+    func testCalcTrimsSurroundingWhitespace() {
+        XCTAssertEqual(ClipDisplay.calcResult(kind: .text, text: "\n 2+3 \n"), "5")
+    }
+
+    func testTextBearingKinds() {
+        XCTAssertTrue(ClipDisplay.isTextBearing(.text))
+        XCTAssertTrue(ClipDisplay.isTextBearing(.richText))
+        XCTAssertTrue(ClipDisplay.isTextBearing(.link))
+        XCTAssertFalse(ClipDisplay.isTextBearing(.image))
+        XCTAssertFalse(ClipDisplay.isTextBearing(.file))
+        XCTAssertFalse(ClipDisplay.isTextBearing(.color))
+    }
+
+    // MARK: - Spoken summary truncation
+
+    func testShortSummaryIsSpokenWhole() {
+        XCTAssertEqual(ClipDisplay.spokenSummary("hello world"), "hello world")
+    }
+
+    func testSummaryCollapsesWhitespaceAndNewlines() {
+        XCTAssertEqual(ClipDisplay.spokenSummary("a\n\nb\t  c"), "a b c")
+    }
+
+    func testLongSummaryIsTruncatedWithCharacterCount() {
+        let long = String(repeating: "x", count: 4000)
+        let spoken = ClipDisplay.spokenSummary(long)
+
+        XCTAssertLessThan(spoken.count, 200, "VoiceOver must not read 4000 characters")
+        XCTAssertTrue(spoken.hasPrefix(String(repeating: "x", count: ClipDisplay.summaryLimit)))
+        XCTAssertTrue(spoken.hasSuffix("4000 characters"), spoken)
+        XCTAssertTrue(spoken.contains("…"))
+    }
+
+    func testSummaryAtLimitIsNotTruncated() {
+        let exact = String(repeating: "y", count: ClipDisplay.summaryLimit)
+        XCTAssertEqual(ClipDisplay.spokenSummary(exact), exact)
+    }
+
+    func testCustomSummaryLimit() {
+        XCTAssertEqual(ClipDisplay.spokenSummary("abcdef", limit: 3), "abc… 6 characters")
+    }
+
+    // MARK: - Preview truncation
+
+    func testShortPreviewIsUntouched() {
+        let body = ClipDisplay.previewBody("hello")
+        XCTAssertEqual(body.text, "hello")
+        XCTAssertNil(body.notice)
+    }
+
+    func testHugePreviewIsTruncatedWithNotice() {
+        let huge = String(repeating: "z", count: ClipDisplay.previewLimit + 5_000)
+        let body = ClipDisplay.previewBody(huge)
+
+        XCTAssertEqual(body.text.count, ClipDisplay.previewLimit)
+        XCTAssertNotNil(body.notice)
+        XCTAssertTrue(body.notice?.contains("characters") == true)
+    }
+
+    func testPreviewLimitBoundary() {
+        let exact = String(repeating: "z", count: 10)
+        XCTAssertNil(ClipDisplay.previewBody(exact, limit: 10).notice)
+        XCTAssertNotNil(ClipDisplay.previewBody(exact, limit: 9).notice)
+        XCTAssertEqual(ClipDisplay.previewBody(exact, limit: 4).text, "zzzz")
+    }
+
+    // MARK: - File URL display
+
+    func testFileURLIsPercentDecoded() {
+        let stored = "file:///Users/me/Documents/my%20file.txt"
+        XCTAssertEqual(ClipDisplay.displayPath(stored), "/Users/me/Documents/my file.txt")
+        XCTAssertEqual(ClipDisplay.displayName(stored), "my file.txt")
+    }
+
+    func testPlainPathPassesThrough() {
+        XCTAssertEqual(ClipDisplay.displayPath("/tmp/plain.txt"), "/tmp/plain.txt")
+        XCTAssertEqual(ClipDisplay.displayName("/tmp/plain.txt"), "plain.txt")
+    }
+
+    func testNonFileURLFallsBackToDecodedString() {
+        XCTAssertEqual(
+            ClipDisplay.displayPath("https://example.com/a%20b"),
+            "https://example.com/a b"
+        )
+    }
+
+    // MARK: - Row accessibility label
+
+    func testFullRowLabelOrder() {
+        let label = ClipDisplay.rowLabel(
+            kind: .image,
+            summary: "receipt",
+            appName: "Safari",
+            relativeTime: "2 minutes ago",
+            isPinned: true,
+            queuePosition: 2,
+            hasExtractedText: true
+        )
+        XCTAssertEqual(
+            label,
+            "Image, receipt, from Safari, 2 minutes ago, pinned, queued position 2, contains extracted text"
+        )
+    }
+
+    func testMinimalRowLabelSkipsEmptyParts() {
+        let label = ClipDisplay.rowLabel(
+            kind: .text,
+            summary: "",
+            appName: nil,
+            relativeTime: "now"
+        )
+        XCTAssertEqual(label, "Text, now")
+    }
+
+    func testRowLabelIncludesCalcResult() {
+        let label = ClipDisplay.rowLabel(
+            kind: .text,
+            summary: "12*7",
+            appName: "Notes",
+            relativeTime: "now",
+            calcResult: "84"
+        )
+        XCTAssertEqual(label, "Text, 12*7, equals 84, from Notes, now")
+    }
+
+    func testRowLabelTruncatesLongSummary() {
+        let label = ClipDisplay.rowLabel(
+            kind: .text,
+            summary: String(repeating: "a", count: 4000),
+            appName: "Notes",
+            relativeTime: "now"
+        )
+        XCTAssertTrue(label.contains("4000 characters"), label)
+        XCTAssertLessThan(label.count, 250)
+        XCTAssertTrue(label.hasSuffix("from Notes, now"))
+    }
+
+    func testRowLabelKindNames() {
+        XCTAssertEqual(ClipDisplay.kindLabel(.richText), "Rich text")
+        XCTAssertEqual(ClipDisplay.kindLabel(.link), "Link")
+        XCTAssertEqual(ClipDisplay.kindLabel(.color), "Color")
+        XCTAssertEqual(ClipDisplay.kindLabel(.file), "File")
+    }
+
+    func testUnpinnedUnqueuedRowLabelOmitsStateWords() {
+        let label = ClipDisplay.rowLabel(
+            kind: .link,
+            summary: "https://example.com",
+            appName: "Safari",
+            relativeTime: "1 hour ago"
+        )
+        XCTAssertFalse(label.contains("pinned"))
+        XCTAssertFalse(label.contains("queued"))
+        XCTAssertFalse(label.contains("extracted"))
+    }
+}

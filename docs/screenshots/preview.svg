@@ -1,0 +1,53 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 300" width="720" height="300" font-family="-apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Helvetica Neue', Arial, sans-serif">
+  <defs>
+    <linearGradient id="pane" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#141416"/><stop offset="1" stop-color="#0d0d0f"/>
+    </linearGradient>
+  </defs>
+  <rect width="720" height="300" rx="28" fill="url(#pane)"/>
+  <rect x="0.5" y="0.5" width="719" height="299" rx="27.5" fill="none" stroke="#2c2c2e"/>
+
+  <!-- header -->
+  <rect x="24" y="24" width="26" height="26" rx="6" fill="#1d6bf0"/>
+  <path d="M31 37 l4 4 l8 -9" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
+  <text x="60" y="36" fill="#f2f2f7" font-size="15" font-weight="600">Xcode</text>
+  <text x="60" y="52" fill="#8e8e93" font-size="12.5">21 minutes ago · 74 characters</text>
+
+  <!-- detection badges -->
+  <g font-size="11.5" font-weight="600">
+    <rect x="560" y="24" width="52" height="22" rx="11" fill="#1c2b1f"/>
+    <circle cx="573" cy="35" r="3.5" fill="#30d158"/>
+    <text x="581" y="39" fill="#8fe0a5">JSON</text>
+    <rect x="620" y="24" width="76" height="22" rx="11" fill="#2a2320"/>
+    <circle cx="633" cy="35" r="3.5" fill="#ff9f0a"/>
+    <text x="641" y="39" fill="#ffcf80">Rich text</text>
+  </g>
+
+  <!-- content -->
+  <rect x="24" y="68" width="672" height="150" rx="16" fill="#1c1c1e"/>
+  <g font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="13">
+    <text x="44" y="96" fill="#8e8e93">{</text>
+    <text x="60" y="118" fill="#7ec8ff">"id"</text><text x="92" y="118" fill="#8e8e93">:</text><text x="102" y="118" fill="#ffd479">4821</text><text x="136" y="118" fill="#8e8e93">,</text>
+    <text x="60" y="140" fill="#7ec8ff">"name"</text><text x="108" y="140" fill="#8e8e93">:</text><text x="118" y="140" fill="#a8e6a1">"Ada Lovelace"</text><text x="230" y="140" fill="#8e8e93">,</text>
+    <text x="60" y="162" fill="#7ec8ff">"roles"</text><text x="116" y="162" fill="#8e8e93">: [</text><text x="140" y="162" fill="#a8e6a1">"admin"</text><text x="196" y="162" fill="#8e8e93">,</text><text x="206" y="162" fill="#a8e6a1">"author"</text><text x="270" y="162" fill="#8e8e93">],</text>
+    <text x="60" y="184" fill="#7ec8ff">"active"</text><text x="124" y="184" fill="#8e8e93">:</text><text x="134" y="184" fill="#ff8b8b">true</text>
+    <text x="44" y="206" fill="#8e8e93">}</text>
+  </g>
+
+  <!-- actions -->
+  <g font-size="12.5" font-weight="500">
+    <rect x="24" y="238" width="104" height="30" rx="10" fill="#2c2c2e"/>
+    <text x="76" y="257" fill="#e8e8ea" text-anchor="middle">Format JSON</text>
+    <rect x="136" y="238" width="76" height="30" rx="10" fill="#2c2c2e"/>
+    <text x="174" y="257" fill="#e8e8ea" text-anchor="middle">Minify</text>
+    <rect x="220" y="238" width="92" height="30" rx="10" fill="#2c2c2e"/>
+    <text x="266" y="257" fill="#e8e8ea" text-anchor="middle">Base64 ›</text>
+    <rect x="320" y="238" width="84" height="30" rx="10" fill="#2c2c2e"/>
+    <text x="362" y="257" fill="#e8e8ea" text-anchor="middle">Sort lines</text>
+  </g>
+  <g font-size="12">
+    <rect x="600" y="240" width="26" height="26" rx="6" fill="#2c2c2e"/>
+    <text x="613" y="257" fill="#c7c7cc" text-anchor="middle">␣</text>
+    <text x="636" y="257" fill="#8e8e93">close preview</text>
+  </g>
+</svg>

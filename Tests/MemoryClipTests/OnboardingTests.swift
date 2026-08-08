@@ -1,0 +1,219 @@
+import XCTest
+
+@testable import MemoryClip
+
+/// A `UserDefaults` that keeps everything in memory and touches no file.
+///
+/// The previous fixture built a real `UserDefaults(suiteName:)` with a fresh
+/// UUID per test and cleared it with `removePersistentDomain(forName:)` — which
+/// empties the keys but never deletes the backing plist, so every run leaked a
+/// couple of `~/Library/Preferences/memoryclip.onboarding.tests.<UUID>.plist` files
+/// into the user's home. Even a fixed suite name plus `removeSuite(named:)`
+/// leaves one behind, because `cfprefsd` flushes the (now empty) suite after
+/// the test process exits. `OnboardingController` only needs the four accessors
+/// overridden below, so an in-memory stand-in keeps the same coverage with no
+/// filesystem footprint at all.
+private final class InMemoryDefaults: UserDefaults {
+    private var storage: [String: Any] = [:]
+
+    override func object(forKey defaultName: String) -> Any? { storage[defaultName] }
+
+    override func set(_ value: Any?, forKey defaultName: String) {
+        storage[defaultName] = value
+    }
+
+    override func removeObject(forKey defaultName: String) {
+        storage[defaultName] = nil
+    }
+
+    override func bool(forKey defaultName: String) -> Bool {
+        storage[defaultName] as? Bool ?? false
+    }
+}
+
+final class OnboardingTests: XCTestCase {
+    /// Isolated defaults so the tests never touch (or leak into) the real
+    /// standard suite — and never write a plist anywhere.
+    private var defaults: UserDefaults!
+
+    override func setUp() {
+        super.setUp()
+        defaults = InMemoryDefaults()
+    }
+
+    override func tearDown() {
+        defaults = nil
+        super.tearDown()
+    }
+
+    // MARK: First-run decision
+
+    func testFirstRunIsTrueWhenKeyIsUnset() {
+        XCTAssertNil(
+            defaults.object(forKey: OnboardingController.hasCompletedKey),
+            "the isolated suite should start empty — teardown from a previous test leaked state"
+        )
+        XCTAssertTrue(
+            OnboardingController.isFirstRun(defaults: defaults),
+            "an unset flag must mean first run, otherwise the tour never shows"
+        )
+    }
+
+    func testFirstRunIsFalseAfterCompletion() {
+        OnboardingController.markCompleted(defaults: defaults)
+        XCTAssertFalse(
+            OnboardingController.isFirstRun(defaults: defaults),
+            "the tour would reopen on every launch after being completed"
+        )
+        // Idempotent: marking twice keeps it completed.
+        OnboardingController.markCompleted(defaults: defaults)
+        XCTAssertFalse(
+            OnboardingController.isFirstRun(defaults: defaults),
+            "marking completion twice must stay completed"
+        )
+    }
+
+    func testResetMakesItAFirstRunAgain() {
+        OnboardingController.markCompleted(defaults: defaults)
+        OnboardingController.reset(defaults: defaults)
+        XCTAssertTrue(
+            OnboardingController.isFirstRun(defaults: defaults),
+            "Settings → Show Introduction Again relies on reset() restoring first-run state"
+        )
+    }
+
+    /// Deliberately pins the literal: this string is a *persisted* UserDefaults
+    /// key in shipped installs. Renaming it silently re-shows the tour to every
+    /// existing user, so a change here must be a conscious one (with a
+    /// migration), not an incidental rename.
+    func testCompletionKeyNameIsStableAcrossReleases() {
+        XCTAssertEqual(
+            OnboardingController.hasCompletedKey, "hasCompletedOnboarding",
+            "renaming this persisted key re-shows the tour to every existing user"
+        )
+    }
+
+    // MARK: Step definitions
+
+    /// Structural invariants rather than a snapshot of the step list: editing
+    /// the tour's copy or reordering it is not a regression, but an empty tour,
+    /// a `count` out of step with `steps`, or duplicate ids (which break
+    /// SwiftUI identity and the step lookups below) all are.
+    func testStepListIsWellFormed() {
+        XCTAssertFalse(OnboardingFlow.steps.isEmpty, "the tour has no steps to show")
+        XCTAssertEqual(
+            OnboardingFlow.steps.count, OnboardingFlow.count,
+            "count must match steps.count — the navigation clamps derive from count"
+        )
+        let ids = OnboardingFlow.steps.map(\.id)
+        XCTAssertEqual(
+            Set(ids).count, ids.count,
+            "duplicate step ids break SwiftUI identity and step lookup: \(ids)"
+        )
+        for id in ids {
+            XCTAssertFalse(id.isEmpty, "a step has an empty identifier")
+        }
+    }
+
+    func testEveryStepHasContent() {
+        for step in OnboardingFlow.steps {
+            XCTAssertFalse(step.title.isEmpty, "\(step.id) has no title")
+            XCTAssertFalse(step.subtitle.isEmpty, "\(step.id) has no subtitle")
+            XCTAssertFalse(step.symbol.isEmpty, "\(step.id) has no symbol")
+            XCTAssertFalse(step.bullets.isEmpty, "\(step.id) has no bullets")
+        }
+    }
+
+    /// The honest auto-paste framing must stay in the tour (it mirrors the
+    /// wording used in SettingsView / README).
+    func testAutoPasteStepMentionsAccessibilityAndFallback() throws {
+        let step = try XCTUnwrap(OnboardingFlow.steps.first { $0.id == "autopaste" })
+        let text = step.bullets.joined(separator: " ")
+        XCTAssertTrue(
+            text.contains("Accessibility"),
+            "the auto-paste step must name the permission it needs: \(text)"
+        )
+        XCTAssertTrue(
+            text.contains("⌘V"),
+            "the auto-paste step must state the manual fallback: \(text)"
+        )
+    }
+
+    // MARK: Navigation / index clamping
+
+    func testNextAdvancesOneStep() {
+        XCTAssertEqual(OnboardingFlow.nextIndex(after: 0), 1, "Next from 0 should land on 1")
+        XCTAssertEqual(OnboardingFlow.nextIndex(after: 3), 4, "Next from 3 should land on 4")
+    }
+
+    func testPreviousGoesBackOneStep() {
+        XCTAssertEqual(OnboardingFlow.previousIndex(before: 4), 3, "Back from 4 should land on 3")
+        XCTAssertEqual(OnboardingFlow.previousIndex(before: 1), 0, "Back from 1 should land on 0")
+    }
+
+    func testNextClampsAtTheLastStep() {
+        let last = OnboardingFlow.count - 1
+        XCTAssertEqual(
+            OnboardingFlow.nextIndex(after: last), last,
+            "Next on the last step must stay put, not run off the end"
+        )
+        XCTAssertEqual(
+            OnboardingFlow.nextIndex(after: last + 5), last,
+            "an out-of-range index must clamp to the last step"
+        )
+    }
+
+    func testPreviousClampsAtTheFirstStep() {
+        XCTAssertEqual(
+            OnboardingFlow.previousIndex(before: 0), 0,
+            "Back on the first step must stay put"
+        )
+        XCTAssertEqual(
+            OnboardingFlow.previousIndex(before: -3), 0,
+            "a negative index must clamp to the first step"
+        )
+    }
+
+    func testFirstAndLastPredicates() {
+        let last = OnboardingFlow.count - 1
+        XCTAssertTrue(OnboardingFlow.isFirst(0), "index 0 is the first step")
+        XCTAssertFalse(OnboardingFlow.isLast(0), "index 0 is not the last step")
+        XCTAssertTrue(OnboardingFlow.isLast(last), "index \(last) is the last step")
+        XCTAssertFalse(OnboardingFlow.isFirst(last), "index \(last) is not the first step")
+        // Out-of-range indices resolve to the nearest boundary.
+        XCTAssertTrue(OnboardingFlow.isFirst(-10), "negative indices clamp to the first step")
+        XCTAssertTrue(
+            OnboardingFlow.isLast(last + 10),
+            "indices past the end clamp to the last step"
+        )
+    }
+
+    func testStepAccessorClampsOutOfRangeIndices() throws {
+        XCTAssertEqual(
+            OnboardingFlow.step(at: -1), try XCTUnwrap(OnboardingFlow.steps.first),
+            "a negative index must resolve to the first step, never trap"
+        )
+        XCTAssertEqual(
+            OnboardingFlow.step(at: 999), try XCTUnwrap(OnboardingFlow.steps.last),
+            "an index past the end must resolve to the last step, never trap"
+        )
+    }
+
+    func testWalkingForwardAndBackTraversesEveryStep() {
+        var index = 0
+        var visited = [OnboardingFlow.step(at: index).id]
+        while !OnboardingFlow.isLast(index) {
+            index = OnboardingFlow.nextIndex(after: index)
+            visited.append(OnboardingFlow.step(at: index).id)
+        }
+        XCTAssertEqual(
+            visited, OnboardingFlow.steps.map(\.id),
+            "walking Next from the start must reach every step exactly once, in order"
+        )
+
+        while !OnboardingFlow.isFirst(index) {
+            index = OnboardingFlow.previousIndex(before: index)
+        }
+        XCTAssertEqual(index, 0, "walking Back from the end must return to the first step")
+    }
+}

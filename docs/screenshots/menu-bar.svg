@@ -1,0 +1,48 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 420 400" width="420" height="400" font-family="-apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Helvetica Neue', Arial, sans-serif">
+  <defs>
+    <linearGradient id="desk" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#2b2340"/><stop offset="1" stop-color="#16202e"/>
+    </linearGradient>
+  </defs>
+  <rect width="420" height="400" fill="url(#desk)"/>
+
+  <!-- menu bar -->
+  <rect x="0" y="0" width="420" height="26" fill="#101013" opacity="0.72"/>
+  <rect x="292" y="3" width="26" height="20" rx="5" fill="#48484d"/>
+  <g fill="none" stroke="#f2f2f7" stroke-width="1.5" stroke-linejoin="round">
+    <rect x="300" y="8" width="10" height="11" rx="2"/><path d="M302.5 8 V6.5 h5 V8"/>
+  </g>
+  <g fill="#c7c7cc" font-size="10.5"><text x="332" y="17">100%</text><text x="378" y="17">14:32</text></g>
+
+  <!-- dropdown -->
+  <rect x="150" y="32" width="256" height="330" rx="10" fill="#1f1f22" opacity="0.98"/>
+  <rect x="150.5" y="32.5" width="255" height="329" rx="9.5" fill="none" stroke="#3a3a3d"/>
+
+  <text x="164" y="52" fill="#8e8e93" font-size="10" font-weight="600" letter-spacing="0.6">RECENT CLIPS</text>
+  <g font-size="12.5" fill="#e8e8ea">
+    <text x="164" y="76">The quarterly figures are in — reve…</text>
+    <text x="164" y="100">github.com/yaminerl/MemoryCl…</text>
+    <text x="164" y="124">{"id":4821,"name":"Ada Lovelace"…</text>
+    <text x="164" y="148">12*7</text>
+    <text x="164" y="172">Image · text found</text>
+  </g>
+  <rect x="156" y="88" width="244" height="22" rx="5" fill="#1d6bf0"/>
+  <text x="164" y="103" fill="#ffffff" font-size="12.5">github.com/yaminerl/MemoryCl…</text>
+
+  <line x1="156" y1="188" x2="400" y2="188" stroke="#3a3a3d"/>
+  <g font-size="12.5" fill="#e8e8ea">
+    <text x="164" y="210">Open MemoryClip</text>
+    <text x="164" y="234">Pause Capture</text>
+    <text x="164" y="258">Export History ›</text>
+    <text x="164" y="282">Clear All History…</text>
+  </g>
+  <line x1="156" y1="296" x2="400" y2="296" stroke="#3a3a3d"/>
+  <g font-size="12.5" fill="#e8e8ea">
+    <text x="164" y="318">Settings…</text>
+    <text x="164" y="342">Quit MemoryClip</text>
+  </g>
+  <g font-size="11.5" fill="#8e8e93" text-anchor="end">
+    <text x="396" y="210">⇧⌘V</text>
+    <text x="396" y="342">⌘Q</text>
+  </g>
+</svg>
