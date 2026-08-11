@@ -127,6 +127,11 @@ enum Design {
         /// The square tile used as a settings/onboarding header glyph.
         static let rowIconTile: CGFloat = 34
 
+        /// The tinted glyph tile that leads a settings row. Smaller than a
+        /// clip row's tile: it labels a control rather than standing in for
+        /// content.
+        static let settingsIcon: CGFloat = 20
+
         /// Trailing hover/selection buttons.
         static let rowActionButton: CGFloat = 22
         /// The queue-position badge.

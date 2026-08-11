@@ -51,6 +51,77 @@ private struct SettingsHint: View {
     }
 }
 
+/// The tinted, rounded glyph that leads a settings row.
+///
+/// Gives every control the same leading slot, so a form of otherwise
+/// unrelated toggles and pickers scans as one column instead of a wall of
+/// left-aligned sentences. The colour is what distinguishes a row at a
+/// glance; the symbol says which one.
+private struct SettingsIcon: View {
+    let symbol: String
+    let tint: Color
+
+    var body: some View {
+        RoundedRectangle(cornerRadius: Design.Radius.small, style: .continuous)
+            .fill(tint.gradient)
+            .frame(width: Design.Size.settingsIcon, height: Design.Size.settingsIcon)
+            .overlay {
+                Image(systemName: symbol)
+                    .font(.system(size: 11, weight: .semibold))
+                    // The tiles are saturated system colours, which macOS
+                    // tunes to stay legible under white in both appearances.
+                    .foregroundStyle(.white)
+            }
+            .accessibilityHidden(true)
+    }
+}
+
+/// An inline message that has to be noticed — currently only the
+/// launch-at-login failure.
+///
+/// A bare red caption disappears into a grouped form; a tinted, outlined
+/// block with its own glyph reads as "something went wrong here" without
+/// resorting to an alert.
+private struct SettingsCallout: View {
+    let text: String
+    var symbol: String = "exclamationmark.triangle.fill"
+    // `.systemRed`, which macOS retunes per appearance, rather than the flat
+    // `.red` that reads muddy on a dark form background.
+    var tint: Color = Color(nsColor: .systemRed)
+
+    var body: some View {
+        HStack(alignment: .firstTextBaseline, spacing: Design.Space.snug) {
+            Image(systemName: symbol)
+                .foregroundStyle(tint)
+                .accessibilityHidden(true)
+            Text(text)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .font(.caption)
+        .padding(.horizontal, Design.Space.roomy)
+        .padding(.vertical, Design.Space.normal)
+        .designPane(radius: Design.Radius.control, fill: tint.opacity(0.12))
+    }
+}
+
+/// One key combination in the Shortcuts tab, drawn as a cap.
+///
+/// Matches the ⌘1…⌘9 hints in the panel's rows, so the same keystroke looks
+/// the same wherever MemoryClip mentions it.
+private struct ShortcutCap: View {
+    let keys: String
+
+    var body: some View {
+        Text(keys)
+            .font(.system(.callout, design: .monospaced))
+            .foregroundStyle(Color(nsColor: .labelColor))
+            .padding(.horizontal, Design.Space.snug)
+            .padding(.vertical, Design.Space.hair)
+            .designPane(radius: Design.Radius.tiny, fill: Design.Palette.surface)
+    }
+}
+
 // MARK: - General
 
 private struct GeneralSettingsTab: View {
@@ -63,23 +134,29 @@ private struct GeneralSettingsTab: View {
     var body: some View {
         Form {
             Section("Startup") {
-                Toggle("Launch at login", isOn: launchAtLoginBinding)
+                Toggle(isOn: launchAtLoginBinding) {
+                    Label {
+                        Text("Launch at login")
+                    } icon: {
+                        SettingsIcon(symbol: "power", tint: Color(nsColor: .systemGreen))
+                    }
+                }
                 if let launchAtLoginError {
-                    Label(launchAtLoginError, systemImage: "exclamationmark.triangle.fill")
-                        .font(.caption)
-                        // `.systemRed`, which macOS retunes per appearance,
-                        // rather than the flat `.red` that reads muddy on a
-                        // dark form background.
-                        .foregroundStyle(Color(nsColor: .systemRed))
-                        .fixedSize(horizontal: false, vertical: true)
+                    SettingsCallout(text: launchAtLoginError)
                 }
                 SettingsHint("MemoryClip runs as a menu-bar app: no Dock icon, no window until you open the panel.")
             }
 
             Section("Appearance") {
-                Picker("Theme", selection: $appearance) {
+                Picker(selection: $appearance) {
                     ForEach(AppearanceSetting.allCases) { option in
                         Text(option.title).tag(option)
+                    }
+                } label: {
+                    Label {
+                        Text("Theme")
+                    } icon: {
+                        SettingsIcon(symbol: "circle.lefthalf.filled", tint: Color(nsColor: .systemIndigo))
                     }
                 }
                 .pickerStyle(.segmented)
@@ -87,7 +164,13 @@ private struct GeneralSettingsTab: View {
             }
 
             Section("Pasting") {
-                Toggle("Paste automatically after selecting a clip", isOn: $autoPaste)
+                Toggle(isOn: $autoPaste) {
+                    Label {
+                        Text("Paste automatically after selecting a clip")
+                    } icon: {
+                        SettingsIcon(symbol: "arrow.down.doc.fill", tint: Color(nsColor: .systemBlue))
+                    }
+                }
                 SettingsHint("MemoryClip simulates ⌘V into the previous app. If macOS blocks the synthetic key event (Accessibility not granted), the clip is still on the clipboard — paste manually with ⌘V.")
             }
         }
@@ -112,11 +195,28 @@ private struct GeneralSettingsTab: View {
                     }
                     launchAtLoginError = nil
                 } catch {
-                    launchAtLoginError = error.localizedDescription
+                    launchAtLoginError = launchAtLoginMessage(for: error)
                 }
                 launchAtLogin = SMAppService.mainApp.status == .enabled
             }
         )
+    }
+
+    /// Turns SMAppService's opaque failures into something a user can act on.
+    ///
+    /// The common one is `EINVAL` ("Invalid argument"), which launchd returns
+    /// when the bundle lives outside `/Applications` — running the app straight
+    /// out of `dist/` hits this every time. The raw message gives no hint of
+    /// that, so name the actual requirement.
+    private func launchAtLoginMessage(for error: Error) -> String {
+        let bundlePath = Bundle.main.bundleURL.path
+        let installed =
+            bundlePath.hasPrefix("/Applications/")
+            || bundlePath.hasPrefix(NSHomeDirectory() + "/Applications/")
+        if !installed {
+            return "Launch at login needs MemoryClip in your Applications folder. Move MemoryClip.app there, reopen it, and try again."
+        }
+        return error.localizedDescription
     }
 }
 
@@ -130,13 +230,23 @@ private struct HistorySettingsTab: View {
         Form {
             Section("Limits") {
                 Stepper(value: $historyCap, in: 10...10_000, step: 50) {
-                    Text("Keep up to \(historyCap) clips")
+                    Label {
+                        Text("Keep up to \(historyCap) clips")
+                    } icon: {
+                        SettingsIcon(symbol: "tray.full.fill", tint: Color(nsColor: .systemTeal))
+                    }
                 }
-                Picker("Delete clips older than", selection: $retentionDays) {
+                Picker(selection: $retentionDays) {
                     Text("Forever").tag(0)
                     Text("7 days").tag(7)
                     Text("30 days").tag(30)
                     Text("90 days").tag(90)
+                } label: {
+                    Label {
+                        Text("Delete clips older than")
+                    } icon: {
+                        SettingsIcon(symbol: "clock.arrow.circlepath", tint: Color(nsColor: .systemOrange))
+                    }
                 }
                 SettingsHint("Pinned clips are exempt from both limits and are never deleted automatically.")
             }
@@ -158,12 +268,24 @@ private struct PanelSettingsTab: View {
     var body: some View {
         Form {
             Section("Search") {
-                Toggle("Extract text from images (OCR)", isOn: $ocrEnabled)
+                Toggle(isOn: $ocrEnabled) {
+                    Label {
+                        Text("Extract text from images (OCR)")
+                    } icon: {
+                        SettingsIcon(symbol: "text.viewfinder", tint: Color(nsColor: .systemPurple))
+                    }
+                }
                 SettingsHint("Runs on-device with the Vision framework, in the background, so image clips can be found by the text inside them.")
             }
 
             Section("Navigation") {
-                Toggle("Vim navigation keys", isOn: $vimMode)
+                Toggle(isOn: $vimMode) {
+                    Label {
+                        Text("Vim navigation keys")
+                    } icon: {
+                        SettingsIcon(symbol: "keyboard.fill", tint: Color(nsColor: .systemGray))
+                    }
+                }
                 SettingsHint("Gives the panel vim modes: it opens in NORMAL mode where j/k-style keys navigate, and / or i switches to INSERT mode for searching (Esc returns). The current mode is shown in the search bar. See the Shortcuts tab for the full list.")
             }
         }
@@ -177,14 +299,26 @@ private struct PrivacySettingsTab: View {
     var body: some View {
         Form {
             Section("Lock") {
-                Toggle("Require Touch ID to open the panel", isOn: appLockBinding)
+                Toggle(isOn: appLockBinding) {
+                    Label {
+                        Text("Require Touch ID to open the panel")
+                    } icon: {
+                        SettingsIcon(symbol: "touchid", tint: Color(nsColor: .systemPink))
+                    }
+                }
                 SettingsHint(AppLockService.shared.isAvailable
                      ? "Uses the system LocalAuthentication prompt, with a passcode fallback."
                      : "No biometric hardware or enrollment detected — the lock fails open, so the panel still opens.")
             }
 
             Section("Capture") {
-                Toggle("Skip capturing sensitive content", isOn: sensitiveFilterBinding)
+                Toggle(isOn: sensitiveFilterBinding) {
+                    Label {
+                        Text("Skip capturing sensitive content")
+                    } icon: {
+                        SettingsIcon(symbol: "eye.slash.fill", tint: Color(nsColor: .systemRed))
+                    }
+                }
                 SettingsHint("Skips likely card numbers (Luhn-validated) and anything copied in a known password manager. Pasteboard opt-out markers (transient, auto-generated, concealed) are always respected.")
             }
 
@@ -234,21 +368,7 @@ private struct ShortcutsSettingsTab: View {
                                 .multilineTextAlignment(.leading)
                                 .frame(maxWidth: .infinity, alignment: .leading)
                         } label: {
-                            // The keys are drawn as a cap, matching the
-                            // ⌘1…⌘9 hints in the panel's rows.
-                            Text(entry.keys)
-                                .font(.system(.callout, design: .monospaced))
-                                .foregroundStyle(Color(nsColor: .labelColor))
-                                .padding(.horizontal, Design.Space.snug)
-                                .padding(.vertical, Design.Space.hair)
-                                .background(
-                                    RoundedRectangle(cornerRadius: Design.Radius.tiny, style: .continuous)
-                                        .fill(Design.Palette.surface)
-                                )
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: Design.Radius.tiny, style: .continuous)
-                                        .strokeBorder(Design.Palette.hairline, lineWidth: Design.Stroke.hairline)
-                                )
+                            ShortcutCap(keys: entry.keys)
                         }
                     }
                     if let note = group.note {
@@ -264,18 +384,33 @@ private struct ShortcutsSettingsTab: View {
 // MARK: - About
 
 private struct AboutSettingsTab: View {
+    /// The app icon's edge on the About screen.
+    private static let iconSize: CGFloat = 72
+
     private let version = AppVersionInfo()
 
     var body: some View {
         ScrollView {
             VStack(spacing: Design.Space.normal) {
-                // An app-icon-shaped tile rather than a bare glyph: this is
-                // the "who am I" screen, so it should look like a product.
-                IconTile(size: 72, radius: Design.Space.wide) {
-                    Image(systemName: "clipboard")
-                        .font(.system(size: 34, weight: .regular))
-                        .symbolRenderingMode(.hierarchical)
-                        .foregroundStyle(.tint)
+                // The shipped app icon when there is one — this is the
+                // "who am I" screen, so it should show the same artwork the
+                // user sees in Finder. `swift run` has no bundle icon, so a
+                // tiled glyph stands in.
+                Group {
+                    if let icon = NSApp.applicationIconImage {
+                        Image(nsImage: icon)
+                            .resizable()
+                            .interpolation(.high)
+                            .frame(width: Self.iconSize, height: Self.iconSize)
+                            .shadow(color: Design.Palette.cardShadow, radius: Design.Space.normal, y: Design.Space.tight)
+                    } else {
+                        IconTile(size: Self.iconSize, radius: Design.Space.wide) {
+                            Image(systemName: "clipboard")
+                                .font(.system(size: 34, weight: .regular))
+                                .symbolRenderingMode(.hierarchical)
+                                .foregroundStyle(.tint)
+                        }
+                    }
                 }
                 .padding(.top, Design.Space.vast)
                 .padding(.bottom, Design.Space.tight)
@@ -283,10 +418,14 @@ private struct AboutSettingsTab: View {
 
                 Text(AppVersionInfo.appName)
                     .font(.largeTitle.weight(.semibold))
+                    .padding(.top, Design.Space.tight)
 
                 Text(version.displayString)
                     .font(.callout.monospacedDigit())
                     .foregroundStyle(Color(nsColor: .secondaryLabelColor))
+                    .padding(.horizontal, Design.Space.roomy)
+                    .padding(.vertical, Design.Space.tight)
+                    .background(Capsule(style: .continuous).fill(Design.Palette.surface))
 
                 Text("A keyboard-first clipboard history for macOS, living in the menu bar.")
                     .font(.body)
@@ -301,9 +440,13 @@ private struct AboutSettingsTab: View {
                     .designPane(radius: Design.Radius.field, fill: Design.Palette.chrome)
                     .padding(.top, Design.Space.normal)
 
-                Button("Show Introduction Again") {
+                Button {
                     OnboardingController.shared.show()
+                } label: {
+                    Label("Show Introduction Again", systemImage: "sparkles")
                 }
+                .controlSize(.large)
+                .buttonStyle(.borderedProminent)
                 .padding(.top, Design.Space.roomy)
 
                 Text("Re-opens the first-run tour of the panel, shortcuts and privacy model.")

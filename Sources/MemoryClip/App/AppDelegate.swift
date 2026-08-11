@@ -191,60 +191,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 }
 
-/// Opens (or brings forward) the SwiftUI Settings window.
+/// Opens (or brings forward) the Settings window.
 ///
-/// This is harder than it looks in an `.accessory` app. Three things bite:
-///
-/// 1. The only caller is the status-bar menu item, which fires while the menu
-///    is still tearing down. Activation requests made in that window are
-///    dropped, so the work is deferred one runloop turn.
-/// 2. `sendAction(_:to:nil:from:)` walks the responder chain from the key
-///    window. MemoryClip usually has *no* key window (the panel is ordered out on
-///    resign-active), so the chain has nothing that answers
-///    `showSettingsWindow:` and the send silently fails — which is exactly the
-///    intermittent "Settings does nothing" bug. ⌘, never hit this because
-///    AppKit dispatches the main-menu item straight to SwiftUI's own target.
-/// 3. `PanelController.hide` can leave the app hidden via `NSApp.hide`, and a
-///    hidden app will not order new windows in.
+/// The status menu item fires while the menu is still tearing down, and
+/// activation requests made in that window are dropped, so the work is
+/// deferred one runloop turn. Everything else lives in
+/// `SettingsWindowController`.
 @MainActor
 func openSettingsWindow() {
-    // (1) Let the status menu finish dismissing before touching activation.
     DispatchQueue.main.async {
-        // (3) Undo any lingering `NSApp.hide` before asking for a window.
-        NSApp.unhide(nil)
-        NSApp.activate()
-
-        // (2) Try the modern selector, then the pre-Sonoma spelling. Both
-        // return false when the responder chain has no settings target.
-        let opened =
-            NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
-            || NSApp.sendAction(Selector(("showPreferencesWindow:")), to: nil, from: nil)
-
-        if !opened {
-            log.error("Settings window action found no responder")
-        }
-
-        // Fronting has to wait for SwiftUI to actually build the window, and
-        // an accessory app's fresh window can otherwise come up behind the
-        // app that was frontmost.
-        DispatchQueue.main.async {
-            guard let window = settingsWindow() else {
-                if !opened { log.error("Settings window never appeared") }
-                return
-            }
-            window.makeKeyAndOrderFront(nil)
-        }
-    }
-}
-
-/// The SwiftUI-managed Settings window, if it currently exists.
-///
-/// SwiftUI tags it with a stable private identifier; the title match is a
-/// belt-and-braces fallback in case that identifier ever changes.
-@MainActor
-private func settingsWindow() -> NSWindow? {
-    NSApp.windows.first { window in
-        window.identifier?.rawValue == "com_apple_SwiftUI_Settings_window"
-            || window.frameAutosaveName == "com_apple_SwiftUI_Settings_window"
+        SettingsWindowController.shared.show()
     }
 }
