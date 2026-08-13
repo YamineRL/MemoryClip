@@ -33,14 +33,39 @@ enum OCRService {
     /// request, and Vision serializes what it must internally.
     static func recognizeText(in imageData: Data) async -> String? {
         guard !imageData.isEmpty else { return nil }
+        return await recognize { try await $0.perform(on: imageData) }
+    }
 
+    /// Recognize text in an image file, without reading it into memory first.
+    ///
+    /// Vision opens the URL itself and streams what it needs, so a screenshot
+    /// clip — which holds a path rather than bytes — is recognized at no
+    /// resident-memory cost. Returns nil for the same three reasons as the
+    /// `Data` entry point, plus a file that has been moved or deleted since
+    /// it was captured.
+    static func recognizeText(inFileAt url: URL) async -> String? {
+        return await recognize { try await $0.perform(on: url) }
+    }
+
+    /// Recognize text from whichever shape the clip's pixels take.
+    static func recognizeText(in payload: ImagePayload) async -> String? {
+        switch payload {
+        case .data(let data): return await recognizeText(in: data)
+        case .fileURL(let url): return await recognizeText(inFileAt: url)
+        }
+    }
+
+    /// Shared body of the entry points above: build a request, run the
+    /// caller's `perform` overload, and fold failure into nil.
+    private static func recognize(
+        _ perform: (RecognizeTextRequest) async throws -> [RecognizedTextObservation]
+    ) async -> String? {
         var request = RecognizeTextRequest()
         request.recognitionLevel = recognitionLevel
         request.usesLanguageCorrection = true
 
         do {
-            let observations = try await request.perform(on: imageData)
-            return joinedText(from: observations)
+            return joinedText(from: try await perform(request))
         } catch {
             log.error("OCR failed: \(error.localizedDescription)")
             return nil
