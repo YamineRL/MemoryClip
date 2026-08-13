@@ -23,6 +23,29 @@ enum OCRService {
     /// `OCRCoordinator` instead. See `OCRPipelineBenchmarks`.
     static let recognitionLevel: RecognizeTextRequest.RecognitionLevel = .accurate
 
+    /// Let Vision work out which language it is looking at, instead of
+    /// assuming English.
+    ///
+    /// `RecognizeTextRequest.recognitionLanguages` defaults to `["en-Latn-US"]`
+    /// alone, and Vision does not fall back: handed a screenshot of Arabic it
+    /// returns ZERO observations, so the clip is indexed as having no text and
+    /// any note written from it is built out of nothing. Measured on an M1 Pro
+    /// (macOS 26.5) against rendered samples — Arabic went from nothing at all
+    /// to every line recognised, and a mixed English/Arabic screenshot went
+    /// from the Arabic half being dropped to both halves being read. English
+    /// output was character-for-character identical with the flag on and off,
+    /// including the `l`/`1` confusion the test sample was built around, so
+    /// this costs the common case nothing.
+    ///
+    /// Vision supports 30 languages here (`supportedRecognitionLanguages`),
+    /// among them Arabic, Chinese, Japanese, Korean, Russian, Thai and
+    /// Ukrainian — none of which the previous default could see.
+    ///
+    /// `usesLanguageCorrection` stays on alongside it: correction is applied
+    /// in whichever language was detected, which is what fixes OCR slips in
+    /// Arabic as well as in English.
+    static let detectsLanguageAutomatically = true
+
     /// Recognize text in encoded image data (PNG/TIFF/JPEG…).
     ///
     /// Returns nil when the data isn't a decodable image, when Vision
@@ -63,6 +86,7 @@ enum OCRService {
         var request = RecognizeTextRequest()
         request.recognitionLevel = recognitionLevel
         request.usesLanguageCorrection = true
+        request.automaticallyDetectsLanguage = detectsLanguageAutomatically
 
         do {
             return joinedText(from: try await perform(request))
