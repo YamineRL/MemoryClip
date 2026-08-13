@@ -1,0 +1,98 @@
+# SwiftFormat configuration for MemoryClip.
+#
+#   swiftformat --lint .   check (what CI runs)
+#   swiftformat .          apply
+#
+# This file describes the code that is already here. `--lint .` passes on the
+# tree as it stands, so a failure means new drift, not accumulated history —
+# nobody has to reformat a file to touch it. Rules are off below only where the
+# codebase already made the opposite choice, in more than one place, on purpose.
+
+--swift-version 6.2               # swift-tools-version in Package.swift
+
+# --- Options ---------------------------------------------------------------
+# Rules that stay on, told what this codebase looks like.
+
+--indent 4                        # 4 spaces; the wrapping rules rewrap to this
+--ranges no-space                 # written tight: 0..<count, (7...15).contains(n)
+--decimal-grouping ignore         # 5_000 and 24_080 are underscored by hand, by feel
+--type-blank-lines preserve       # some type bodies open on a blank line, some don't
+--strip-unused-args closure-only  # AppKit delegate methods name their unused arguments
+
+# --- Disabled rules --------------------------------------------------------
+# Layout the repo settled differently.
+
+# Two multiline-string styles coexist (RefinementGuardTests indents the body,
+# TransformServiceTests keeps it flush with the closing quotes) and long
+# conditions are hand-aligned under their opening paren. ~470 lines would move.
+--disable indent
+# Collection literals usually end on a trailing comma, argument lists never do.
+# No setting covers both; the closest, collections-only, still rewrites 16 lines.
+--disable trailingCommas
+# Trailing comments are aligned into a column (the indigo tuples in make_icon,
+# the field notes on ExportService's CSV row).
+--disable consecutiveSpaces
+# One-line bodies are the house style: `if x { return }`, `var context:
+# ModelContext { container.mainContext }`, `func supportsLanguage(_:) { true }`.
+--disable wrapIfStatementBodies,wrapLoopBodies,wrapPropertyBodies,wrapFunctionBodies
+# Multi-condition ifs keep the brace on the last condition rather than alone.
+--disable wrapMultilineStatementBraces
+# Imports are ordered by weight — SwiftUI, then SwiftData — not alphabetically.
+--disable sortImports
+# Tests leave a blank line before `@testable import MemoryClip` to set the
+# module under test apart from the framework imports above it.
+--disable blankLinesBetweenImports
+# Several type bodies open straight onto their first `// MARK:`.
+--disable blankLinesAroundMark
+# Design.Palette deliberately packs a helper against the constant it belongs to.
+--disable blankLinesBetweenScopes
+# `//` carries section labels ("// Translation") and asides to the reader that
+# happen to sit above a declaration; `///` is reserved for what a symbol is.
+--disable docComments
+
+# Explicitness the code keeps on purpose.
+
+# `self.` survives inside escaping closures, after `guard let self`, where it
+# marks what the closure captured.
+--disable redundantSelf
+# OCRService's `return await recognize { ... }` reads as a returned result.
+--disable redundantReturn
+# `var tint: Color = Color(nsColor: .systemRed)` names the type it constructs;
+# `.init` there would cost the reader the connection to the comment above it.
+--disable redundantType
+# `var onTransform: ((Transform) -> Void)? = nil` states that a handler is
+# optional to pass, not merely optional in type.
+--disable redundantNilInit
+# `else if (c == " " || c == "-"), !group.isEmpty` — the parens keep the `||`
+# from having to be read against the comma.
+--disable redundantParens
+# NoteDraft names `filled` before returning it, so the predicate has a label.
+--disable redundantVariable
+# ExportService writes `Self.base64(...)` to mark the type-level helper.
+--disable redundantStaticSelf
+# @ViewBuilder is kept on the view properties that may grow a second branch.
+--disable redundantViewBuilder
+# The note sinks spell out `init(shortcutName:)` next to their `static let`s.
+--disable redundantMemberwiseInit
+# SettingsView keeps `Group { ... }` around the disclosure rows it may extend.
+--disable redundantSwiftUIGroup
+# Test methods are uniformly `async throws`, so a signature never changes when
+# the assertion inside it does.
+--disable redundantAsync,redundantThrows
+# `try` and `await` are written at the call that throws or suspends, not
+# hoisted to the front of the statement.
+--disable hoistTry,hoistAwait
+# Pattern bindings are inline — `case .foo(let x)` — in most places, hoisted in
+# a few; the rule can't leave both alone.
+--disable hoistPatternLet
+# `let noun: String` then an if/switch that assigns it, rather than an
+# if/switch expression.
+--disable conditionalAssignment
+# `&&` in conditions rather than a comma.
+--disable andOperator
+# `compactMap { $0 }` rather than `compactMap(\.self)`.
+--disable preferKeyPath
+# Generic parameters are named with a `where` clause, not `some Collection<Int>`.
+--disable opaqueGenericParameters
+# Tests force-unwrap values they constructed a line earlier.
+--disable noForceUnwrapInTests
