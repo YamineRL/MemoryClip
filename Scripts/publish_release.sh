@@ -8,9 +8,14 @@ set -euo pipefail
 # committed. It reaches users as a release attachment, which is what this does.
 #
 # Usage:
-#   ./Scripts/publish_release.sh            # tag = v<bundle version>
-#   ./Scripts/publish_release.sh v0.2.0     # explicit tag
-#   DRAFT=1 ./Scripts/publish_release.sh    # draft, so you can eyeball it first
+#   ./Scripts/publish_release.sh              # tag = v<bundle version>
+#   ./Scripts/publish_release.sh v0.2.0       # explicit tag
+#   DRAFT=1 ./Scripts/publish_release.sh      # draft, so you can eyeball it first
+#   PRERELEASE=1 ./Scripts/publish_release.sh # mark it a pre-release
+#
+# Releases are full releases by default. A pre-release is hidden from the
+# repository header and is never served as "latest", so shipping one by
+# default meant every published build looked provisional.
 #
 # Requires the GitHub CLI, authenticated: `gh auth login`.
 
@@ -47,9 +52,22 @@ VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' \
 DMG="$ROOT/dist/MemoryClip-$VERSION.dmg"
 [ -f "$DMG" ] || die "$DMG was not produced by Scripts/make_dmg.sh"
 
+# The zip is the second asset. The DMG is the nicer install, but a zip is what
+# updaters, Homebrew casks and anyone scripting an install actually want, and
+# `ditto` is used rather than `zip` because it is the only one that preserves
+# the bundle's symlinks and code signature intact.
+ZIP="$ROOT/dist/MemoryClip-$VERSION.zip"
+echo "==> Zipping the app bundle"
+rm -f "$ZIP"
+ditto -c -k --keepParent "$APP" "$ZIP" || die "could not zip $APP"
+[ -f "$ZIP" ] || die "ditto reported success but $ZIP does not exist"
+
 TAG="${1:-v$VERSION}"
-CHECKSUM="$(shasum -a 256 "$DMG" | cut -d' ' -f1)"
-echo "==> $TAG  $(basename "$DMG")  sha256 $CHECKSUM"
+DMG_SHA="$(shasum -a 256 "$DMG" | cut -d' ' -f1)"
+ZIP_SHA="$(shasum -a 256 "$ZIP" | cut -d' ' -f1)"
+echo "==> $TAG"
+echo "    $(basename "$DMG")  sha256 $DMG_SHA"
+echo "    $(basename "$ZIP")  sha256 $ZIP_SHA"
 
 # --- 3. Create or update the release. ----------------------------------------
 NOTES_FILE="$(mktemp)"
@@ -69,21 +87,33 @@ xattr -dr com.apple.quarantine /Applications/MemoryClip.app
 MemoryClip is a menu-bar agent with no Dock icon: look for the clipboard glyph
 in the menu bar, or press ⇧⌘V.
 
-\`sha256\` of \`$(basename "$DMG")\`:
+**Downloads**: \`$(basename "$DMG")\` to install by hand,
+\`$(basename "$ZIP")\` if you would rather have the bare \`.app\`.
+
+\`sha256\`:
 
 \`\`\`
-$CHECKSUM
+$DMG_SHA  $(basename "$DMG")
+$ZIP_SHA  $(basename "$ZIP")
 \`\`\`
 NOTES
 
 if gh release view "$TAG" >/dev/null 2>&1; then
     echo "==> Updating existing release $TAG"
-    gh release upload "$TAG" "$DMG" --clobber
+    gh release upload "$TAG" "$DMG" "$ZIP" --clobber
 else
     echo "==> Creating release $TAG"
-    args=(--title "MemoryClip $VERSION" --notes-file "$NOTES_FILE" --prerelease)
+    args=(--title "MemoryClip $VERSION" --notes-file "$NOTES_FILE")
+    [ "${PRERELEASE:-0}" = "1" ] && args+=(--prerelease)
     [ "${DRAFT:-0}" = "1" ] && args+=(--draft)
-    gh release create "$TAG" "$DMG" "${args[@]}"
+    gh release create "$TAG" "$DMG" "$ZIP" "${args[@]}"
 fi
+
+# Both assets must actually be attached: a release whose binaries silently
+# failed to upload looks published but installs nothing.
+for asset in "$(basename "$DMG")" "$(basename "$ZIP")"; do
+    gh release view "$TAG" --json assets --jq '.assets[].name' | grep -qx "$asset" \
+        || die "$asset is missing from release $TAG"
+done
 
 echo "OK: $(gh release view "$TAG" --json url --jq .url)"
