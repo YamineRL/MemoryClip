@@ -332,6 +332,10 @@ final class NoteCoordinator {
     private func translateIfWanted(_ input: RefinementInput) async -> TranslatedText? {
         guard Self.isTranslationEnabled else { return nil }
         guard let language = input.language, LanguageDetector.needsTranslation(language) else { return nil }
+        guard NoteTranslation.allowsLanguage(LanguageDetector.identifier(for: language)) else {
+            log.notice("Translation skipped: language is not one of the picked ones")
+            return nil
+        }
         return await translator.translate(input.rawText, from: language)
     }
 

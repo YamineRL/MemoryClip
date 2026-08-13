@@ -316,6 +316,26 @@ final class TranslationPipelineTests: XCTestCase {
         XCTAssertFalse(draft.title.isEmpty, "An untranslated clip still gets a title")
     }
 
+    /// A language the user did not tick is left in its own language, even
+    /// when the Mac could have translated it.
+    func testAnUnpickedLanguageIsNotTranslated() async throws {
+        NoteTranslation.enabledLanguages = ["ja-Jpan"]
+        defer { NoteTranslation.enabledLanguages = [] }
+
+        let store = try ClipStore(inMemory: true)
+        let item = try screenshotClip(text: arabic, in: store)
+        let coordinator = NoteCoordinator(
+            store: store,
+            refiner: EnglishOnlyRefiner(),
+            translator: StubTranslator { _ in XCTFail("Arabic was not picked"); return nil }
+        )
+        _ = await coordinator.exportNote(for: item)
+
+        let refreshed = try XCTUnwrap(store.item(withUUID: item.uuid))
+        XCTAssertNil(refreshed.translatedText)
+        XCTAssertEqual(refreshed.sourceLanguage, "ar", "The language is still recorded")
+    }
+
     func testTranslationRespectsItsSetting() async throws {
         UserDefaults.standard.set(false, forKey: NoteSettingsKeys.translateEnabled)
         let store = try ClipStore(inMemory: true)
@@ -434,5 +454,44 @@ final class TranslationCatalogTests: XCTestCase {
         XCTAssertEqual(TranslationCatalog.row(matching: "ar", in: menu())?.id, "ar-Arab")
         XCTAssertEqual(TranslationCatalog.row(matching: "zh-Hans", in: menu())?.id, "zh-Hans")
         XCTAssertNil(TranslationCatalog.row(matching: "sw", in: menu()))
+    }
+}
+
+// MARK: - Which languages the user picked
+
+final class EnabledLanguagesTests: XCTestCase {
+    override func setUpWithError() throws {
+        NoteTranslation.enabledLanguages = []
+    }
+
+    override func tearDownWithError() throws {
+        NoteTranslation.enabledLanguages = []
+    }
+
+    /// The default. Not "nobody chose" but "everything this Mac can do" —
+    /// the only default that leaves the feature working for someone who never
+    /// opens Settings.
+    func testAnEmptySelectionAllowsEverything() {
+        XCTAssertTrue(NoteTranslation.allowsLanguage("ar"))
+        XCTAssertTrue(NoteTranslation.allowsLanguage("ja"))
+    }
+
+    func testOnlyPickedLanguagesAreTranslated() {
+        NoteTranslation.enabledLanguages = ["ar-Arab", "ja-Jpan"]
+        XCTAssertTrue(NoteTranslation.allowsLanguage("ar"))
+        XCTAssertTrue(NoteTranslation.allowsLanguage("ja"))
+        XCTAssertFalse(NoteTranslation.allowsLanguage("ru"))
+    }
+
+    /// The two sides are spelled by different libraries: the recognizer says
+    /// "ar", the framework's menu says "ar-Arab".
+    func testPickedAndDetectedIdentifiersNeedNotMatchExactly() {
+        XCTAssertTrue(TranslationCatalog.matches(selection: "ar-Arab", detected: "ar"))
+        XCTAssertTrue(TranslationCatalog.matches(selection: "zh-Hans", detected: "zh-Hans"))
+        // Script is only compared when both sides name one…
+        XCTAssertTrue(TranslationCatalog.matches(selection: "zh-Hans", detected: "zh"))
+        // …but Simplified and Traditional are not each other.
+        XCTAssertFalse(TranslationCatalog.matches(selection: "zh-Hans", detected: "zh-Hant"))
+        XCTAssertFalse(TranslationCatalog.matches(selection: "ar-Arab", detected: "fa"))
     }
 }
