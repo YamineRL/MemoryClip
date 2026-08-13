@@ -280,6 +280,46 @@ private struct HistorySettingsPane: View {
             Section("Storage") {
                 SettingsHint("History lives in a local SwiftData file on this Mac. Clear it any time from the menu-bar menu (\"Clear All History…\") or the panel's nuke button.")
             }
+
+            // Export sits in History rather than Privacy because it acts on
+            // the same thing the rest of this pane governs — the whole stored
+            // history, all of it at once — while Privacy's switches are
+            // capture policy, deciding what is allowed into that history in
+            // the first place. It was in the menu-bar dropdown until this
+            // pane existed to hold it; a dropdown of the last five clips is
+            // no place for an action that hands over every clip ever taken.
+            Section("Export") {
+                // A row per format, each the same `LabeledContent` shape the
+                // Screenshots pane's folder row uses, rather than one row with
+                // a pair of "JSON…"/"CSV…" buttons beside it. Two buttons in a
+                // row is what the AX tree cannot describe: a `LabeledContent`
+                // hands its label to whatever it contains, so both buttons
+                // came back named "Export every clip", and moving them out to
+                // a hand-built HStack left them named nothing at all (a bare
+                // SwiftUI Button here exposes neither its title nor an
+                // `.accessibilityLabel` — checked against the running app).
+                // One button per labelled row is the shape that is announced
+                // correctly, and it reads no worse.
+                LabeledContent {
+                    Button("Export…") { HistoryExportController.shared.exportHistory(asCSV: false) }
+                } label: {
+                    Label {
+                        Text("Every clip as JSON")
+                    } icon: {
+                        SettingsIcon(symbol: "curlybraces", tint: Color(nsColor: .systemBlue))
+                    }
+                }
+                LabeledContent {
+                    Button("Export…") { HistoryExportController.shared.exportHistory(asCSV: true) }
+                } label: {
+                    Label {
+                        Text("Every clip as CSV")
+                    } icon: {
+                        SettingsIcon(symbol: "tablecells", tint: Color(nsColor: .systemGreen))
+                    }
+                }
+                SettingsHint("Writes every clip to one unencrypted file, readable by your user account only. JSON carries images and rich text as Base64; CSV is text, source app and timestamps only. MemoryClip spells out what the file will contain before writing it, and — with the Touch ID lock on — asks you to authenticate every time, even if you unlocked it a moment ago.")
+            }
         }
         .formStyle(.grouped)
     }
