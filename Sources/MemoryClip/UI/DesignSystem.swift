@@ -130,7 +130,11 @@ enum Design {
         /// still reachable by scrolling, which is precisely the wrong place for
         /// the one control the page exists to offer.
         static let sheetWidth: CGFloat = 520
-        static let sheetHeight: CGFloat = settingsHeight
+        /// Its own number rather than the Settings window's. The tour needs
+        /// enough height that the notes page's picker sits above the fold, and
+        /// 560 gives that; following Settings upward would only add empty space
+        /// under the shorter pages, which end well before the fold already.
+        static let sheetHeight: CGFloat = 560
 
         /// The Settings window, which is a sidebar plus a detail pane rather
         /// than a tab strip: the width is `settingsSidebarWidth` on top of the
@@ -139,7 +143,16 @@ enum Design {
         /// pane (Shortcuts) so its key reference opens near-whole rather than
         /// already scrolled.
         static let settingsWidth: CGFloat = 740
-        static let settingsHeight: CGFloat = 560
+        /// 660, not the 560 this started at: Notes and Shortcuts both ran past
+        /// the bottom of the window at 560, and History gained an Export
+        /// section under Limits and Storage. A settings pane that opens
+        /// already scrolled hides the controls furthest from the top, which
+        /// are the ones a reader has not found yet.
+        ///
+        /// Note that AppKit restores a saved frame verbatim: on a Mac where
+        /// this window has been opened before, its autosaved frame wins and
+        /// changing this number does nothing until that frame is cleared.
+        static let settingsHeight: CGFloat = 660
         /// Floor for the Settings window. Chosen so the detail pane still
         /// clears 500 points — below that the several-line hints reflow into
         /// slivers, which is the first thing to break in a resizable form.

@@ -158,11 +158,16 @@ struct AppVersionInfo: Equatable {
     /// Whether the bundle supplied a usable version string.
     var isKnown: Bool { shortVersion != Self.unknownVersion }
 
-    /// `Version 0.1.0 (1)`, or `Version —` when nothing is available.
+    /// `Version 0.1.0`, or `Version —` when nothing is available.
+    ///
+    /// `build` is deliberately not shown. CFBundleVersion has read `2` since
+    /// early on and never moved, while the marketing version climbed past
+    /// forty releases — so the parenthesised number told a reader nothing
+    /// except that two versions existed. The key stays in Info.plist because
+    /// macOS uses it; the About pane just does not repeat it.
     var displayString: String {
         guard isKnown else { return "Version \(Self.unknownVersion)" }
-        guard build != Self.unknownVersion else { return "Version \(shortVersion)" }
-        return "Version \(shortVersion) (\(build))"
+        return "Version \(shortVersion)"
     }
 
     private static func clean(_ value: String?) -> String? {

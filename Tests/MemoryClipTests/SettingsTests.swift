@@ -8,7 +8,7 @@ final class SettingsTests: XCTestCase {
     func testDisplayStringCombinesVersionAndBuild() {
         let info = AppVersionInfo(shortVersion: "0.1.0", build: "1")
         XCTAssertTrue(info.isKnown, "a real version string should count as known")
-        XCTAssertEqual(info.displayString, "Version 0.1.0 (1)")
+        XCTAssertEqual(info.displayString, "Version 0.1.0")
     }
 
     func testMissingBuildOmitsParentheses() {
@@ -32,7 +32,7 @@ final class SettingsTests: XCTestCase {
 
     func testValuesAreTrimmed() {
         let info = AppVersionInfo(shortVersion: " 1.0 ", build: " 42 ")
-        XCTAssertEqual(info.displayString, "Version 1.0 (42)")
+        XCTAssertEqual(info.displayString, "Version 1.0", "the build number is deliberately not shown")
     }
 
     func testInitFromBundleNeverCrashesOutsideAnAppBundle() {
