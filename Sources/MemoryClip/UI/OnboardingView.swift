@@ -1,5 +1,26 @@
 import SwiftUI
 
+/// A setting the tour lets you change on the page that explains it.
+///
+/// A case names *which* existing control the page carries; `OnboardingView` is
+/// the only thing that knows what it looks like, and the control itself lives
+/// in `SettingsControls.swift` alongside the Settings window that renders the
+/// same struct. Two consequences worth stating, because they are the point:
+///
+/// - Nothing here is first-run-only state. Each case maps onto a setting that
+///   already existed and a UserDefaults key the Settings window already reads,
+///   so a tour that is skipped, closed or re-run leaves exactly the
+///   configuration the user chose — never a half-finished setup step.
+/// - The flow stays pure data. A test can assert the tour still offers the
+///   note destination without standing up SwiftUI.
+enum OnboardingSetup: String, CaseIterable, Equatable, Sendable {
+    /// The `SMAppService` login item — Settings → General → Startup.
+    case launchAtLogin
+    /// Where notes are written, including the vault folder picker —
+    /// Settings → Notes → Destination.
+    case noteDestination
+}
+
 /// One page of the first-run tour. Pure data so the flow can be tested
 /// without instantiating any view.
 struct OnboardingStep: Identifiable, Equatable, Sendable {
@@ -9,6 +30,10 @@ struct OnboardingStep: Identifiable, Equatable, Sendable {
     let title: String
     let subtitle: String
     let bullets: [String]
+    /// The control this page offers, if it offers one. Always optional and
+    /// never a gate: `Next` and `Done` ignore it entirely, so a user who
+    /// touches nothing still reaches the end of the tour.
+    var setup: OnboardingSetup? = nil
 }
 
 /// Step definitions plus the (pure) navigation arithmetic for the onboarding
@@ -18,7 +43,20 @@ struct OnboardingStep: Identifiable, Equatable, Sendable {
 /// Copy rule: every claim below must describe behaviour that exists in the
 /// shipped code — hotkeys from `HotKeys`/`PanelView`, the dropdown from
 /// `StatusController`, the privacy posture from `SensitiveFilter` /
-/// `AppLockService`, and the auto-paste caveat as worded in `SettingsView`.
+/// `AppLockService`, the note pipeline from `NoteCoordinator` /
+/// `NoteSinkFactory`, and the auto-paste caveat as worded in `SettingsView`.
+///
+/// Which pages carry a control, and why only these: the tour is a place to
+/// *start using* MemoryClip, not a second Settings window. A setting earns a
+/// page when a new user has to answer it before the feature works at all
+/// (where notes go — `NoteSinkFactory` throws `noDestinationConfigured` until
+/// they do) or when the first launch is the only moment it is naturally asked
+/// (launch at login — an app with no Dock icon is not relaunched by accident).
+/// Everything else stays in Settings: the panel's own behaviour has working
+/// defaults, the Touch ID lock and screenshot watching each want a decision
+/// the user has not got the context for yet, and the translation language list
+/// is 38 rows that start multi-hundred-megabyte system downloads — it belongs
+/// beside the pipeline that reports which language it actually met.
 enum OnboardingFlow {
     static let steps: [OnboardingStep] = [
         OnboardingStep(
@@ -30,7 +68,8 @@ enum OnboardingFlow {
                 "Everything you copy — text, rich text, images, files, links, hex colors — is kept in a local history.",
                 "MemoryClip lives in the menu bar (no Dock icon) and starts capturing as soon as it launches.",
                 "Identical re-copies are deduplicated; old clips age out by count and by age (Settings → History).",
-            ]
+            ],
+            setup: .launchAtLogin
         ),
         OnboardingStep(
             id: "panel",
@@ -101,6 +140,19 @@ enum OnboardingFlow {
                 "Vim keys: opt in under Settings → Panel for j/k, gg/G, ⌃d/⌃u, o/⇧O, p, dd, q/⇧Q in normal mode; press / or i to search, Esc to go back to normal.",
             ]
         ),
+        OnboardingStep(
+            id: "notes",
+            symbol: "note.text",
+            title: "Keep a clip as a note",
+            subtitle: "The one thing worth setting up now: where those notes land.",
+            bullets: [
+                "Any clip carrying text — including the text read out of a screenshot — can be written out: select it in the panel and choose “Save as Note” from its context menu.",
+                "Where this Mac has Apple Intelligence, the on-device model gives the note a title, a summary and tags; text in another language is translated into English first. Both run here, and both are already on (Settings → Notes).",
+                "Choose a destination below. The Markdown folder is the default and starts out unset — until a folder is chosen, saving a note just tells you to choose one.",
+                "Screenshots can do this by themselves: Settings → Screenshots keeps new ones in your history, and Settings → Notes can write a note for every screenshot with enough text in it.",
+            ],
+            setup: .noteDestination
+        ),
     ]
 
     static var count: Int { steps.count }
@@ -135,7 +187,18 @@ struct OnboardingView: View {
     /// Called when the user finishes or dismisses the tour.
     let onFinish: () -> Void
 
-    @State private var index = 0
+    @State private var index: Int
+
+    /// - Parameter startingAt: which page opens. Clamped through
+    ///   `OnboardingFlow` like every other index here, so no caller can open
+    ///   the window on nothing. Defaulted because the tour is normally read
+    ///   from the front; it is a parameter at all so a single page can be put
+    ///   on screen directly rather than paged to — which is how the pages that
+    ///   carry controls were rendered and checked.
+    init(startingAt index: Int = 0, onFinish: @escaping () -> Void) {
+        self.onFinish = onFinish
+        _index = State(initialValue: OnboardingFlow.clamp(index))
+    }
 
     private var step: OnboardingStep { OnboardingFlow.step(at: index) }
 
@@ -143,7 +206,7 @@ struct OnboardingView: View {
         VStack(alignment: .leading, spacing: 0) {
             header
             Divider()
-            bullets
+            page
             Divider()
             footer
                 .background(Design.Palette.chrome)
@@ -187,7 +250,15 @@ struct OnboardingView: View {
         .background(Design.Palette.chrome)
     }
 
-    private var bullets: some View {
+    /// The body of a page: what the step says, then — on the pages that have
+    /// one — the control that lets you act on it without leaving the tour.
+    ///
+    /// The control sits inside the same scroll view as the bullets rather than
+    /// in a band of its own, because it is the last item of the page's
+    /// argument, not a separate demand: a folder picker pinned above the
+    /// footer would read as a step to complete before `Next` will let you
+    /// past, which is precisely what it is not.
+    private var page: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: Design.Space.roomy) {
                 ForEach(Array(step.bullets.enumerated()), id: \.offset) { _, bullet in
@@ -203,6 +274,9 @@ struct OnboardingView: View {
                             .fixedSize(horizontal: false, vertical: true)
                     }
                 }
+                if let setup = step.setup {
+                    setupControls(for: setup)
+                }
                 Spacer(minLength: 0)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -210,6 +284,27 @@ struct OnboardingView: View {
         }
         // Restart the scroll position when the page changes.
         .id(step.id)
+    }
+
+    /// The Settings controls themselves — the same structs the Settings window
+    /// renders, in their less verbose form. Nothing is duplicated here: this
+    /// switch is the whole of the tour's knowledge of what a setting looks
+    /// like.
+    @ViewBuilder
+    private func setupControls(for setup: OnboardingSetup) -> some View {
+        VStack(alignment: .leading, spacing: Design.Space.roomy) {
+            switch setup {
+            case .launchAtLogin:
+                // The hint is off because the bullet above it already says
+                // MemoryClip is a menu-bar app with no Dock icon.
+                LaunchAtLoginToggle(showsHint: false)
+            case .noteDestination:
+                NoteDestinationSetup(showsDetail: false)
+            }
+        }
+        .padding(Design.Space.roomy)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .designPane(radius: Design.Radius.control, fill: Design.Palette.chrome)
     }
 
     private var footer: some View {
