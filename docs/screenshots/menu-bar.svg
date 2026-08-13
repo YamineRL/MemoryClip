@@ -9,14 +9,16 @@
   <!-- menu bar -->
   <rect x="0" y="0" width="420" height="26" fill="#101013" opacity="0.72"/>
   <rect x="292" y="3" width="26" height="20" rx="5" fill="#48484d"/>
-  <g fill="none" stroke="#f2f2f7" stroke-width="1.5" stroke-linejoin="round">
-    <rect x="300" y="8" width="10" height="11" rx="2"/><path d="M302.5 8 V6.5 h5 V8"/>
+  <g fill="#f2f2f7" transform="translate(298.5 6.5) scale(0.125)">
+    <rect x="18" y="40" width="58" height="58" rx="16" opacity="0.4"/>
+    <rect x="32" y="18" width="58" height="58" rx="16"/>
+    <rect x="50" y="10" width="22" height="14" rx="7"/>
   </g>
   <g fill="#c7c7cc" font-size="10.5"><text x="332" y="17">100%</text><text x="378" y="17">14:32</text></g>
 
   <!-- dropdown -->
-  <rect x="150" y="32" width="256" height="330" rx="10" fill="#1f1f22" opacity="0.98"/>
-  <rect x="150.5" y="32.5" width="255" height="329" rx="9.5" fill="none" stroke="#3a3a3d"/>
+  <rect x="150" y="32" width="256" height="306" rx="10" fill="#1f1f22" opacity="0.98"/>
+  <rect x="150.5" y="32.5" width="255" height="305" rx="9.5" fill="none" stroke="#3a3a3d"/>
 
   <text x="164" y="52" fill="#8e8e93" font-size="10" font-weight="600" letter-spacing="0.6">RECENT CLIPS</text>
   <g font-size="12.5" fill="#e8e8ea">
@@ -33,16 +35,15 @@
   <g font-size="12.5" fill="#e8e8ea">
     <text x="164" y="210">Open MemoryClip</text>
     <text x="164" y="234">Pause Capture</text>
-    <text x="164" y="258">Export History ›</text>
-    <text x="164" y="282">Clear All History…</text>
+    <text x="164" y="258">Clear All History…</text>
   </g>
-  <line x1="156" y1="296" x2="400" y2="296" stroke="#3a3a3d"/>
+  <line x1="156" y1="272" x2="400" y2="272" stroke="#3a3a3d"/>
   <g font-size="12.5" fill="#e8e8ea">
-    <text x="164" y="318">Settings…</text>
-    <text x="164" y="342">Quit MemoryClip</text>
+    <text x="164" y="294">Settings…</text>
+    <text x="164" y="318">Quit MemoryClip</text>
   </g>
   <g font-size="11.5" fill="#8e8e93" text-anchor="end">
-    <text x="396" y="210">⇧⌘V</text>
-    <text x="396" y="342">⌘Q</text>
+    <text x="396" y="294">⌘,</text>
+    <text x="396" y="318">⌘Q</text>
   </g>
 </svg>

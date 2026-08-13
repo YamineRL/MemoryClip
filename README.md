@@ -84,7 +84,7 @@ From then on, MemoryClip captures every copy in the background. Two ways in:
 
 - Press **⇧⌘V** to open the panel from whichever app you are in.
 - Click the **clipboard glyph** in the menu bar for the five most recent clips, plus
-  Open MemoryClip, Pause Capture, Clear All History, Export, Settings and Quit.
+  Open MemoryClip, Pause Capture, Clear All History, Settings and Quit.
 
 To have it start with your Mac, turn on **Launch at login** in **Settings → General**.
 
@@ -383,7 +383,7 @@ existing clip back to the top.
 
 ## Exporting your history
 
-Export to **JSON** or **CSV** from the menu-bar dropdown. Large histories stream to
+Export to **JSON** or **CSV** from **Settings → History**. Large histories stream to
 disk one clip at a time rather than being assembled in memory first. With the Touch ID
 lock on, exporting always re-authenticates.
 
