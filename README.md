@@ -200,7 +200,9 @@ minutes" — enough to catch the screenshot from a second ago without adopting e
 PNG on the Desktop.
 
 Screenshots go through the same on-device text extraction as image clips, so you can
-find one by what it says. A screenshot clip is a *file* clip, so it sits under the
+find one by what it says. Text extraction detects the language rather than assuming
+English, so Arabic, Chinese, Japanese, Korean, Russian, Thai and Ukrainian screenshots
+are read as well — 30 languages in all. A screenshot clip is a *file* clip, so it sits under the
 **Files** chip rather than **Images**.
 
 ### Notes
@@ -218,6 +220,26 @@ recognition. On a Mac where Apple Intelligence is off, unsupported, or still dow
 its model, nothing breaks: the note is written from the raw recognition instead, and
 **Settings → Notes** says which of those it is rather than showing a switch that quietly
 does nothing.
+
+#### Notes in another language
+
+A screenshot that is not in English gets read in its own language and **translated on
+this Mac**. The note carries both: the text exactly as it was on screen, and an English
+translation underneath it. The original is the record — a translation never replaces it —
+and the note's title, summary and tags are written from the English, so a note captured
+in Arabic is still findable in a vault you search in English.
+
+macOS ships some translation languages and downloads the rest on demand, and only the
+Settings window can start a download. When MemoryClip meets a language whose assets are
+missing it writes the note untranslated in the language it was captured in, and lists the
+language under **Settings → Notes → Translation** with a **Download** button. Clips
+captured before the download keep the text they were saved with; screenshot the page
+again to get a translated note. The switch above it turns the whole thing off.
+
+Translation is also what makes the on-device model useful here: it reads 23 languages and
+Vision now recognises 30, so for a screenshot in the gap — Arabic, Russian, Thai — the
+model is given the English translation to clean up, title and tag rather than text it
+cannot read.
 
 Three destinations, in **Settings → Notes**:
 
@@ -339,6 +361,10 @@ makes no network calls at all — no sync, no accounts, no analytics.
   Foundation Models framework. There is no cloud fallback, no request leaves the
   machine, and refinement is skipped entirely when the model is unavailable — the raw
   extracted text is used instead.
+- **Translation is local too.** Translating a note uses Apple's Translation framework,
+  which runs on the Mac with language assets macOS downloads once. Nothing is sent
+  anywhere, and a card number that survived recognition is dropped from the translation
+  as well as from the refined text.
 - **Notes leave the store on purpose.** A note is a file in the folder you chose, with
   that folder's ordinary permissions — not the `0600` clip store. Card numbers are
   dropped from refined text before it can be written, but everything else in a note is
@@ -498,7 +524,9 @@ Sources/MemoryClip/
 │                   OCRService + OCRCoordinator (Vision text extraction, from a
 │                   data blob or a file on disk)
 ├── Notes/          NoteRefiner (protocol, passthrough, hallucination guard) +
-│                   FoundationModelsRefiner (on-device cleanup), NoteDraft,
+│                   FoundationModelsRefiner (on-device cleanup), NoteTranslator
+│                   (protocol, language detection, bounds) + AppleTranslator
+│                   (on-device translation), NoteDraft,
 │                   NoteComposer (Markdown/HTML/file names), NoteSink +
 │                   MarkdownVaultSink / NotesAppSink / ShortcutSink,
 │                   NoteCoordinator (refinement drain + export), NoteSettings
@@ -526,8 +554,10 @@ Screenshot flow: `screencapture` writes a file → `ScreenshotWatcher` debounces
 event, asks `ScreenshotDetector` whether the file is a screenshot at all, and waits for
 it to stop growing → `ClipStore.insertScreenshot` records a *reference* → the thumbnail
 backfill and `OCRCoordinator` read the pixels straight off disk → `NoteCoordinator`
-refines the recognised text with the on-device model, bounded by `RefinementGuard` → a
-`NoteSink` writes the note, on request or automatically.
+identifies the language and, when it is not English, translates the text with
+`AppleTranslator`, then refines whichever of the two the on-device model can read,
+bounded by `RefinementGuard` → a `NoteSink` writes the note, on request or
+automatically.
 
 Paste flow: panel/dropdown selection → `PasteService.write` puts the payload on the
 general pasteboard → watcher is told to ignore its own write → previous app is
