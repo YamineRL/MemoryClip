@@ -45,6 +45,9 @@ struct ClipCardView: View {
     let onTransform: (Transform) -> Void
     let onShowQR: () -> Void
     let onToggleQueue: () -> Void
+    let onSaveNote: () -> Void
+    let onOpenNote: () -> Void
+    let onRevealInFinder: () -> Void
 
     @State private var isHovering = false
     /// Cached instant-calc result. Computed once per content change off the
@@ -61,7 +64,10 @@ struct ClipCardView: View {
         onCopyExtractedText: @escaping () -> Void = {},
         onTransform: @escaping (Transform) -> Void,
         onShowQR: @escaping () -> Void,
-        onToggleQueue: @escaping () -> Void = {}
+        onToggleQueue: @escaping () -> Void = {},
+        onSaveNote: @escaping () -> Void = {},
+        onOpenNote: @escaping () -> Void = {},
+        onRevealInFinder: @escaping () -> Void = {}
     ) {
         self.item = item
         self.index = index
@@ -73,6 +79,9 @@ struct ClipCardView: View {
         self.onTransform = onTransform
         self.onShowQR = onShowQR
         self.onToggleQueue = onToggleQueue
+        self.onSaveNote = onSaveNote
+        self.onOpenNote = onOpenNote
+        self.onRevealInFinder = onRevealInFinder
     }
 
     var body: some View {
@@ -111,6 +120,16 @@ struct ClipCardView: View {
                     }
                 }
             }
+            if item.isScreenshot {
+                Button("Reveal in Finder") { onRevealInFinder() }
+            }
+            if canSaveNote {
+                Button(item.notePath == nil ? "Save as Note" : "Update Note") { onSaveNote() }
+            }
+            if item.notePath != nil {
+                Button("Open Note") { onOpenNote() }
+            }
+            Divider()
             Button(queuePosition == nil ? "Add to Queue" : "Remove from Queue") { onToggleQueue() }
             Button(item.isPinned ? "Unpin" : "Pin") { togglePinned() }
             Button("Delete", role: .destructive) { deleteItem() }
@@ -124,6 +143,14 @@ struct ClipCardView: View {
         .accessibilityAction(named: "Delete") { deleteItem() }
         .accessibilityAction(named: queuePosition == nil ? "Add to Queue" : "Remove from Queue") {
             onToggleQueue()
+        }
+        .accessibilityActions {
+            if canSaveNote {
+                Button(item.notePath == nil ? "Save as Note" : "Update Note") { onSaveNote() }
+            }
+            if item.notePath != nil {
+                Button("Open Note") { onOpenNote() }
+            }
         }
         .accessibilityActions {
             if isTextBearing {
@@ -251,6 +278,7 @@ struct ClipCardView: View {
     }
 
     private var kindSymbol: String {
+        if item.isScreenshot { return "camera.viewfinder" }
         switch item.kind {
         case .text: return "text.alignleft"
         case .richText: return "textformat"
@@ -302,7 +330,14 @@ struct ClipCardView: View {
         case .color:
             colorContent
         case .file:
-            fileContent
+            // A screenshot is a file clip that draws as its picture: the
+            // thumbnail is already there (the backfill treats it as an
+            // image), and a row showing only a path would waste it.
+            if item.isScreenshot {
+                imageContent
+            } else {
+                fileContent
+            }
         default:
             Text(previewText)
                 .font(.system(size: Design.Typography.cardBodySize))
@@ -400,6 +435,13 @@ struct ClipCardView: View {
 
     /// The card's closing stat line — Deck's "66 characters".
     private var statLine: String {
+        // Checked before the kind switch: a screenshot IS a file clip, and
+        // "1 file" is the least informative thing the row could say about it.
+        if item.isScreenshot {
+            if item.notePath != nil { return "Screenshot · noted" }
+            if !(item.ocrText ?? "").isEmpty { return "Screenshot · text found" }
+            return "Screenshot"
+        }
         switch item.kind {
         case .file:
             let count = item.fileURLStrings.count
@@ -419,10 +461,26 @@ struct ClipCardView: View {
 
     /// The image clip's OCR text, or nil when there is none worth offering.
     /// Whitespace-only Vision output counts as none.
+    ///
+    /// Screenshot clips qualify as well as pasteboard images: their kind is
+    /// `.file` (they reference the picture on disk) but they carry pixels and
+    /// go through the same recognition.
     private var extractedText: String? {
-        guard item.kind == .image else { return nil }
+        guard item.kind == .image || item.isScreenshot else { return nil }
         let trimmed = item.ocrText?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         return trimmed.isEmpty ? nil : trimmed
+    }
+
+    /// Whether this clip has anything a note could be made of.
+    ///
+    /// Text-bearing clips qualify on their own text; images and screenshots
+    /// qualify once recognition has found something. A colour swatch or an
+    /// unreadable screenshot has nothing to write down, so the action is not
+    /// offered rather than being offered and failing.
+    private var canSaveNote: Bool {
+        if extractedText != nil { return true }
+        guard isTextBearing else { return false }
+        return !(item.text ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     /// Kinds that carry plain text — the only ones offered transforms.
@@ -456,8 +514,10 @@ struct ClipCardView: View {
             relativeTime: item.createdAt.formatted(.relative(presentation: .named)),
             isPinned: item.isPinned,
             queuePosition: queuePosition,
-            hasExtractedText: item.kind == .image && !(item.ocrText ?? "").isEmpty,
-            calcResult: calcSuffix
+            hasExtractedText: !(item.ocrText ?? "").isEmpty,
+            calcResult: calcSuffix,
+            isScreenshot: item.isScreenshot,
+            hasNote: item.notePath != nil
         )
     }
 

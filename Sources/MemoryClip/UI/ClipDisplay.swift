@@ -81,7 +81,13 @@ enum ClipDisplay {
     // MARK: - Accessibility label
 
     /// Spoken name of a clip kind.
-    static func kindLabel(_ kind: ClipKind) -> String {
+    ///
+    /// A screenshot is stored as a `.file` clip holding a reference to the
+    /// image on disk, but calling it "File" tells the listener nothing about
+    /// what it is — the whole point of the flag is that this one is a picture
+    /// of their screen.
+    static func kindLabel(_ kind: ClipKind, isScreenshot: Bool = false) -> String {
+        if isScreenshot { return "Screenshot" }
         switch kind {
         case .text: return "Text"
         case .richText: return "Rich text"
@@ -94,7 +100,7 @@ enum ClipDisplay {
 
     /// The composed VoiceOver label for one clip card, e.g.
     /// "Text, hello world, from Safari, 2 minutes ago, pinned,
-    ///  queued position 2, contains extracted text".
+    ///  queued position 2, contains extracted text, saved as a note".
     ///
     /// `summary` is truncated by `spokenSummary(_:)`; empty parts are skipped.
     static func rowLabel(
@@ -105,9 +111,11 @@ enum ClipDisplay {
         isPinned: Bool = false,
         queuePosition: Int? = nil,
         hasExtractedText: Bool = false,
-        calcResult: String? = nil
+        calcResult: String? = nil,
+        isScreenshot: Bool = false,
+        hasNote: Bool = false
     ) -> String {
-        var parts: [String] = [kindLabel(kind)]
+        var parts: [String] = [kindLabel(kind, isScreenshot: isScreenshot)]
 
         let spoken = spokenSummary(summary)
         if !spoken.isEmpty { parts.append(spoken) }
@@ -117,6 +125,7 @@ enum ClipDisplay {
         if isPinned { parts.append("pinned") }
         if let queuePosition { parts.append("queued position \(queuePosition)") }
         if hasExtractedText { parts.append("contains extracted text") }
+        if hasNote { parts.append("saved as a note") }
 
         return parts.joined(separator: ", ")
     }

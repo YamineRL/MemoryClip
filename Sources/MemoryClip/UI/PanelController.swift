@@ -51,6 +51,7 @@ final class PanelController: NSObject, NSWindowDelegate {
     private let watcher: PasteboardWatcher
     private let qrController: QRWindowController
     private let queueService: QueueService
+    private let noteCoordinator: NoteCoordinator
 
     private var panel: KeyablePanel?
     private var cancellables: Set<AnyCancellable> = []
@@ -59,12 +60,18 @@ final class PanelController: NSObject, NSWindowDelegate {
         panel?.isVisible ?? false
     }
 
-    init(store: ClipStore, pasteService: PasteService, watcher: PasteboardWatcher) {
+    init(
+        store: ClipStore,
+        pasteService: PasteService,
+        watcher: PasteboardWatcher,
+        noteCoordinator: NoteCoordinator
+    ) {
         self.store = store
         self.pasteService = pasteService
         self.watcher = watcher
         self.qrController = QRWindowController(watcher: watcher)
         self.queueService = QueueService(store: store, pasteService: pasteService)
+        self.noteCoordinator = noteCoordinator
         super.init()
 
         qrController.panelFrame = { [weak self] in
@@ -248,8 +255,70 @@ final class PanelController: NSObject, NSWindowDelegate {
                 let target = self.previousApp
                 self.hide(restorePrevious: false)
                 self.queueService.pasteAll(target: target)
+            },
+            saveNote: { [weak self] item in
+                self?.saveNote(for: item)
+            },
+            openNote: { [weak self] item in
+                self?.openNote(for: item)
+            },
+            revealInFinder: { item in
+                guard let url = item.screenshotURL else { return }
+                NSWorkspace.shared.activateFileViewerSelecting([url])
             }
         )
+    }
+
+    // MARK: Notes
+
+    /// Write (or rewrite) the note for a clip, reporting the outcome.
+    ///
+    /// The export is awaited off this call — it may run a model pass and
+    /// then a subprocess — so the panel stays live while it happens. Only
+    /// failure interrupts the user: a note that was written is reported by
+    /// the row itself, which starts saying "noted".
+    private func saveNote(for item: ClipItem) {
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            let result = await self.noteCoordinator.exportNote(for: item)
+            if case .failure(let error) = result {
+                self.presentNoteFailure(error)
+            }
+        }
+    }
+
+    /// Open the note already written for a clip.
+    ///
+    /// `notePath` is a path for file destinations and a human-readable
+    /// locator for the others ("Notes › MemoryClip"), so this only opens what
+    /// actually exists on disk — there is nothing to open for a note that
+    /// lives inside another app.
+    private func openNote(for item: ClipItem) {
+        guard let path = item.notePath, !path.isEmpty else { return }
+        let url = URL(fileURLWithPath: path)
+        guard FileManager.default.fileExists(atPath: url.path) else {
+            presentNoteFailure(.folderUnavailable(path))
+            return
+        }
+        NSWorkspace.shared.open(url)
+    }
+
+    /// Report a note failure where the user is actually looking.
+    ///
+    /// An alert rather than a log line: every one of these is something only
+    /// the user can fix (pick a folder, grant Automation, name a Shortcut),
+    /// and the action they just took produced no visible result otherwise.
+    private func presentNoteFailure(_ error: NoteError) {
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = "MemoryClip could not save the note."
+        alert.informativeText = error.errorDescription ?? "Unknown error."
+        alert.addButton(withTitle: "OK")
+        alert.addButton(withTitle: "Open Settings…")
+        NSApp.activate()
+        if alert.runModal() == .alertSecondButtonReturn {
+            openSettingsWindow()
+        }
     }
 
     // MARK: Show / hide

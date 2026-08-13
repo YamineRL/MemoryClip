@@ -120,9 +120,31 @@ enum Design {
         /// filter chips beside it do not shift as a query is typed.
         static let searchFieldWidth: CGFloat = 150
 
-        /// Settings and onboarding windows.
+        /// The onboarding window.
         static let sheetWidth: CGFloat = 520
         static let sheetHeight: CGFloat = 420
+
+        /// The Settings window, which is a sidebar plus a detail pane rather
+        /// than a tab strip: the width is `settingsSidebarWidth` on top of the
+        /// 520 points a pane's form was already given, so re-housing the panes
+        /// did not make any of them narrower. The height is set by the tallest
+        /// pane (Shortcuts) so its key reference opens near-whole rather than
+        /// already scrolled.
+        static let settingsWidth: CGFloat = 740
+        static let settingsHeight: CGFloat = 560
+        /// Floor for the Settings window. Chosen so the detail pane still
+        /// clears 500 points — below that the several-line hints reflow into
+        /// slivers, which is the first thing to break in a resizable form.
+        static let settingsMinWidth: CGFloat = 680
+        static let settingsMinHeight: CGFloat = 460
+
+        /// The Settings sidebar column. The ideal width fits the longest pane
+        /// name ("Screenshots") beside its glyph at the default text size; the
+        /// range lets a user with larger text widen it without letting the
+        /// sidebar take the detail pane over.
+        static let settingsSidebarMinWidth: CGFloat = 176
+        static let settingsSidebarWidth: CGFloat = 196
+        static let settingsSidebarMaxWidth: CGFloat = 240
 
         /// The square tile used as a settings/onboarding header glyph.
         static let rowIconTile: CGFloat = 34
@@ -131,6 +153,10 @@ enum Design {
         /// clip row's tile: it labels a control rather than standing in for
         /// content.
         static let settingsIcon: CGFloat = 20
+
+        /// The same badge at the head of a settings pane. One step up from the
+        /// row glyph so it reads as a title rather than as another row.
+        static let settingsHeaderIcon: CGFloat = 28
 
         /// Trailing hover/selection buttons.
         static let rowActionButton: CGFloat = 22

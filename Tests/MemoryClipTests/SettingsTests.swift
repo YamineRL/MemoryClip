@@ -38,10 +38,78 @@ final class SettingsTests: XCTestCase {
     func testInitFromBundleNeverCrashesOutsideAnAppBundle() {
         // Under `swift test` there is no Info.plist; the fallback must hold.
         let info = AppVersionInfo(bundle: Bundle(for: SettingsTests.self))
-        XCTAssertFalse(info.displayString.isEmpty, "the About tab must never show an empty version")
+        XCTAssertFalse(info.displayString.isEmpty, "the About pane must never show an empty version")
         XCTAssertTrue(
             info.displayString.hasPrefix("Version "),
             "expected a \"Version …\" string, got \"\(info.displayString)\""
+        )
+    }
+
+    // MARK: SettingsPane
+
+    /// The sidebar is generated from `SettingsPane.groups`, so a pane that is
+    /// in the enum but in no group is a pane with no way to reach it — the
+    /// exact failure the tabbed version could not have, and the one this
+    /// rebuild has to be held to.
+    func testEveryPaneAppearsInExactlyOneSidebarGroup() {
+        let listed = SettingsPane.groups.flatMap(\.panes)
+        XCTAssertEqual(
+            Set(listed).count, listed.count,
+            "a pane is listed in two sidebar groups: \(listed.map(\.rawValue))"
+        )
+        XCTAssertEqual(
+            Set(listed), Set(SettingsPane.allCases),
+            "the sidebar and the pane list disagree — an unreachable or phantom pane"
+        )
+    }
+
+    func testSidebarGroupsAreWellFormed() {
+        XCTAssertFalse(SettingsPane.groups.isEmpty, "the sidebar would render empty")
+        for group in SettingsPane.groups {
+            XCTAssertFalse(group.panes.isEmpty, "sidebar group \(group.id) has no rows")
+            if let title = group.title {
+                XCTAssertFalse(title.isEmpty, "a sidebar group has an empty title")
+            }
+        }
+        let ids = SettingsPane.groups.map(\.id)
+        XCTAssertEqual(
+            Set(ids).count, ids.count,
+            "group ids are the SwiftUI identity — duplicates break the sidebar: \(ids)"
+        )
+    }
+
+    /// Titles and symbols are what a row *is*: a blank one renders an
+    /// unlabelled row, and a shared one makes two panes look like each other
+    /// in a sidebar whose whole job is telling them apart.
+    func testPaneTitlesAndSymbolsAreDistinctAndPresent() {
+        for pane in SettingsPane.allCases {
+            XCTAssertFalse(pane.title.isEmpty, "\(pane.rawValue) has no title")
+            XCTAssertFalse(pane.symbol.isEmpty, "\(pane.rawValue) has no symbol")
+        }
+        let titles = SettingsPane.allCases.map(\.title)
+        XCTAssertEqual(Set(titles).count, titles.count, "two panes share a title: \(titles)")
+        let symbols = SettingsPane.allCases.map(\.symbol)
+        XCTAssertEqual(Set(symbols).count, symbols.count, "two panes share a glyph: \(symbols)")
+    }
+
+    /// `SettingsPane.default` is what `@AppStorage` falls back to, and the
+    /// window should open on the row the sidebar shows first — not on some
+    /// pane further down that happens to be case zero of the enum.
+    func testDefaultPaneIsTheFirstSidebarRow() {
+        let first = SettingsPane.groups.first?.panes.first
+        XCTAssertEqual(
+            first, SettingsPane.default,
+            "the default pane is not the top row of the sidebar"
+        )
+    }
+
+    /// The raw values are the persisted form. Changing one silently resets
+    /// every user who had that pane open, so they are pinned here.
+    func testPaneRawValuesAreStable() {
+        XCTAssertEqual(
+            SettingsPane.allCases.map(\.rawValue),
+            ["general", "shortcuts", "history", "panel", "privacy", "screenshots", "notes", "about"],
+            "a persisted pane identifier changed — see SettingsKeys.settingsPane"
         )
     }
 
@@ -50,9 +118,9 @@ final class SettingsTests: XCTestCase {
     /// Structural invariants of the key reference. The exact wording and
     /// ordering of the rows is deliberately *not* asserted — editing the copy
     /// is not a regression, but an empty group, a duplicated key row, or a
-    /// group missing from the Shortcuts tab is.
+    /// group missing from the Shortcuts pane is.
     func testShortcutReferenceIsWellFormed() {
-        XCTAssertFalse(ShortcutReference.groups.isEmpty, "the Shortcuts tab would render empty")
+        XCTAssertFalse(ShortcutReference.groups.isEmpty, "the Shortcuts pane would render empty")
         XCTAssertTrue(
             ShortcutReference.groups.contains(ShortcutReference.panel),
             "the panel group is not reachable from ShortcutReference.groups"
@@ -227,7 +295,7 @@ final class SettingsTests: XCTestCase {
         for (command, description) in mustBeDocumented {
             XCTAssertTrue(
                 produced.contains(command),
-                "no documented key produces \(command) (\(description)) — the Shortcuts tab is missing a binding"
+                "no documented key produces \(command) (\(description)) — the Shortcuts pane is missing a binding"
             )
         }
     }
