@@ -9,9 +9,15 @@
 //  iconset needs, so the 16pt rendering is a real 16pt draw rather than a
 //  downsample of the 1024pt one.
 //
-//  Design: full-bleed rounded square (macOS 26 convention, no baked-in drop
-//  shadow, no inner padding) with a white clipboard mark backed by two
-//  offset "stacked clip" cards.
+//  Design: logo direction 1a, "The Stack". A full-bleed indigo rounded square
+//  (macOS 26 convention — no baked-in drop shadow, no inner padding) carrying
+//  three white cards that march up and to the right, with a small clip tab
+//  straddling the top edge of the front card. The stack is the *history*; the
+//  tab is what makes it a *clipboard*.
+//
+//  Every number below is lifted from the design file: a 180x180 tile and a
+//  104x104 mark viewBox. Both systems are named in the constants so the
+//  drawing can be checked against the design without re-deriving anything.
 //
 
 import CoreGraphics
@@ -28,90 +34,198 @@ let icnsURL = repoRoot.appendingPathComponent("Resources/AppIcon.icns")
 
 // MARK: - Geometry helpers
 
-/// Reference canvas. Every coordinate below is expressed in this space and
-/// scaled to the size actually being rendered.
-let canvas: CGFloat = 1024
-
 func rounded(_ rect: CGRect, _ radius: CGFloat) -> CGPath {
     CGPath(roundedRect: rect, cornerWidth: radius, cornerHeight: radius, transform: nil)
+}
+
+// MARK: - The tile
+
+/// The design's tile is 180x180 with a 40px radius — a ratio of 40/180 =
+/// 0.2222, which is within a hair of the 0.2237 macOS/iOS app-icon ratio this
+/// script already used. Keep 0.2237: it is the platform's own squircle
+/// proportion, the two differ by 0.15px at 1024px, and looking native next to
+/// Finder and Safari matters more than matching a CSS value that was itself
+/// rounded to a whole pixel. (The design's small tiles quote 14/64 and 7/32 =
+/// 0.219 and 4.5/18 = 0.25 for the same reason — CSS pushing 0.2222 to whole
+/// pixels — so they collapse into this one ratio too.)
+let cornerRatio: CGFloat = 0.2237
+
+/// `linear-gradient(170deg, #6d7cf6 0%, #4a54d8 55%, #3a3fb8 100%)`.
+let indigoLight: (CGFloat, CGFloat, CGFloat) = (109 / 255, 124 / 255, 246 / 255)  // #6d7cf6
+let indigoMid: (CGFloat, CGFloat, CGFloat) = (74 / 255, 84 / 255, 216 / 255)      // #4a54d8
+let indigoDark: (CGFloat, CGFloat, CGFloat) = (58 / 255, 63 / 255, 184 / 255)     // #3a3fb8
+
+/// CSS gradient angle, in degrees clockwise from "to top". 170deg runs almost
+/// straight down, leaning 10 degrees to the right — the same diagonal the card
+/// stack climbs, in reverse.
+let gradientAngle: CGFloat = 170
+
+/// The design's inner top highlight, `inset 0 1.5px 0 rgba(255,255,255,0.35)`
+/// on the 180px tile. Expressed as a fraction of the tile so it stays a
+/// hairline at 1024px instead of becoming a stripe.
+let highlightRatio: CGFloat = 1.5 / 180
+let highlightAlpha: CGFloat = 0.35
+
+// MARK: - The mark
+
+/// The mark has its own 104x104 viewBox and is placed at 108/180 = 60% of the
+/// tile width, centred. Every card coordinate below is in viewBox units, with
+/// the design's y axis (growing *downward*); `rect(_:)` does the flip.
+let markViewBox: CGFloat = 104
+let markInset: CGFloat = 0.6
+
+/// One rounded rect of the mark, straight out of the design file.
+struct MarkRect {
+    let x: CGFloat
+    let y: CGFloat
+    let w: CGFloat
+    let h: CGFloat
+    /// Corner radius, viewBox units.
+    let r: CGFloat
+    let rgb: (CGFloat, CGFloat, CGFloat)
+    /// The design's `opacity` on the card. The stack fades back into the
+    /// gradient rather than being drawn in a lighter blue, so the same numbers
+    /// hold whatever the background does.
+    let alpha: CGFloat
+}
+
+let cardWhite: (CGFloat, CGFloat, CGFloat) = (1, 1, 1)
+/// #dfe4ff — the tab is a shade cooler than the card it sits on, so it still
+/// reads as a separate part over the white and not just a bump in the outline.
+let tabTint: (CGFloat, CGFloat, CGFloat) = (223 / 255, 228 / 255, 255 / 255)
+
+/// The full-detail mark: three 56x56 cards, each offset +9 x and -10 y from
+/// the one behind it, so the stack marches up and to the right. The tab is
+/// centred on the front card (52..72 against a card spanning 34..90) and
+/// straddles its top edge — 7 units above, 6 below.
+let fullMark: [MarkRect] = [
+    MarkRect(x: 16, y: 34, w: 56, h: 56, r: 15, rgb: cardWhite, alpha: 0.25),
+    MarkRect(x: 25, y: 24, w: 56, h: 56, r: 15, rgb: cardWhite, alpha: 0.50),
+    MarkRect(x: 34, y: 14, w: 56, h: 56, r: 15, rgb: cardWhite, alpha: 1.00),
+    MarkRect(x: 52, y: 7, w: 20, h: 13, r: 6, rgb: tabTint, alpha: 1.00),
+]
+
+/// At or below this many *pixels*, the mark drops to two cards.
+///
+/// Three cards are separated by 9 viewBox units, which is 9/104 of a mark that
+/// is itself 60% of the tile: about 3.3px of step at 64px, 1.7px at 32px and
+/// 0.9px at 16px. The threshold was picked by rendering both versions and
+/// looking at them rather than by arithmetic. At 128px the three cards each
+/// show a clean edge. At 64px they do not — the middle card smears into the
+/// front one and the stack reads as a blurred halo, while the two-card version
+/// at the same size still shows one card clearly behind another. So the cut is
+/// 64 inclusive. That is also where the design put it: its "32px tile and
+/// below" tier is CSS pixels, and a 32pt tile on the Retina display this app
+/// actually runs on is 64 device pixels.
+let twoCardCutoff = 64
+
+/// The small mark: two 58x58 cards, +14 x / -22 y apart. Bigger cards and a
+/// much bigger step than the full-detail version, because at these sizes the
+/// only thing that has to read is "two layers, one in front".
+func smallMark(pixels: Int) -> [MarkRect] {
+    // The design's smallest tier (an 18px tile) opens the corners to rx=19 and
+    // lifts the back card to 0.40 — at that size the 0.35 card disappears into
+    // the gradient and square-ish corners look like grit. Our 16px tile is
+    // that tier; 32px keeps the 17/0.35 values.
+    let radius: CGFloat = pixels <= 16 ? 19 : 17
+    let backAlpha: CGFloat = pixels <= 16 ? 0.40 : 0.35
+    return [
+        MarkRect(x: 18, y: 40, w: 58, h: 58, r: radius, rgb: cardWhite, alpha: backAlpha),
+        MarkRect(x: 32, y: 18, w: 58, h: 58, r: radius, rgb: cardWhite, alpha: 1.00),
+        MarkRect(x: 50, y: 10, w: 22, h: 14, r: 7, rgb: tabTint, alpha: 1.00),
+    ]
 }
 
 // MARK: - Drawing
 
 func drawIcon(into ctx: CGContext, size: CGFloat) {
-    let s = size / canvas
-    func p(_ v: CGFloat) -> CGFloat { v * s }
-    func r(_ x: CGFloat, _ y: CGFloat, _ w: CGFloat, _ h: CGFloat) -> CGRect {
-        CGRect(x: p(x), y: p(y), width: p(w), height: p(h))
-    }
-
     let space = CGColorSpace(name: CGColorSpace.sRGB)!
-    func color(_ red: CGFloat, _ green: CGFloat, _ blue: CGFloat, _ alpha: CGFloat = 1) -> CGColor {
-        CGColor(colorSpace: space, components: [red, green, blue, alpha])!
+    func color(_ rgb: (CGFloat, CGFloat, CGFloat), _ alpha: CGFloat = 1) -> CGColor {
+        CGColor(colorSpace: space, components: [rgb.0, rgb.1, rgb.2, alpha])!
     }
 
     ctx.interpolationQuality = .high
     ctx.setShouldAntialias(true)
 
-    // --- Background: full-bleed rounded square with a diagonal gradient. ---
-    // 0.2237 is the standard macOS/iOS app-icon corner ratio.
-    let bgPath = rounded(CGRect(x: 0, y: 0, width: size, height: size), size * 0.2237)
+    let pixels = Int(size)
+    let isSmall = pixels <= twoCardCutoff
+
+    // --- Background: full-bleed squircle with the 170deg gradient. ---
+    let radius = size * cornerRatio
+    let tile = rounded(CGRect(x: 0, y: 0, width: size, height: size), radius)
     ctx.saveGState()
-    ctx.addPath(bgPath)
+    ctx.addPath(tile)
     ctx.clip()
 
-    let top = color(0.325, 0.451, 0.980)     // #536CFA
-    let bottom = color(0.153, 0.208, 0.706)  // #2735B4
+    // The design drops the middle stop on small tiles. It is nearly the same
+    // ramp either way (two-stop interpolation lands on #515ad4 at 55%, against
+    // the design's #4a54d8) but fewer stops means fewer banding artefacts in
+    // the handful of pixels a 16px tile actually has.
+    let stops: [(CGFloat, (CGFloat, CGFloat, CGFloat))] = isSmall
+        ? [(0, indigoLight), (1, indigoDark)]
+        : [(0, indigoLight), (0.55, indigoMid), (1, indigoDark)]
     let gradient = CGGradient(
         colorsSpace: space,
-        colors: [top, bottom] as CFArray,
-        locations: [0, 1]
+        colors: stops.map { color($0.1) } as CFArray,
+        locations: stops.map(\.0)
     )!
+
+    // CSS measures gradient angles clockwise from "up", so in Core Graphics'
+    // y-up space the gradient travels along (sin, cos) of the angle. The line
+    // has to be long enough to cover the box's projection onto it, which for a
+    // square is (|dx| + |dy|) * size.
+    let theta = gradientAngle * .pi / 180
+    let dir = CGPoint(x: sin(theta), y: cos(theta))
+    let half = (abs(dir.x) + abs(dir.y)) * size / 2
+    let mid = CGPoint(x: size / 2, y: size / 2)
     ctx.drawLinearGradient(
         gradient,
-        start: CGPoint(x: 0, y: size),
-        end: CGPoint(x: size, y: 0),
+        start: CGPoint(x: mid.x - dir.x * half, y: mid.y - dir.y * half),
+        end: CGPoint(x: mid.x + dir.x * half, y: mid.y + dir.y * half),
         options: [.drawsBeforeStartLocation, .drawsAfterEndLocation]
     )
+
+    // --- Inner top highlight. ---
+    // `inset 0 1.5px 0` is the tile shape minus the same shape shifted 1.5/180
+    // of the tile downward: a hairline of light that follows the top edge and
+    // dies out as the corners turn. Even-odd fills the difference; the clip to
+    // `tile` (still in force) keeps it inside the squircle.
+    var shift = CGAffineTransform(translationX: 0, y: -size * highlightRatio)
+    let shifted = CGPath(
+        roundedRect: CGRect(x: 0, y: 0, width: size, height: size),
+        cornerWidth: radius, cornerHeight: radius, transform: &shift
+    )
+    let band = CGMutablePath()
+    band.addPath(tile)
+    band.addPath(shifted)
+    ctx.setFillColor(color((1, 1, 1), highlightAlpha))
+    ctx.addPath(band)
+    ctx.fillPath(using: .evenOdd)
     ctx.restoreGState()
 
-    // --- Stacked "clips" behind the board. ---
-    // Drawn first, then covered by the opaque board, so only a sliver shows.
-    let board = r(206, 168, 470, 588)
-    let cardRadius = p(64)
-
-    ctx.setFillColor(color(1, 1, 1, 0.36))
-    ctx.addPath(rounded(board.offsetBy(dx: p(104), dy: p(94)), cardRadius))
-    ctx.fillPath()
-
-    ctx.setFillColor(color(1, 1, 1, 0.64))
-    ctx.addPath(rounded(board.offsetBy(dx: p(54), dy: p(48)), cardRadius))
-    ctx.fillPath()
-
-    // --- The board itself. ---
-    ctx.setFillColor(color(1, 1, 1, 1))
-    ctx.addPath(rounded(board, cardRadius))
-    ctx.fillPath()
-
-    // --- Clip slot: a solid well at the top of the board. Solid (rather than
-    //     gradient-filled) so the contrast holds at 16pt. ---
-    let ink = color(0.129, 0.176, 0.635)
-    ctx.setFillColor(ink)
-    ctx.addPath(rounded(r(316, 612, 250, 136), p(58)))
-    ctx.fillPath()
-
-    // --- Clip head: white tab straddling the top edge of the board. ---
-    ctx.setFillColor(color(1, 1, 1, 1))
-    ctx.addPath(rounded(r(374, 650, 134, 164), p(46)))
-    ctx.fillPath()
-
-    // --- Content lines. Two thick, well-separated bars: a third line turns
-    //     to mud once the icon is rendered at 16pt. ---
-    ctx.setFillColor(ink)
-    for y in [432 as CGFloat, 292] {
-        ctx.addPath(rounded(r(280, y, 322, 74), p(37)))
+    // --- The mark: the 104x104 viewBox, drawn at 60% of the tile, centred. ---
+    let side = size * markInset
+    let origin = (size - side) / 2
+    let unit = side / markViewBox
+    func rect(_ m: MarkRect) -> CGRect {
+        // The design's y grows downward; Core Graphics' grows upward, so a
+        // card's design y becomes (104 - y - height).
+        CGRect(
+            x: origin + m.x * unit,
+            y: origin + (markViewBox - m.y - m.h) * unit,
+            width: m.w * unit,
+            height: m.h * unit
+        )
     }
-    ctx.fillPath()
+
+    // Back to front, as listed: the translucent cards composite over the
+    // gradient exactly as they do in the design file, and the opaque front
+    // card crops the ones behind it.
+    for m in isSmall ? smallMark(pixels: pixels) : fullMark {
+        ctx.setFillColor(color(m.rgb, m.alpha))
+        ctx.addPath(rounded(rect(m), m.r * unit))
+        ctx.fillPath()
+    }
 }
 
 // MARK: - Rendering
