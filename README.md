@@ -6,6 +6,8 @@
 
 <p align="center">Your clipboard, remembered. Locally.</p>
 
+<p align="center"><a href="https://github.com/YamineRL/MemoryClip/actions/workflows/ci.yml"><img src="https://github.com/YamineRL/MemoryClip/actions/workflows/ci.yml/badge.svg" alt="CI"></a></p>
+
 A local-first, privacy-focused menu-bar clipboard manager for macOS. MemoryClip keeps
 a history of everything you copy and gives you keyboard-first access to it. It also
 notices the screenshots you take, reads the text out of them — in 30 languages, with a

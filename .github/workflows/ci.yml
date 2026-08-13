@@ -1,0 +1,107 @@
+# Everything that used to be verified only on the maintainer's Mac.
+#
+# Nothing here is installed by contributors: clone, `swift build`, `swift test`
+# still works with an empty toolbox. The formatter and the shell linter run on
+# GitHub's runners, which already carry them, so the cost of enforcement lands
+# on CI rather than on anyone's first checkout.
+#
+# Package.swift declares `.macOS(.v26)` and the app links FoundationModels and
+# Translation, both of which are macOS 26 SDKs — so the build job cannot run on
+# anything older. GitHub's `macos-26` label (Apple silicon, GA as of the
+# 2026-07-28 image) satisfies that: macOS 26.5, Xcode 26.6 by default, whose
+# Swift comfortably clears the `swift-tools-version: 6.2` floor. No
+# `xcode-select` and no setup-xcode action, therefore; the image's default is
+# already new enough, and the toolchain-version step below prints what it
+# actually got, so if GitHub ever rolls the default backwards the log says so
+# instead of the build failing with an inscrutable "cannot find type" error.
+
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+# A force-push while CI is mid-run should not leave the superseded run burning
+# minutes. macOS runners bill at 10x the Linux rate, which makes this worth the
+# four lines.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+# The workflow only ever reads the repository. Narrowing the token means a
+# compromised dependency in a future step cannot push, tag or release.
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Build and test
+    runs-on: macos-26
+    # Locally the build is ~20s and the 550 tests ~20s. Fifteen minutes is
+    # slack for a cold runner; anything past it is a hang, not slowness, and
+    # should be killed rather than left to hit the six-hour default.
+    timeout-minutes: 15
+    steps:
+      # Pinned to the v7 major tag rather than a floating `@main`: this is a
+      # first-party GitHub action, so the major tag still picks up security
+      # fixes, while a rewritten `main` cannot silently change what runs here.
+      - uses: actions/checkout@v7
+
+      # Cheap, and the first thing anyone wants from a failing log when the
+      # image rolls forward.
+      - name: Toolchain versions
+        run: |
+          swift --version
+          xcodebuild -version
+
+      - name: Build
+        run: swift build
+
+      # No `.build` cache. The package has exactly one dependency
+      # (KeyboardShortcuts), so a cold resolve costs seconds, and a `.build`
+      # directory restored from an image with a different Xcode is the kind of
+      # stale-module failure that takes an afternoon to recognise. The cache
+      # would have to be worth more than that to earn its keep here.
+      - name: Test
+        run: swift test
+
+  format:
+    name: SwiftFormat
+    runs-on: macos-26
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+
+      # `--lint` only: it exits non-zero on anything it would have changed and
+      # writes nothing. CI must never rewrite a contributor's branch — the
+      # failure log names the files, and the author reformats them. Rules come
+      # from the repo-root `.swiftformat`, which SwiftFormat picks up on its
+      # own from the `.` it is pointed at, so the runner and a local
+      # `swiftformat --lint .` enforce the same thing.
+      #
+      # SwiftFormat is preinstalled on the macos-26 image (0.62.1, which is
+      # also what the maintainer has locally) rather than installed here — no
+      # brew step, no minute spent. The version is printed because a bumped
+      # image can bring a new rule and turn a previously clean tree red; when
+      # that happens the log shows which version moved.
+      - name: SwiftFormat (lint only)
+        run: |
+          swiftformat --version
+          swiftformat --lint .
+
+  shellcheck:
+    name: ShellCheck
+    # Ubuntu, not macOS: ShellCheck ships preinstalled on the ubuntu-24.04
+    # image (0.9.0) and is absent from macos-26, and the scripts are text —
+    # linting them needs no Mac. Linux minutes are also a tenth the price.
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+
+      # Scripts/make_icon.swift is deliberately not in the glob — it is Swift,
+      # not shell.
+      - name: ShellCheck
+        run: shellcheck Scripts/*.sh
