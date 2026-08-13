@@ -149,6 +149,28 @@ enum NoteTranslation {
         )
     }
 
+    /// The languages the user picked to have detected and translated, as
+    /// catalog identifiers.
+    static var enabledLanguages: [String] {
+        get { UserDefaults.standard.stringArray(forKey: NoteSettingsKeys.translationLanguages) ?? [] }
+        set { UserDefaults.standard.set(newValue, forKey: NoteSettingsKeys.translationLanguages) }
+    }
+
+    /// Whether a clip detected as `identifier` is one the user wants
+    /// translated.
+    ///
+    /// An empty selection means yes to everything. That is not a shortcut for
+    /// "nobody chose": it is the only default that leaves the feature working
+    /// for someone who never opens Settings, and it degrades safely, because
+    /// a language whose assets are not on the Mac is skipped a moment later
+    /// anyway. Once the user picks languages, the picked set is exactly what
+    /// gets translated — which is the point of picking.
+    static func allowsLanguage(_ identifier: String) -> Bool {
+        let selected = enabledLanguages
+        guard !selected.isEmpty else { return true }
+        return selected.contains { TranslationCatalog.matches(selection: $0, detected: identifier) }
+    }
+
     /// Languages MemoryClip has met and could not translate for want of a
     /// download, as BCP-47 identifiers.
     ///
@@ -320,6 +342,28 @@ enum TranslationCatalog {
             return TranslationLanguage(id: key, name: name, language: language)
         }
         .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+    }
+
+    /// Whether a picked language and a detected one are the same language.
+    ///
+    /// Compared on code and, where both sides name one, script — the two
+    /// sides are spelled by different libraries. `NLLanguageRecognizer`
+    /// returns "ar" and "zh-Hans"; the menu is keyed on what the Translation
+    /// framework offers ("ar-Arab"). Script is only compared when both name
+    /// one, so picking Simplified Chinese does not reject text the recognizer
+    /// reported as plain "zh", while Simplified and Traditional still do not
+    /// match each other.
+    static func matches(selection: String, detected: String) -> Bool {
+        let picked = Locale.Language(identifier: selection)
+        let found = Locale.Language(identifier: detected)
+        guard let pickedCode = picked.languageCode?.identifier,
+              let foundCode = found.languageCode?.identifier,
+              pickedCode == foundCode
+        else { return false }
+        guard let pickedScript = picked.script?.identifier,
+              let foundScript = found.script?.identifier
+        else { return true }
+        return pickedScript == foundScript
     }
 
     /// The row a detected-language identifier belongs to, if any.

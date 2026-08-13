@@ -229,18 +229,20 @@ translation underneath it. The original is the record — a translation never re
 and the note's title, summary and tags are written from the English, so a note captured
 in Arabic is still findable in a vault you search in English.
 
-macOS ships some translation languages and downloads the rest on demand, and only the
-Settings window can start a download — a translation session created off a view is not
-allowed to ask. **Settings → Notes → Translation** lists every language Apple can
-translate into English (22 on macOS 26), says whether it is already downloaded, and
-fetches it when it is not. The pack goes into the store the whole system shares, so a
-language you fetch here is the same one Translate and Safari use.
+**Settings → Notes → Translation** lists every language Apple can translate into English
+(22 on macOS 26) with a checkbox each. Tick as many as you like: those are the languages
+MemoryClip will detect and translate, and ticking one whose assets macOS has not
+downloaded fetches them — several tick at once and the downloads queue, since a session
+can only prepare one pair at a time. With none ticked it translates any language this Mac
+can already handle, so the feature works without anyone opening Settings. The packs go
+into the store the whole system shares, so a language you fetch here is the same one
+Translate and Safari use.
 
-When MemoryClip meets a language whose assets are missing it writes the note untranslated
-rather than failing, and says so in Settings — the language it needed is preselected in
-the menu. Clips captured before the download keep the text they were saved with;
-screenshot the page again to get a translated note. The switch above the menu turns the
-whole thing off.
+Only the Settings window can start a download — a translation session created off a view
+is not allowed to ask — so when MemoryClip meets a language whose assets are missing it
+writes the note untranslated rather than failing, and says which language that was. Clips
+captured before the download keep the text they were saved with; screenshot the page
+again to get a translated note. The switch above the list turns the whole thing off.
 
 Translation is also what makes the on-device model useful here: it reads 23 languages and
 Vision now recognises 30, so for a screenshot in the gap — Arabic, Russian, Thai — the

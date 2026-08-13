@@ -702,7 +702,8 @@ private struct ScreenshotSettingsPane: View {
 
 // MARK: - Translation downloads
 
-/// The language menu, and the download that only a view can start.
+/// The languages to detect and translate, and the downloads that only a view
+/// can start.
 ///
 /// This exists because of a hard split in the Translation framework: a
 /// session built outside SwiftUI reports `canRequestDownloads == false` and
@@ -714,131 +715,156 @@ private struct ScreenshotSettingsPane: View {
 /// The note pipeline necessarily has the first kind (it runs in the
 /// background, off any view), so it records what was missing in
 /// `NoteTranslation.pendingDownloads` — but waiting to be told is a poor way
-/// to find out. The menu lists every language Apple can translate into
-/// English, so a language can be fetched before the first screenshot in it
-/// rather than after a note has already been written without it.
-private struct TranslationDownloads: View {
+/// to find out. Every language Apple can translate into English is listed
+/// here, each with a checkbox: ticking one both opts it into the pipeline and
+/// fetches its assets if they are absent. Several can be ticked at once; the
+/// downloads queue, because a session can only prepare one pair at a time.
+private struct TranslationLanguagePicker: View {
     /// Apple's list, read once — it is a property of the OS, not of the
     /// session, and re-reading it per keystroke would be an IPC per keystroke.
     @State private var menu: [TranslationLanguage] = []
-    @State private var selection: TranslationLanguage.ID = ""
-    @State private var readiness: TranslationReadiness?
+    @State private var selected: Set<String> = Set(NoteTranslation.enabledLanguages)
+    /// Readiness per catalog id, loaded concurrently: 38 serial status calls
+    /// measured 316 ms against 125 ms in parallel, and this runs while the
+    /// pane is being looked at.
+    @State private var readiness: [String: TranslationReadiness] = [:]
     @State private var pending: [String] = NoteTranslation.pendingDownloads
+    @State private var expanded = false
     #if canImport(Translation)
     @State private var configuration: TranslationSession.Configuration?
     #endif
-    @State private var downloading = false
+    /// Ticked languages whose assets are missing, oldest first. The head is
+    /// the one being fetched.
+    @State private var queue: [TranslationLanguage] = []
     @State private var failure: String?
 
     private let translator = AppleTranslator()
 
-    private var selected: TranslationLanguage? {
-        menu.first { $0.id == selection }
-    }
-
     var body: some View {
         Group {
-            Picker(selection: $selection) {
-                Text("Choose a language").tag("")
+            DisclosureGroup(isExpanded: $expanded) {
                 ForEach(menu) { language in
-                    Text(language.name).tag(language.id)
+                    row(for: language)
                 }
             } label: {
                 Label {
-                    Text("Languages")
+                    VStack(alignment: .leading, spacing: Design.Space.hair) {
+                        Text("Languages")
+                        Text(summary)
+                            .font(.caption)
+                            .foregroundStyle(Color(nsColor: .secondaryLabelColor))
+                    }
                 } icon: {
                     SettingsIcon(symbol: "globe", tint: Color(nsColor: .systemBlue))
-                }
-            }
-            .disabled(menu.isEmpty)
-
-            if selected != nil {
-                LabeledContent {
-                    downloadControl
-                } label: {
-                    Text(statusText)
-                        .font(.caption)
-                        .foregroundStyle(Color(nsColor: .secondaryLabelColor))
                 }
             }
 
             if let failure {
                 SettingsCallout(text: failure, symbol: "exclamationmark.triangle.fill", tint: Color(nsColor: .systemOrange))
             }
-
             if let waiting = pendingDescription {
                 SettingsCallout(text: waiting, symbol: "questionmark.circle.fill", tint: Color(nsColor: .systemOrange))
             }
         }
         .modifier(TranslationDownloadTask(configuration: $configuration, onFinish: finish))
         .task { await load() }
-        .onChange(of: selection) { _, _ in Task { await refreshReadiness() } }
-        .onReceive(NotificationCenter.default.publisher(for: UserDefaults.didChangeNotification)) { _ in
-            // The pipeline writes the pending list from a background drain, so
-            // a Settings window that is already open would otherwise show a
-            // stale one until it was reopened.
-            let latest = NoteTranslation.pendingDownloads
-            if latest != pending { pending = latest }
-        }
     }
 
-    @ViewBuilder
-    private var downloadControl: some View {
-        if downloading {
-            ProgressView().controlSize(.small)
-        } else if readiness == .needsDownload {
-            Button("Download…") { startDownload() }
-        } else if readiness == .ready {
-            Image(systemName: "checkmark.circle.fill")
-                .foregroundStyle(Color(nsColor: .systemGreen))
+    private func row(for language: TranslationLanguage) -> some View {
+        Toggle(isOn: binding(for: language)) {
+            HStack {
+                Text(language.name)
+                Spacer()
+                Text(status(of: language))
+                    .font(.caption)
+                    .foregroundStyle(Color(nsColor: .secondaryLabelColor))
+            }
         }
+        .toggleStyle(.checkbox)
     }
 
-    private var statusText: String {
-        switch readiness {
-        case .ready: return "Downloaded and ready"
-        case .needsDownload: return "Not downloaded yet — macOS will fetch it once"
-        case .unsupported: return "This Mac cannot translate that language"
-        case nil: return "Checking…"
+    private func binding(for language: TranslationLanguage) -> Binding<Bool> {
+        Binding(
+            get: { selected.contains(language.id) },
+            set: { isOn in
+                if isOn {
+                    selected.insert(language.id)
+                    // Ticking a language that has no assets is a request for
+                    // them: nobody picks a language in order to have it not
+                    // work.
+                    if readiness[language.id] == .needsDownload, !queue.contains(language) {
+                        queue.append(language)
+                        startNextDownload()
+                    }
+                } else {
+                    selected.remove(language.id)
+                    queue.removeAll { $0.id == language.id }
+                }
+                NoteTranslation.enabledLanguages = menu.map(\.id).filter(selected.contains)
+            }
+        )
+    }
+
+    /// What the collapsed row says, so the list does not have to be opened to
+    /// know what it holds.
+    private var summary: String {
+        let names = menu.filter { selected.contains($0.id) }.map(\.name)
+        guard !names.isEmpty else { return "Any language this Mac can translate" }
+        if names.count <= 3 { return ListFormatter.localizedString(byJoining: names) }
+        return "\(names.count) languages"
+    }
+
+    private func status(of language: TranslationLanguage) -> String {
+        if queue.first?.id == language.id { return "Downloading…" }
+        if queue.contains(language) { return "Waiting…" }
+        switch readiness[language.id] {
+        case .ready: return "Downloaded"
+        case .needsDownload: return "Downloads when ticked"
+        case .unsupported: return "Unavailable"
+        case nil: return ""
         }
     }
 
     /// The languages MemoryClip has actually met and could not translate.
-    /// Worth calling out separately from the menu: it is the difference
-    /// between "you could download this" and "you already needed this".
+    /// Worth calling out separately from the list: it is the difference
+    /// between "you could pick this" and "you already needed this".
     private var pendingDescription: String? {
         let names = pending
             .map { TranslationCatalog.row(matching: $0, in: menu)?.name ?? LanguageDetector.displayName(forIdentifier: $0) }
             .filter { !$0.isEmpty }
         guard !names.isEmpty else { return nil }
         let list = ListFormatter.localizedString(byJoining: names)
-        return "MemoryClip has already read a screenshot in \(list) and saved the note untranslated. Download the language above, then capture it again."
+        return "MemoryClip has already read a screenshot in \(list) and saved the note untranslated. Tick the language above to download it, then capture the screenshot again."
     }
 
     private func load() async {
         let languages = await translator.supportedLanguages()
         menu = TranslationCatalog.menu(from: languages, excluding: NoteTranslation.target)
-        // Start on a language the user demonstrably needs, so the common case
-        // is one click rather than a hunt through a list of twenty-two.
-        if selection.isEmpty, let first = pending.first,
-           let match = TranslationCatalog.row(matching: first, in: menu) {
-            selection = match.id
-        }
         await refreshReadiness()
+        // Open on the languages that need attention, so the one case where
+        // something is wrong does not also need a disclosure triangle found.
+        if pendingDescription != nil { expanded = true }
     }
 
     private func refreshReadiness() async {
-        guard let selected else { return readiness = nil }
-        readiness = await translator.readiness(for: selected.language)
+        let rows = menu
+        let results = await withTaskGroup(of: (String, TranslationReadiness).self) { group in
+            for row in rows {
+                group.addTask { [translator] in (row.id, await translator.readiness(for: row.language)) }
+            }
+            var out: [String: TranslationReadiness] = [:]
+            for await (id, value) in group { out[id] = value }
+            return out
+        }
+        readiness = results
     }
 
-    private func startDownload() {
-        guard let selected else { return }
+    private func startNextDownload() {
+        guard let next = queue.first else { return }
         failure = nil
-        downloading = true
         #if canImport(Translation)
         configuration = TranslationSession.Configuration(
-            source: selected.language,
+            source: next.language,
             target: NoteTranslation.target
         )
         #else
@@ -849,23 +875,28 @@ private struct TranslationDownloads: View {
     /// - Parameter succeeded: false covers both a thrown error and a build
     ///   without the framework; either way the user needs the manual route.
     private func finish(_ identifier: String, _ succeeded: Bool) {
-        downloading = false
+        let finished = queue.first
+        queue.removeFirst(queue.isEmpty ? 0 : 1)
         #if canImport(Translation)
         configuration = nil
         #endif
-        guard succeeded else {
+
+        if succeeded, let finished {
+            readiness[finished.id] = .ready
+            for code in pending where TranslationCatalog.matches(selection: finished.id, detected: code) {
+                NoteTranslation.clearPendingDownload(code)
+            }
+            pending = NoteTranslation.pendingDownloads
+        } else if !succeeded {
             // Deliberately not the framework's own description: it is written
             // for a translation UI ("Unable to translate") and says nothing
             // about a download. The user needs the route that always works.
             failure = "The download did not finish. You can also add languages in System Settings → General → Language & Region → Translation Languages."
-            return
         }
-        failure = nil
-        for code in pending where TranslationCatalog.row(matching: code, in: menu)?.id == selection {
-            NoteTranslation.clearPendingDownload(code)
-        }
-        pending = NoteTranslation.pendingDownloads
-        Task { await refreshReadiness() }
+
+        // Whatever happened to that one, the rest of the queue still wants
+        // fetching — one failure is not a reason to abandon four.
+        startNextDownload()
     }
 }
 
@@ -948,9 +979,9 @@ private struct NotesSettingsPane: View {
                     }
                 }
                 if translateEnabled {
-                    TranslationDownloads()
+                    TranslationLanguagePicker()
                 }
-                SettingsHint("A screenshot in Arabic, Japanese or Russian is read in its own language and the note carries both: the text exactly as it was on screen, and an English translation underneath it. Translation runs on this Mac. The title, summary and tags are written from the English, so the note is findable in a vault you search in English.\n\nmacOS ships some languages and downloads the rest once, into a store every app shares — so a language you fetch here is also the one Translate and Safari use.")
+                SettingsHint("A screenshot in Arabic, Japanese or Russian is read in its own language and the note carries both: the text exactly as it was on screen, and an English translation underneath it. Translation runs on this Mac. The title, summary and tags are written from the English, so the note is findable in a vault you search in English.\n\nTick as many languages as you like — those are the ones MemoryClip will translate, and ticking one downloads its assets if macOS does not have them yet. With none ticked it translates any language this Mac can already handle. The packs go into the store the whole system shares, so a language you fetch here is the one Translate and Safari use.")
             }
 
             Section("Destination") {

@@ -20,6 +20,10 @@ enum NoteSettingsKeys {
 
     // Translation
     static let translateEnabled = "noteTranslateEnabled"
+    /// The languages the user picked to have detected and translated, as
+    /// catalog identifiers ("ar-Arab", "zh-Hans"). Empty means "whatever this
+    /// Mac can already translate" — see `NoteTranslation.allowsLanguage`.
+    static let translationLanguages = "noteTranslationLanguages"
     /// Languages the pipeline met and could not translate because their
     /// assets are not downloaded. Written by `NoteTranslation`, read by
     /// Settings — which is the only place that can start the download.
