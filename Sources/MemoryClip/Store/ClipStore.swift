@@ -235,6 +235,56 @@ final class ClipStore {
         }
     }
 
+    /// Record a screenshot that landed in the screenshot folder.
+    ///
+    /// The clip stores a REFERENCE — `fileURLStrings` holds the path and
+    /// `imageData` stays empty — so a screenshot costs a thumbnail rather
+    /// than its full weight, and pasting it hands over a file URL exactly as
+    /// a file copied in Finder would.
+    ///
+    /// The content hash matches `ContentParser`'s file hashing, so copying
+    /// the same screenshot in Finder floats this row rather than creating a
+    /// second one.
+    ///
+    /// - Returns: the clip, whether newly inserted or the existing row this
+    ///   screenshot deduplicated onto. nil only if the insert failed.
+    @discardableResult
+    func insertScreenshot(at url: URL, createdAt: Date = .now) -> ClipItem? {
+        let hash = ContentParser.hashText("file:" + url.absoluteString)
+        if let existing = fetchByHash(hash).first {
+            // Already known — most likely the user copied the file in Finder
+            // before (or after) the watcher saw it. Adopt it as a screenshot
+            // so it joins the OCR and note pipelines, and float it.
+            existing.isScreenshot = true
+            existing.createdAt = createdAt
+            save()
+            if !existing.thumbnailAttempted { scheduleThumbnailBackfill() }
+            return existing
+        }
+
+        let item = ClipItem(
+            kind: .file,
+            fileURLStrings: [url.absoluteString],
+            contentHash: hash,
+            // There is no originating app to record: the screenshot came
+            // from the system, not from a copy in some window. Naming it
+            // here is what lets the panel label the row "Screenshot".
+            sourceBundleID: Self.screenshotSourceBundleID,
+            sourceAppName: Self.screenshotSourceName,
+            createdAt: createdAt,
+            isScreenshot: true
+        )
+        context.insert(item)
+        save()
+        enforceCap()
+        scheduleThumbnailBackfill()
+        return item
+    }
+
+    /// Identity recorded on screenshot clips, standing in for a source app.
+    static let screenshotSourceBundleID = "com.apple.screencapture"
+    static let screenshotSourceName = "Screenshot"
+
     /// The newest clip whose contentHash matches, if any.
     func fetchByHash(_ hash: String) -> [ClipItem] {
         var descriptor = FetchDescriptor<ClipItem>(
@@ -254,11 +304,18 @@ final class ClipStore {
         return fetch(descriptor)
     }
 
-    /// Image clips that still need OCR, newest first (Phase 3).
+    /// Clips carrying pixels that still need OCR, newest first.
+    ///
+    /// Two shapes qualify: pasteboard image clips, and screenshot clips
+    /// (kind `.file`, flagged) whose pixels are on disk. Ordinary file clips
+    /// are deliberately excluded — copying a folder of PDFs in Finder should
+    /// not queue a hundred recognition passes.
     func pendingOCR(limit: Int = 20) -> [ClipItem] {
         let imageKind = ClipKind.image.rawValue
         var descriptor = FetchDescriptor<ClipItem>(
-            predicate: #Predicate { $0.kindRaw == imageKind && !$0.ocrAttempted },
+            predicate: #Predicate {
+                ($0.kindRaw == imageKind || $0.isScreenshot) && !$0.ocrAttempted
+            },
             sortBy: [SortDescriptor(\ClipItem.createdAt, order: .reverse)]
         )
         descriptor.fetchLimit = limit
@@ -268,11 +325,7 @@ final class ClipStore {
     /// Store an OCR result (or the lack of one) against a clip. Marks the
     /// clip as attempted either way so it is not re-queued.
     func applyOCR(_ text: String?, toClipWith uuid: UUID) {
-        var descriptor = FetchDescriptor<ClipItem>(
-            predicate: #Predicate { $0.uuid == uuid }
-        )
-        descriptor.fetchLimit = 1
-        guard let item = fetch(descriptor).first else { return }
+        guard let item = item(withUUID: uuid) else { return }
 
         // Vision output is persisted AND indexed for search, so it needs the
         // same sensitive-data guard as captured text: a screenshot of a
@@ -317,11 +370,14 @@ final class ClipStore {
 
     // MARK: - Thumbnails
 
-    /// Image clips that still have no thumbnail, newest first.
+    /// Clips carrying pixels that still have no thumbnail, newest first —
+    /// pasteboard images and screenshot references alike.
     func pendingThumbnails(limit: Int = 8) -> [ClipItem] {
         let imageKind = ClipKind.image.rawValue
         var descriptor = FetchDescriptor<ClipItem>(
-            predicate: #Predicate { $0.kindRaw == imageKind && !$0.thumbnailAttempted },
+            predicate: #Predicate {
+                ($0.kindRaw == imageKind || $0.isScreenshot) && !$0.thumbnailAttempted
+            },
             sortBy: [SortDescriptor(\ClipItem.createdAt, order: .reverse)]
         )
         descriptor.fetchLimit = limit
@@ -337,11 +393,7 @@ final class ClipStore {
     ///   every fetch — clips captured before that attribute existed would
     ///   otherwise keep their bytes in the row forever.
     func applyThumbnail(_ data: Data?, toClipWith uuid: UUID, rewritingBlob blob: Data? = nil) {
-        var descriptor = FetchDescriptor<ClipItem>(
-            predicate: #Predicate { $0.uuid == uuid }
-        )
-        descriptor.fetchLimit = 1
-        guard let item = fetch(descriptor).first else { return }
+        guard let item = item(withUUID: uuid) else { return }
         item.thumbnailData = data
         item.thumbnailAttempted = true
         if let blob { item.imageData = blob }
@@ -361,20 +413,28 @@ final class ClipStore {
         defer { isBackfillingThumbnails = false }
 
         while !Task.isCancelled {
-            let pending: [(uuid: UUID, data: Data?)] = pendingThumbnails(limit: batchSize)
-                .map { ($0.uuid, $0.imageData) }
+            let pending: [(uuid: UUID, payload: ImagePayload?)] = pendingThumbnails(limit: batchSize)
+                .map { ($0.uuid, $0.imagePayload) }
             guard !pending.isEmpty else { return }
 
             for entry in pending {
                 if Task.isCancelled { return }
-                guard let data = entry.data, !data.isEmpty else {
+                guard let payload = entry.payload else {
                     applyThumbnail(nil, toClipWith: entry.uuid)
                     continue
                 }
                 let thumbnail = await Task.detached(priority: .utility) {
-                    ClipThumbnail.make(from: data)
+                    ClipThumbnail.make(from: payload)
                 }.value
-                applyThumbnail(thumbnail, toClipWith: entry.uuid, rewritingBlob: data)
+                // The blob rewrite only applies to inline payloads (it is what
+                // migrates a pre-externalStorage row out of its column). A
+                // screenshot clip has no blob to move — its bytes are the
+                // user's file and must stay there, untouched.
+                if case .data(let data) = payload {
+                    applyThumbnail(thumbnail, toClipWith: entry.uuid, rewritingBlob: data)
+                } else {
+                    applyThumbnail(thumbnail, toClipWith: entry.uuid)
+                }
             }
         }
     }
@@ -416,6 +476,89 @@ final class ClipStore {
     func markUsed(_ item: ClipItem) {
         item.lastUsedAt = .now
         save()
+    }
+
+    // MARK: - Refinement and notes
+
+    /// Clips whose extracted text has not been through the local model yet,
+    /// newest first.
+    ///
+    /// The `ocrText != nil` half is what keeps this queue tied to recognition:
+    /// a clip is only a refinement candidate once there is something to
+    /// refine, so the queue is naturally empty until OCR has run. Clips whose
+    /// recognition found nothing legible have `ocrText == nil` and never
+    /// enter it.
+    ///
+    /// The minimum-length rule is applied by the caller rather than here:
+    /// SwiftData predicates cannot express `String.count`, and doing it in
+    /// SQL would mean a raw fetch. The over-fetch is bounded by `limit`.
+    func pendingRefinement(limit: Int = 8) -> [ClipItem] {
+        var descriptor = FetchDescriptor<ClipItem>(
+            predicate: #Predicate { $0.ocrText != nil && !$0.refineAttempted },
+            sortBy: [SortDescriptor(\ClipItem.createdAt, order: .reverse)]
+        )
+        descriptor.fetchLimit = limit
+        return fetch(descriptor)
+    }
+
+    /// Store a refinement result (or the lack of one) against a clip.
+    ///
+    /// `refineAttempted` is set either way, so a clip the model could not
+    /// handle — unavailable, refused, or an implausible rewrite — is never
+    /// re-queued forever. Same contract as `applyOCR`.
+    ///
+    /// The sensitive-content guard runs here for the same reason it runs on
+    /// OCR text: the model's output is persisted AND ends up in a note file
+    /// outside the 0600 store, so a card number that survived recognition
+    /// must not be laundered through refinement into plaintext on disk.
+    func applyRefinement(
+        title: String?,
+        summary: String?,
+        text: String?,
+        tags: [String],
+        toClipWith uuid: UUID
+    ) {
+        guard let item = item(withUUID: uuid) else { return }
+
+        var acceptedText = text
+        var acceptedTitle = title
+        var acceptedSummary = summary
+        if SensitiveFilter.isFilteringEnabled {
+            let combined = [title, summary, text].compactMap { $0 }.joined(separator: "\n")
+            if !combined.isEmpty, SensitiveFilter.isLikelyCardNumber(combined) {
+                acceptedText = nil
+                acceptedTitle = nil
+                acceptedSummary = nil
+                log.notice("Dropped refinement: likely card number in refined text")
+            }
+        }
+
+        item.refinedTitle = acceptedTitle
+        item.refinedSummary = acceptedSummary
+        item.refinedText = acceptedText
+        item.refinedTags = acceptedText == nil ? [] : tags
+        item.refineAttempted = true
+        save()
+    }
+
+    /// Record where a note for this clip was written. Non-nil `notePath` is
+    /// what makes the next export update the same note instead of writing a
+    /// second one.
+    func applyNote(path: String, exportedAt: Date = .now, toClipWith uuid: UUID) {
+        guard let item = item(withUUID: uuid) else { return }
+        item.notePath = path
+        item.noteExportedAt = exportedAt
+        save()
+    }
+
+    /// One clip by uuid — the indexed, limit-1 lookup the write-back paths
+    /// share.
+    func item(withUUID uuid: UUID) -> ClipItem? {
+        var descriptor = FetchDescriptor<ClipItem>(
+            predicate: #Predicate { $0.uuid == uuid }
+        )
+        descriptor.fetchLimit = 1
+        return fetch(descriptor).first
     }
 
     // MARK: - Periodic maintenance
