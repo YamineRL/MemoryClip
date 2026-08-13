@@ -14,8 +14,10 @@ final class OCRCoordinator {
 
     /// How many pending clips are fetched (and handed to the task group) at a
     /// time. Bounds how much image data is resident at once — a batch of
-    /// screenshots is ~1.3 MB each — and gives the drain a natural point to
-    /// re-check the setting and pause.
+    /// pasteboard screenshots is ~1.3 MB each — and gives the drain a natural
+    /// point to re-check the setting and pause. (Screenshot clips captured
+    /// from the watched folder cost nothing here: they carry a URL that
+    /// Vision opens itself, not bytes.)
     static let batchSize = 8
 
     /// How many images are recognized concurrently. Vision recognition is
@@ -159,16 +161,18 @@ final class OCRCoordinator {
                 return !store.pendingOCR(limit: 1).isEmpty
             }
 
-            let pending: [(uuid: UUID, data: Data)] = store
+            let pending: [(uuid: UUID, payload: ImagePayload)] = store
                 .pendingOCR(limit: Self.batchSize)
                 .compactMap { item in
-                    guard let data = item.imageData else {
-                        // No payload to read: mark it done so it stops
-                        // coming back around.
+                    guard let payload = item.imagePayload else {
+                        // Nothing to read — an empty blob, or a screenshot
+                        // whose file has been moved or deleted since it was
+                        // captured. Mark it done so it stops coming back
+                        // around; the clip keeps whatever thumbnail it has.
                         item.ocrAttempted = true
                         return nil
                     }
-                    return (item.uuid, data)
+                    return (item.uuid, payload)
                 }
             store.save()
             guard !pending.isEmpty else { return false }
@@ -200,7 +204,7 @@ final class OCRCoordinator {
     /// because OCR was switched off (or the run was cancelled) is omitted
     /// rather than reported as "no text", so it stays queued.
     nonisolated static func recognizeAll(
-        _ pending: [(uuid: UUID, data: Data)],
+        _ pending: [(uuid: UUID, payload: ImagePayload)],
         concurrency: Int
     ) async -> [(uuid: UUID, text: String?)] {
         guard !pending.isEmpty else { return [] }
@@ -229,7 +233,7 @@ final class OCRCoordinator {
                     // backlog is minutes of work, and switching OCR off must
                     // stop it promptly rather than at the next batch.
                     guard !Task.isCancelled, OCRCoordinator.isEnabled else { return nil }
-                    return (entry.uuid, await OCRService.recognizeText(in: entry.data))
+                    return (entry.uuid, await OCRService.recognizeText(in: entry.payload))
                 }
             }
             while running > 0 { await harvest() }

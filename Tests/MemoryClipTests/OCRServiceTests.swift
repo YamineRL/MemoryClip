@@ -164,11 +164,11 @@ final class OCRServiceTests: XCTestCase {
     /// interleave.
     func testRecognizeAllReturnsOneResultPerImageKeyedByUUID() async throws {
         let words = ["ALPHA", "BRAVO", "CHARLIE", "DELTA", "ECHO"]
-        var pending: [(uuid: UUID, data: Data)] = []
+        var pending: [(uuid: UUID, payload: ImagePayload)] = []
         var expected: [UUID: String] = [:]
         for word in words {
             let uuid = UUID()
-            pending.append((uuid, try makePNG(text: word)))
+            pending.append((uuid, .data(try makePNG(text: word))))
             expected[uuid] = word
         }
 
@@ -193,9 +193,9 @@ final class OCRServiceTests: XCTestCase {
         await MainActor.run { UserDefaults.standard.set(false, forKey: OCRCoordinator.enabledKey) }
         defer { UserDefaults.standard.set(true, forKey: OCRCoordinator.enabledKey) }
 
-        let pending: [(uuid: UUID, data: Data)] = [
-            (UUID(), try makePNG(text: "ONE")),
-            (UUID(), try makePNG(text: "TWO")),
+        let pending: [(uuid: UUID, payload: ImagePayload)] = [
+            (UUID(), .data(try makePNG(text: "ONE"))),
+            (UUID(), .data(try makePNG(text: "TWO"))),
         ]
 
         let results = await OCRCoordinator.recognizeAll(pending, concurrency: 3)
@@ -211,7 +211,7 @@ final class OCRServiceTests: XCTestCase {
     /// Concurrency wider than the batch must not deadlock or drop work.
     func testRecognizeAllWithConcurrencyWiderThanTheBatch() async throws {
         UserDefaults.standard.set(true, forKey: OCRCoordinator.enabledKey)
-        let pending: [(uuid: UUID, data: Data)] = [(UUID(), try makePNG(text: "SOLO"))]
+        let pending: [(uuid: UUID, payload: ImagePayload)] = [(UUID(), .data(try makePNG(text: "SOLO")))]
 
         let results = await OCRCoordinator.recognizeAll(pending, concurrency: 8)
 
