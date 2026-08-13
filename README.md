@@ -39,7 +39,7 @@ Requires macOS 26 on Apple silicon.
     <td colspan="2" align="center"><em>The panel — <strong>⇧⌘V</strong> from anywhere.</em></td>
   </tr>
   <tr>
-    <td width="50%"><img src="docs/screenshots/preview.svg" alt="A JSON clip open in the preview pane, with detection badges and transform actions"></td>
+    <td width="50%"><img src="docs/screenshots/preview.svg" alt="A JSON clip open in the preview pane, with its detection badge and JSON transform buttons"></td>
     <td width="50%"><img src="docs/screenshots/menu-bar.svg" alt="The menu-bar dropdown listing recent clips and app commands"></td>
   </tr>
   <tr>

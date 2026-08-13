@@ -13,16 +13,6 @@
   <text x="60" y="36" fill="#f2f2f7" font-size="15" font-weight="600">Xcode</text>
   <text x="60" y="52" fill="#8e8e93" font-size="12.5">21 minutes ago · 74 characters</text>
 
-  <!-- detection badges -->
-  <g font-size="11.5" font-weight="600">
-    <rect x="560" y="24" width="52" height="22" rx="11" fill="#1c2b1f"/>
-    <circle cx="573" cy="35" r="3.5" fill="#30d158"/>
-    <text x="581" y="39" fill="#8fe0a5">JSON</text>
-    <rect x="620" y="24" width="76" height="22" rx="11" fill="#2a2320"/>
-    <circle cx="633" cy="35" r="3.5" fill="#ff9f0a"/>
-    <text x="641" y="39" fill="#ffcf80">Rich text</text>
-  </g>
-
   <!-- content -->
   <rect x="24" y="68" width="672" height="150" rx="16" fill="#1c1c1e"/>
   <g font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="13">
@@ -34,20 +24,15 @@
     <text x="44" y="206" fill="#8e8e93">}</text>
   </g>
 
-  <!-- actions -->
-  <g font-size="12.5" font-weight="500">
-    <rect x="24" y="238" width="104" height="30" rx="10" fill="#2c2c2e"/>
-    <text x="76" y="257" fill="#e8e8ea" text-anchor="middle">Format JSON</text>
-    <rect x="136" y="238" width="76" height="30" rx="10" fill="#2c2c2e"/>
-    <text x="174" y="257" fill="#e8e8ea" text-anchor="middle">Minify</text>
-    <rect x="220" y="238" width="92" height="30" rx="10" fill="#2c2c2e"/>
-    <text x="266" y="257" fill="#e8e8ea" text-anchor="middle">Base64 ›</text>
-    <rect x="320" y="238" width="84" height="30" rx="10" fill="#2c2c2e"/>
-    <text x="362" y="257" fill="#e8e8ea" text-anchor="middle">Sort lines</text>
+  <!-- detection chip and transforms: one row, chips left, buttons right -->
+  <g font-size="11.5" font-weight="500">
+    <rect x="24" y="242" width="52" height="22" rx="11" fill="#1c1c1e" stroke="#3a3a3d"/>
+    <text x="50" y="257" fill="#8e8e93" text-anchor="middle">JSON</text>
   </g>
-  <g font-size="12">
-    <rect x="600" y="240" width="26" height="26" rx="6" fill="#2c2c2e"/>
-    <text x="613" y="257" fill="#c7c7cc" text-anchor="middle">␣</text>
-    <text x="636" y="257" fill="#8e8e93">close preview</text>
+  <g font-size="12.5" font-weight="500">
+    <rect x="488" y="238" width="104" height="30" rx="10" fill="#2c2c2e"/>
+    <text x="540" y="257" fill="#e8e8ea" text-anchor="middle">Format JSON</text>
+    <rect x="600" y="238" width="96" height="30" rx="10" fill="#2c2c2e"/>
+    <text x="648" y="257" fill="#e8e8ea" text-anchor="middle">Minify JSON</text>
   </g>
 </svg>
