@@ -14,9 +14,23 @@ final class ClipThumbnailTests: XCTestCase {
     }
 
     /// A PNG big enough that a thumbnail is a real reduction.
+    ///
+    /// Drawn into an explicitly sized bitmap rather than through
+    /// `NSImage.lockFocus()`. lockFocus allocates its backing store at the
+    /// *main display's* scale, so this fixture came out 2400x1600 on a Retina
+    /// Mac and 1200x800 on a headless CI runner — a 4x difference in pixels
+    /// and roughly that in PNG bytes. The size assertions below were then
+    /// really measuring whoever's monitor ran them, and passed locally while
+    /// failing on CI. Nothing here needs a screen, so nothing here asks for
+    /// one.
     private func makePNG(width: Int = 1200, height: Int = 800, seed: Int = 0) throws -> Data {
-        let image = NSImage(size: NSSize(width: width, height: height))
-        image.lockFocus()
+        let rep = try XCTUnwrap(NSBitmapImageRep(
+            bitmapDataPlanes: nil, pixelsWide: width, pixelsHigh: height,
+            bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
+            colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0
+        ))
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: rep)
         NSColor(calibratedRed: 0.2, green: 0.4, blue: 0.8, alpha: 1).setFill()
         NSRect(x: 0, y: 0, width: width, height: height).fill()
         for row in 0..<40 {
@@ -27,11 +41,17 @@ final class ClipThumbnailTests: XCTestCase {
             at: NSPoint(x: 20, y: 20),
             withAttributes: [.font: NSFont.systemFont(ofSize: 42)]
         )
-        image.unlockFocus()
-        let tiff = try XCTUnwrap(image.tiffRepresentation)
-        let rep = try XCTUnwrap(NSBitmapImageRep(data: tiff))
+        NSGraphicsContext.restoreGraphicsState()
         return try XCTUnwrap(rep.representation(using: .png, properties: [:]))
     }
+
+    /// How much smaller a row thumbnail has to be than the blob it stands in
+    /// for. The exact ratio is a property of the fixture's compressibility as
+    /// much as of the code — the flat-ish fixture above measures about 6.4x
+    /// (29160 bytes down to 4530) — so this asks for a quarter and leaves the
+    /// rest as headroom against a future encoder. The contract that actually
+    /// matters, the pixel bound, is asserted separately.
+    private static let thumbnailSizeFactor = 4
 
     private func imageClip(_ marker: String, data: Data) -> CapturedClip {
         CapturedClip(
@@ -52,7 +72,7 @@ final class ClipThumbnailTests: XCTestCase {
         let thumbnail = try XCTUnwrap(ClipThumbnail.make(from: png))
 
         XCTAssertLessThan(
-            thumbnail.count, png.count / 10,
+            thumbnail.count, png.count / Self.thumbnailSizeFactor,
             "A row thumbnail must be a fraction of the blob it replaces"
         )
         let decoded = try XCTUnwrap(NSImage(data: thumbnail))
@@ -93,7 +113,7 @@ final class ClipThumbnailTests: XCTestCase {
         let item = try XCTUnwrap(store.recent(limit: 1).first)
         let thumbnail = try XCTUnwrap(item.thumbnailData)
         XCTAssertTrue(item.thumbnailAttempted)
-        XCTAssertLessThan(thumbnail.count, png.count / 10)
+        XCTAssertLessThan(thumbnail.count, png.count / Self.thumbnailSizeFactor)
         XCTAssertNotNil(NSImage(data: thumbnail))
     }
 
