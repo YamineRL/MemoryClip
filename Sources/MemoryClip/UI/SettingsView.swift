@@ -700,7 +700,171 @@ private struct ScreenshotSettingsPane: View {
     }
 }
 
+// MARK: - Markdown compatibility
+
+/// "Which app can open these notes, and what do I set?"
+///
+/// A folder of Markdown files is the most portable destination MemoryClip
+/// has and the least self-explanatory: the folder picker asks for a folder
+/// without saying what a good one would be, and the two switches under it
+/// (copy the screenshot in, and where) are the difference between a note that
+/// renders and one that shows a broken embed. That question is answered here
+/// rather than in a README nobody has open while they are choosing a folder.
+///
+/// Collapsed by default — it is reference material, not a step — and the
+/// advice tracks the attachment switch, because which link style the note
+/// gets is exactly what the switch decides.
+private struct MarkdownCompatibilityGuide: View {
+    let copiesAttachments: Bool
+    @State private var expanded = false
+
+    var body: some View {
+        DisclosureGroup(isExpanded: $expanded) {
+            VStack(alignment: .leading, spacing: Design.Space.snug) {
+                Text(preamble)
+                    .foregroundStyle(Color(nsColor: .secondaryLabelColor))
+                ForEach(Self.apps) { app in
+                    VStack(alignment: .leading, spacing: Design.Space.hair) {
+                        Text(app.name).fontWeight(.medium)
+                        Text(app.advice)
+                            .foregroundStyle(Color(nsColor: .secondaryLabelColor))
+                    }
+                }
+                Text(Self.elsewhere)
+                    .foregroundStyle(Color(nsColor: .secondaryLabelColor))
+            }
+            .font(.callout)
+            .padding(.top, Design.Space.hair)
+        } label: {
+            Label {
+                Text("Which apps can open these notes?")
+            } icon: {
+                SettingsIcon(symbol: "questionmark.circle.fill", tint: Color(nsColor: .systemGray))
+            }
+        }
+    }
+
+    /// The two things apps actually differ on, said once so each entry below
+    /// can be a sentence rather than a paragraph.
+    private var preamble: String {
+        let embed = copiesAttachments
+            ? "The screenshot is copied in and embedded as ![[name.png]] — a wiki-style embed that Obsidian and Logseq resolve and most other editors show as plain text."
+            : "The screenshot is not copied, so the note links to it where it sits with an ordinary [Screenshot](file://…) link, which every Markdown editor renders."
+        return """
+            Every note is a plain .md file named "2026-08-13 1422 Title.md", with YAML \
+            front matter (title, created, source, tags, lang) above the text. Anything \
+            that reads Markdown off disk can open one; apps differ on two things only — \
+            whether they understand front matter, and whether they resolve wiki-style \
+            embeds.
+
+            \(embed)
+            """
+    }
+
+    private struct App: Identifiable {
+        let name: String
+        let advice: String
+        var id: String { name }
+    }
+
+    private static let apps: [App] = [
+        App(
+            name: "Obsidian",
+            advice: "Pick your vault folder, or any folder inside it. Keep \"Copy the screenshot into the folder\" on — that is what makes the embed resolve. Front matter shows up as note properties, so tags work as tags and you can query lang, source and created from Dataview."
+        ),
+        App(
+            name: "Logseq",
+            advice: "Pick the \"pages\" folder inside your graph, and set the attachments subfolder to \"assets\" — the folder Logseq keeps its files in. It reads front matter, and re-indexes new files when the graph is reopened."
+        ),
+        App(
+            name: "iA Writer, Typora, Zettlr, VS Code",
+            advice: "Pick any folder these already watch. They render standard Markdown, so turn \"Copy the screenshot into the folder\" off and the note links to the screenshot instead of embedding it — an embed they cannot resolve shows up as literal ![[…]] text."
+        ),
+        App(
+            name: "DEVONthink",
+            advice: "Pick any folder, then index it (File → Index Files and Folders). Indexed notes stay files on disk, so MemoryClip can still update one in place."
+        ),
+        App(
+            name: "iCloud Drive, Dropbox, Syncthing",
+            advice: "A synced folder works like any other. Notes are written whole, so a half-written file is never what syncs."
+        ),
+    ]
+
+    private static let elsewhere = """
+        Bear, Craft, Notion and Things do not keep notes as files. Use the Shortcut \
+        destination for those — MemoryClip hands the note to a Shortcut, which can put it \
+        anywhere Shortcuts reaches. For Apple Notes, use the Notes destination.
+        """
+}
+
 // MARK: - Translation downloads
+
+/// The language list and its per-language readiness, held outside any view.
+///
+/// Both are properties of the Mac, not of a pane: the same answer serves
+/// every instance of the picker, and asking for it costs 22 IPC round trips.
+/// Holding it here rather than in `@State` also survives the pane being
+/// rebuilt — a view that is discarded takes its state box with it, and the
+/// async load that was filling it then lands in a box nothing renders from.
+/// That is not hypothetical: rendering the pane to an image showed the
+/// language rows with a permanently blank readiness column, because the load
+/// completed into a discarded copy of the view.
+///
+/// `@Observable`, so a body that reads `menu` or `readiness` re-runs when the
+/// load finishes, whichever instance of the picker happens to be on screen.
+@MainActor
+@Observable
+final class TranslationLanguageStore {
+    static let shared = TranslationLanguageStore()
+
+    private(set) var menu: [TranslationLanguage] = []
+    private(set) var readiness: [String: TranslationReadiness] = [:]
+    /// The in-flight load, so several pickers appearing at once (or a pane
+    /// rebuilt mid-load) share one pass instead of racing.
+    private var loading: Task<Void, Never>?
+
+    private init() {}
+
+    /// Load once. Cheap and idempotent afterwards, which is what lets the
+    /// view call it from `.task` without guarding.
+    func loadIfNeeded(using translator: any NoteTranslator) async {
+        if !menu.isEmpty { return }
+        if let loading { return await loading.value }
+        let task = Task { @MainActor [weak self] in
+            let rows = TranslationCatalog.menu(
+                from: await translator.supportedLanguages(),
+                excluding: NoteTranslation.target
+            )
+            self?.menu = rows
+            self?.readiness = await Self.readinessMap(for: rows, using: translator)
+        }
+        loading = task
+        await task.value
+        loading = nil
+    }
+
+    /// Re-read one language, after a download claims to have finished.
+    func refresh(_ language: TranslationLanguage, using translator: any NoteTranslator) async {
+        readiness[language.id] = await translator.readiness(for: language.language)
+    }
+
+    /// Readiness for every row, gathered concurrently — 38 serial status
+    /// calls measured 316 ms against 125 ms in parallel, and this runs while
+    /// the pane is being looked at.
+    private static func readinessMap(
+        for rows: [TranslationLanguage],
+        using translator: any NoteTranslator
+    ) async -> [String: TranslationReadiness] {
+        await withTaskGroup(of: (String, TranslationReadiness).self) { group in
+            for row in rows {
+                group.addTask { (row.id, await translator.readiness(for: row.language)) }
+            }
+            var out: [String: TranslationReadiness] = [:]
+            for await (id, value) in group { out[id] = value }
+            return out
+        }
+    }
+}
 
 /// The languages to detect and translate, and the downloads that only a view
 /// can start.
@@ -720,14 +884,10 @@ private struct ScreenshotSettingsPane: View {
 /// fetches its assets if they are absent. Several can be ticked at once; the
 /// downloads queue, because a session can only prepare one pair at a time.
 private struct TranslationLanguagePicker: View {
-    /// Apple's list, read once — it is a property of the OS, not of the
-    /// session, and re-reading it per keystroke would be an IPC per keystroke.
-    @State private var menu: [TranslationLanguage] = []
+    /// The catalog lives outside the view — see `TranslationLanguageStore`.
+    private var store: TranslationLanguageStore { .shared }
+
     @State private var selected: Set<String> = Set(NoteTranslation.enabledLanguages)
-    /// Readiness per catalog id, loaded concurrently: 38 serial status calls
-    /// measured 316 ms against 125 ms in parallel, and this runs while the
-    /// pane is being looked at.
-    @State private var readiness: [String: TranslationReadiness] = [:]
     @State private var pending: [String] = NoteTranslation.pendingDownloads
     @State private var expanded = false
     #if canImport(Translation)
@@ -743,7 +903,7 @@ private struct TranslationLanguagePicker: View {
     var body: some View {
         Group {
             DisclosureGroup(isExpanded: $expanded) {
-                ForEach(menu) { language in
+                ForEach(store.menu) { language in
                     row(for: language)
                 }
             } label: {
@@ -758,6 +918,29 @@ private struct TranslationLanguagePicker: View {
                     SettingsIcon(symbol: "globe", tint: Color(nsColor: .systemBlue))
                 }
             }
+            // Both attached HERE rather than to the Group: a Group is
+            // transparent, so a modifier on it is applied to every child
+            // individually — three copies of the same work, two of them on
+            // callouts that come and go and take their copy with them. The
+            // disclosure is the child that is always present.
+            .task {
+                await store.loadIfNeeded(using: translator)
+                // Drop anything the pipeline recorded as missing that is not
+                // missing any more. macOS installs language assets on its own
+                // schedule as well as on ours, so a record written last week
+                // is a claim worth rechecking rather than a fact.
+                for code in pending
+                where TranslationCatalog.row(matching: code, in: store.menu)
+                    .map({ store.readiness[$0.id] == .ready }) == true {
+                    NoteTranslation.clearPendingDownload(code)
+                }
+                pending = NoteTranslation.pendingDownloads
+                // Open on a language that needs attention, so the one case
+                // where something is wrong does not also need a disclosure
+                // triangle found first.
+                if pendingDescription != nil { expanded = true }
+            }
+            .modifier(TranslationDownloadTask(configuration: $configuration, onFinish: finish))
 
             if let failure {
                 SettingsCallout(text: failure, symbol: "exclamationmark.triangle.fill", tint: Color(nsColor: .systemOrange))
@@ -766,21 +949,20 @@ private struct TranslationLanguagePicker: View {
                 SettingsCallout(text: waiting, symbol: "questionmark.circle.fill", tint: Color(nsColor: .systemOrange))
             }
         }
-        .modifier(TranslationDownloadTask(configuration: $configuration, onFinish: finish))
-        .task { await load() }
     }
 
     private func row(for language: TranslationLanguage) -> some View {
-        Toggle(isOn: binding(for: language)) {
-            HStack {
-                Text(language.name)
-                Spacer()
-                Text(status(of: language))
-                    .font(.caption)
-                    .foregroundStyle(Color(nsColor: .secondaryLabelColor))
-            }
+        // The status sits OUTSIDE the toggle rather than in its label: a
+        // checkbox sizes its label to the text, so a Spacer inside it gets no
+        // width and the status has nowhere to land.
+        HStack {
+            Toggle(language.name, isOn: binding(for: language))
+                .toggleStyle(.checkbox)
+            Spacer(minLength: Design.Space.snug)
+            Text(status(of: language))
+                .font(.caption)
+                .foregroundStyle(Color(nsColor: .secondaryLabelColor))
         }
-        .toggleStyle(.checkbox)
     }
 
     private func binding(for language: TranslationLanguage) -> Binding<Bool> {
@@ -792,7 +974,7 @@ private struct TranslationLanguagePicker: View {
                     // Ticking a language that has no assets is a request for
                     // them: nobody picks a language in order to have it not
                     // work.
-                    if readiness[language.id] == .needsDownload, !queue.contains(language) {
+                    if store.readiness[language.id] == .needsDownload, !queue.contains(language) {
                         queue.append(language)
                         startNextDownload()
                     }
@@ -800,7 +982,7 @@ private struct TranslationLanguagePicker: View {
                     selected.remove(language.id)
                     queue.removeAll { $0.id == language.id }
                 }
-                NoteTranslation.enabledLanguages = menu.map(\.id).filter(selected.contains)
+                NoteTranslation.enabledLanguages = store.menu.map(\.id).filter(selected.contains)
             }
         )
     }
@@ -808,7 +990,7 @@ private struct TranslationLanguagePicker: View {
     /// What the collapsed row says, so the list does not have to be opened to
     /// know what it holds.
     private var summary: String {
-        let names = menu.filter { selected.contains($0.id) }.map(\.name)
+        let names = store.menu.filter { selected.contains($0.id) }.map(\.name)
         guard !names.isEmpty else { return "Any language this Mac can translate" }
         if names.count <= 3 { return ListFormatter.localizedString(byJoining: names) }
         return "\(names.count) languages"
@@ -817,7 +999,7 @@ private struct TranslationLanguagePicker: View {
     private func status(of language: TranslationLanguage) -> String {
         if queue.first?.id == language.id { return "Downloading…" }
         if queue.contains(language) { return "Waiting…" }
-        switch readiness[language.id] {
+        switch store.readiness[language.id] {
         case .ready: return "Downloaded"
         case .needsDownload: return "Downloads when ticked"
         case .unsupported: return "Unavailable"
@@ -830,41 +1012,19 @@ private struct TranslationLanguagePicker: View {
     /// between "you could pick this" and "you already needed this".
     private var pendingDescription: String? {
         let names = pending
-            .map { TranslationCatalog.row(matching: $0, in: menu)?.name ?? LanguageDetector.displayName(forIdentifier: $0) }
+            .map { TranslationCatalog.row(matching: $0, in: store.menu)?.name ?? LanguageDetector.displayName(forIdentifier: $0) }
             .filter { !$0.isEmpty }
         guard !names.isEmpty else { return nil }
         let list = ListFormatter.localizedString(byJoining: names)
         return "MemoryClip has already read a screenshot in \(list) and saved the note untranslated. Tick the language above to download it, then capture the screenshot again."
     }
 
-    private func load() async {
-        let languages = await translator.supportedLanguages()
-        menu = TranslationCatalog.menu(from: languages, excluding: NoteTranslation.target)
-        await refreshReadiness()
-        // Open on the languages that need attention, so the one case where
-        // something is wrong does not also need a disclosure triangle found.
-        if pendingDescription != nil { expanded = true }
-    }
-
-    private func refreshReadiness() async {
-        let rows = menu
-        let results = await withTaskGroup(of: (String, TranslationReadiness).self) { group in
-            for row in rows {
-                group.addTask { [translator] in (row.id, await translator.readiness(for: row.language)) }
-            }
-            var out: [String: TranslationReadiness] = [:]
-            for await (id, value) in group { out[id] = value }
-            return out
-        }
-        readiness = results
-    }
-
     private func startNextDownload() {
-        guard let next = queue.first else { return }
+        guard queue.first != nil else { return }
         failure = nil
         #if canImport(Translation)
         configuration = TranslationSession.Configuration(
-            source: next.language,
+            source: queue[0].language,
             target: NoteTranslation.target
         )
         #else
@@ -876,13 +1036,13 @@ private struct TranslationLanguagePicker: View {
     ///   without the framework; either way the user needs the manual route.
     private func finish(_ identifier: String, _ succeeded: Bool) {
         let finished = queue.first
-        queue.removeFirst(queue.isEmpty ? 0 : 1)
+        if !queue.isEmpty { queue.removeFirst() }
         #if canImport(Translation)
         configuration = nil
         #endif
 
         if succeeded, let finished {
-            readiness[finished.id] = .ready
+            Task { await store.refresh(finished, using: translator) }
             for code in pending where TranslationCatalog.matches(selection: finished.id, detected: code) {
                 NoteTranslation.clearPendingDownload(code)
             }
@@ -1052,6 +1212,7 @@ private struct NotesSettingsPane: View {
         if copyAttachments {
             TextField("Attachments subfolder", text: $attachmentFolder)
         }
+        MarkdownCompatibilityGuide(copiesAttachments: copyAttachments)
         SettingsHint("Plain Markdown files with YAML front matter — an Obsidian vault, or anything else that reads .md off disk. Copying the screenshot in is what lets the note embed it, and means the note survives you clearing out your Desktop.")
     }
 

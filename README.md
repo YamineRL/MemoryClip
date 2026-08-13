@@ -2,12 +2,22 @@
 
 A local-first, privacy-focused menu-bar clipboard manager for macOS. MemoryClip keeps
 a history of everything you copy and gives you keyboard-first access to it. It also
-notices the screenshots you take, reads the text out of them, and will turn one into a
-note in your own Markdown vault, Apple Notes or a Shortcut.
+notices the screenshots you take, reads the text out of them — in 30 languages, with a
+translation into English when it is not one you read — and turns one into a note in
+**[Obsidian](https://obsidian.md)** or any other folder of Markdown files, in Apple Notes,
+or through a Shortcut.
 **Zero network calls**: no sync, no analytics, no accounts. Clips live in a local
 SwiftData store on your Mac, the text read out of your screenshots is recognised here,
-and the model that tidies it up runs here too. The only files MemoryClip writes anywhere
-else are the notes you ask it for, in the folder you chose.
+and the models that tidy it up and translate it run here too. The only files MemoryClip
+writes anywhere else are the notes you ask it for, in the folder you chose.
+
+Notes are plain `.md` files with YAML front matter, so they open in
+**[Obsidian](https://obsidian.md)** (embeds and Dataview-queryable properties included),
+**[Logseq](https://logseq.com)**, **[iA Writer](https://ia.net/writer)**,
+**[Zettlr](https://www.zettlr.com)**, **[Typora](https://typora.io)**,
+**[Joplin](https://joplinapp.org)**, **[DEVONthink](https://www.devontechnologies.com/apps/devonthink)**,
+Obsidian-compatible mobile readers, or a text editor — see
+[Where notes go](#where-notes-go).
 
 Requires macOS 26 on Apple silicon.
 
@@ -256,6 +266,33 @@ Three destinations, in **Settings → Notes**:
 | **Markdown folder** | Writes a `.md` file with YAML front matter — an Obsidian vault, or any folder of Markdown. The screenshot is copied in and embedded, so the note survives you clearing your Desktop. | A folder you pick |
 | **Notes** | Creates a note in Apple Notes, in a folder you name. The screenshot goes in as a link — Notes does not accept an image through automation. | Automation permission |
 | **Shortcut** | Runs a Shortcut with the note as its input, so Bear, Things, DEVONthink or anything else Shortcuts reaches can be the destination. | A Shortcut name |
+
+#### Where notes go
+
+Every note is a plain `.md` file named `2026-08-13 1422 Title.md`, with YAML front matter
+(`title`, `created`, `source`, `tags`, `lang`, `memoryclip-uuid`, `screenshot`) above the
+text. Anything that reads Markdown off disk can open one. Apps differ on two things only —
+whether they understand front matter, and whether they resolve wiki-style `![[embeds]]` —
+and the **Copy the screenshot into the folder** switch is what decides which link style a
+note gets: on, the screenshot is copied in and embedded as `![[name.png]]`; off, the note
+links to it where it sits with an ordinary `[Screenshot](file://…)` link that every editor
+renders.
+
+The same guidance is in the app, under **Settings → Notes → Which apps can open these
+notes?**
+
+| App | What to pick, and what to set |
+| --- | --- |
+| **[Obsidian](https://obsidian.md)** | Your vault folder, or any folder inside it. Keep attachment copying **on** — that is what makes the embed resolve. Front matter becomes note properties, so tags work as tags and `lang`, `source` and `created` are queryable from Dataview. |
+| **[Logseq](https://logseq.com)** | The `pages` folder inside your graph, with the attachments subfolder set to `assets` — the folder Logseq keeps its files in. It reads front matter and re-indexes new files when the graph is reopened. |
+| **[iA Writer](https://ia.net/writer)**, **[Typora](https://typora.io)**, **[Zettlr](https://www.zettlr.com)**, **[Obsidian-compatible editors](https://obsidian.md)**, VS Code | Any folder they already watch. They render standard Markdown, so turn attachment copying **off** — an embed they cannot resolve shows up as literal `![[…]]` text. |
+| **[DEVONthink](https://www.devontechnologies.com/apps/devonthink)** | Any folder, then index it (*File → Index Files and Folders*). Indexed notes stay files on disk, so MemoryClip can still update one in place. |
+| **[Joplin](https://joplinapp.org)** | Any folder, then import it (*File → Import → MD*). Joplin copies notes into its own database, so later edits from MemoryClip need re-importing. |
+| **iCloud Drive, Dropbox, Syncthing** | Any synced folder. Notes are written whole, so a half-written file is never what syncs. |
+
+Bear, Craft, Notion and Things do not keep notes as files — use the **Shortcut**
+destination for those, which hands the note to a Shortcut that can put it anywhere
+Shortcuts reaches. For Apple Notes, use the **Notes** destination.
 
 The Markdown folder is the default and the only one that asks nothing of any other app:
 you pick a folder, MemoryClip writes `.md` files into it, and the screenshot is copied
