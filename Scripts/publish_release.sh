@@ -33,7 +33,10 @@ gh auth status >/dev/null 2>&1 || die "gh is not authenticated — run: gh auth 
 # --- 1. Refuse to publish anything but a clean, pushed tree. ------------------
 # A release asset that does not correspond to a commit anyone else can fetch is
 # unreproducible, so this is a hard stop rather than a warning.
-[ -z "$(git status --porcelain)" ] || die "working tree is dirty — commit or stash first"
+# Assigned first, not inlined into the test: inside `[ -z "$(...)" ]` a git that
+# fails prints nothing, and an empty answer reads as a clean tree.
+DIRT="$(git status --porcelain)"
+[ -z "$DIRT" ] || die "working tree is dirty — commit or stash first"
 
 BRANCH="$(git rev-parse --abbrev-ref HEAD)"
 git fetch --quiet origin "$BRANCH" 2>/dev/null || die "could not fetch origin/$BRANCH"
