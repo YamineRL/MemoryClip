@@ -220,13 +220,17 @@ final class OCRServiceTests: XCTestCase {
     }
 
     /// Render text into a PNG the way a screenshot would look to Vision.
-    private func makePNG(text: String, size: NSSize = NSSize(width: 600, height: 200)) throws -> Data {
+    private func makePNG(
+        text: String,
+        font: NSFont? = nil,
+        size: NSSize = NSSize(width: 600, height: 200)
+    ) throws -> Data {
         let image = NSImage(size: size)
         image.lockFocus()
         NSColor.white.setFill()
         NSRect(origin: .zero, size: size).fill()
         let attributes: [NSAttributedString.Key: Any] = [
-            .font: NSFont.systemFont(ofSize: 64, weight: .semibold),
+            .font: font ?? NSFont.systemFont(ofSize: 64, weight: .semibold),
             .foregroundColor: NSColor.black
         ]
         (text as NSString).draw(at: NSPoint(x: 30, y: 60), withAttributes: attributes)
@@ -239,6 +243,27 @@ final class OCRServiceTests: XCTestCase {
             throw XCTSkip("Could not render a test image on this machine")
         }
         return png
+    }
+
+    /// The bug this guards against: `RecognizeTextRequest` recognises
+    /// `en-Latn-US` and nothing else unless it is told to detect the
+    /// language, and it does not fall back — an Arabic screenshot came back
+    /// with ZERO observations, so the clip was indexed as having no text and
+    /// the note written from it was built out of nothing.
+    func testRecognizesANonLatinScript() async throws {
+        let arabic = "الاجتماع يوم الثلاثاء"
+        guard let font = NSFont(name: "Geeza Pro", size: 64) else {
+            throw XCTSkip("No Arabic font on this machine")
+        }
+        let png = try makePNG(text: arabic, font: font, size: NSSize(width: 800, height: 200))
+
+        let recognized = await OCRService.recognizeText(in: png)
+
+        let text = try XCTUnwrap(recognized, "Expected Arabic text to be recognised, got nothing")
+        XCTAssertTrue(
+            text.contains("الثلاثاء"),
+            "Expected the Arabic line in the recognised text, got: \(text)"
+        )
     }
 
     func testEmptyDataYieldsNoText() async {
