@@ -75,10 +75,16 @@ final class StatusController: NSObject, NSMenuDelegate {
 
     func updateIcon() {
         guard let button = statusItem.button else { return }
-        let symbolName = watcher.isPaused ? "pause.circle" : "clipboard"
-        let image = NSImage(systemSymbolName: symbolName, accessibilityDescription: "MemoryClip")
-        image?.isTemplate = true
-        button.image = image
+        // Paused keeps an SF Symbol: it is a *state* the user needs to read at
+        // a glance, and the brand mark dimmed or badged would say it far less
+        // clearly than the system's own pause glyph. Running shows the logo.
+        if watcher.isPaused {
+            let image = NSImage(systemSymbolName: "pause.circle", accessibilityDescription: "MemoryClip (paused)")
+            image?.isTemplate = true
+            button.image = image
+        } else {
+            button.image = BrandMark.menuBarImage()
+        }
     }
 
     // MARK: Menu construction

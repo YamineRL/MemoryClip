@@ -153,15 +153,25 @@ struct OnboardingView: View {
 
     private var header: some View {
         HStack(alignment: .top, spacing: Design.Space.loose) {
-            // The step glyph in the same tile the clip rows use, so the tour
-            // and the panel it describes share one visual language.
-            IconTile(size: Design.Size.onboardingTile, radius: Design.Radius.field) {
-                Image(systemName: step.symbol)
-                    .font(.system(size: 22, weight: .medium))
-                    .symbolRenderingMode(.hierarchical)
-                    .foregroundStyle(.tint)
+            // The welcome page leads with the app mark rather than a glyph in
+            // a tile — it is the one page that introduces the app rather than
+            // a feature, and it is the only place in the UI the logo appears
+            // at a size worth showing. Every later step keeps the SF Symbol in
+            // the same tile the clip rows use, so the tour and the panel it
+            // describes share one visual language.
+            if step.id == "welcome" {
+                Image(nsImage: BrandMark.tileImage(pointSize: Design.Size.onboardingTile))
+                    .frame(width: Design.Size.onboardingTile, height: Design.Size.onboardingTile)
+                    .accessibilityHidden(true)
+            } else {
+                IconTile(size: Design.Size.onboardingTile, radius: Design.Radius.field) {
+                    Image(systemName: step.symbol)
+                        .font(.system(size: 22, weight: .medium))
+                        .symbolRenderingMode(.hierarchical)
+                        .foregroundStyle(.tint)
+                }
+                .accessibilityHidden(true)
             }
-            .accessibilityHidden(true)
 
             VStack(alignment: .leading, spacing: Design.Space.snug) {
                 Text(step.title)
