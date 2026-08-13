@@ -74,6 +74,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         self.store = store
 
+        // The Settings window is built from plain SwiftUI structs that are
+        // handed no services, so the History pane's export buttons reach the
+        // store the way the About pane reaches the tour: through a singleton
+        // controller. This is the one place that owns the store, so this is
+        // the only place that can hand it over.
+        HistoryExportController.shared.store = store
+
         watcher = PasteboardWatcher(store: store)
         pasteService = PasteService(store: store, watcher: watcher)
         ocrCoordinator = OCRCoordinator(store: store)

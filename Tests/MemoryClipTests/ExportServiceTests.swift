@@ -235,7 +235,7 @@ final class ExportServiceTests: XCTestCase {
         )
         let imageCount = 200
         let imageBytes = 1_284_000  // the measured average screenshot blob
-        let pageSize = StatusController.exportPageSize
+        let pageSize = HistoryExportController.exportPageSize
 
         func page(_ index: Int, count: Int) -> [ClipExport] {
             (0..<count).map { i in

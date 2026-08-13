@@ -103,7 +103,7 @@ enum OnboardingFlow {
             bullets: [
                 "The dropdown lists your last 5 clips — click one to paste it into the app you were just in.",
                 "“Pause Capture” stops recording until you resume; the menu-bar glyph changes to a pause symbol.",
-                "“Clear All History…” nukes everything (with a confirmation), and history can be exported as JSON or CSV.",
+                "“Clear All History…” nukes everything (with a confirmation). Exporting your history as JSON or CSV lives in Settings → History.",
             ]
         ),
         OnboardingStep(

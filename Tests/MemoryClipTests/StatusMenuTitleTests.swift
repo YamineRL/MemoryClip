@@ -83,6 +83,11 @@ final class StatusMenuTitleTests: XCTestCase {
     }
 
     // MARK: Streaming export
+    //
+    // The writer these exercise moved to `HistoryExportController` when the
+    // export left the dropdown for Settings → History. The tests stayed here,
+    // beside the store fixtures they share with the titles above; only the
+    // type they call changed.
 
     private func makeExportStore(textClips: Int, imageClips: Int) throws -> ClipStore {
         let store = try ClipStore(inMemory: true)
@@ -109,15 +114,15 @@ final class StatusMenuTitleTests: XCTestCase {
             .appendingPathComponent("memoryclip-export-test-\(UUID().uuidString).\(ext)")
     }
 
-    /// The export streams page by page (see `StatusController.exportPageSize`);
+    /// The export streams page by page (see `HistoryExportController.exportPageSize`);
     /// the file must still be exactly what encoding the whole history yields.
     func testStreamedJSONExportMatchesTheWholeDocument() throws {
         // More clips than one page, so the paging loop really runs.
-        let store = try makeExportStore(textClips: StatusController.exportPageSize * 2 + 7, imageClips: 3)
+        let store = try makeExportStore(textClips: HistoryExportController.exportPageSize * 2 + 7, imageClips: 3)
         let url = tempURL("json")
         defer { try? FileManager.default.removeItem(at: url) }
 
-        let count = try StatusController.writeExport(to: url, asCSV: false, store: store)
+        let count = try HistoryExportController.writeExport(to: url, asCSV: false, store: store)
 
         let all = store.recent(limit: 10_000)
         XCTAssertEqual(count, all.count)
@@ -126,11 +131,11 @@ final class StatusMenuTitleTests: XCTestCase {
     }
 
     func testStreamedCSVExportMatchesTheWholeDocument() throws {
-        let store = try makeExportStore(textClips: StatusController.exportPageSize + 3, imageClips: 1)
+        let store = try makeExportStore(textClips: HistoryExportController.exportPageSize + 3, imageClips: 1)
         let url = tempURL("csv")
         defer { try? FileManager.default.removeItem(at: url) }
 
-        let count = try StatusController.writeExport(to: url, asCSV: true, store: store)
+        let count = try HistoryExportController.writeExport(to: url, asCSV: true, store: store)
 
         let all = store.recent(limit: 10_000)
         XCTAssertEqual(count, all.count)
@@ -145,7 +150,7 @@ final class StatusMenuTitleTests: XCTestCase {
         let url = tempURL("json")
         defer { try? FileManager.default.removeItem(at: url) }
 
-        _ = try StatusController.writeExport(to: url, asCSV: false, store: store)
+        _ = try HistoryExportController.writeExport(to: url, asCSV: false, store: store)
 
         let mode = try XCTUnwrap(
             FileManager.default.attributesOfItem(atPath: url.path)[.posixPermissions] as? NSNumber
@@ -164,8 +169,8 @@ final class StatusMenuTitleTests: XCTestCase {
             try? FileManager.default.removeItem(at: csv)
         }
 
-        XCTAssertEqual(try StatusController.writeExport(to: json, asCSV: false, store: store), 0)
-        XCTAssertEqual(try StatusController.writeExport(to: csv, asCSV: true, store: store), 0)
+        XCTAssertEqual(try HistoryExportController.writeExport(to: json, asCSV: false, store: store), 0)
+        XCTAssertEqual(try HistoryExportController.writeExport(to: csv, asCSV: true, store: store), 0)
         XCTAssertEqual(try String(contentsOf: json, encoding: .utf8), "[]")
         XCTAssertEqual(try String(contentsOf: csv, encoding: .utf8), ExportService.csvHeader)
     }
@@ -181,7 +186,7 @@ final class StatusMenuTitleTests: XCTestCase {
             attributes: [.posixPermissions: NSNumber(value: 0o644)]
         )
 
-        _ = try StatusController.writeExport(to: url, asCSV: false, store: store)
+        _ = try HistoryExportController.writeExport(to: url, asCSV: false, store: store)
 
         let mode = try XCTUnwrap(
             FileManager.default.attributesOfItem(atPath: url.path)[.posixPermissions] as? NSNumber
