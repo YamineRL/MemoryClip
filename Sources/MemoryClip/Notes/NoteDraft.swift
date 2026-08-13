@@ -33,6 +33,20 @@ struct NoteDraft: Sendable, Equatable {
     /// string twice) — see `NoteComposer.markdown(for:)` for why it is emitted
     /// at all.
     var rawText: String?
+    /// The English rendering of `body`, when the text was captured in another
+    /// language. nil for an English clip, and for one whose language this Mac
+    /// cannot translate.
+    ///
+    /// It sits alongside `body` rather than replacing it for the same reason
+    /// `rawText` does: the note is a record of what was on screen, and a
+    /// translation is a second reading of it. A reader who knows the original
+    /// language should not have to read the machine's English to check what
+    /// it said.
+    var translation: String?
+    /// What `body` is written in, as a BCP-47 identifier ("ar", "ja"), when
+    /// it was identified. Written into front matter so a vault can be queried
+    /// by language, and used to name the language in the note's headings.
+    var sourceLanguage: String?
     /// True when `body` came out of the local model rather than straight from
     /// recognition. Drives the wording around the raw-text section: a reader
     /// needs to know which of the two blocks is the machine-edited one.
@@ -59,6 +73,8 @@ struct NoteDraft: Sendable, Equatable {
         tags: [String] = [],
         body: String,
         rawText: String? = nil,
+        translation: String? = nil,
+        sourceLanguage: String? = nil,
         wasRefined: Bool = false,
         createdAt: Date = .now,
         sourceAppName: String? = nil,
@@ -71,6 +87,8 @@ struct NoteDraft: Sendable, Equatable {
         self.tags = tags
         self.body = body
         self.rawText = rawText
+        self.translation = translation
+        self.sourceLanguage = sourceLanguage
         self.wasRefined = wasRefined
         self.createdAt = createdAt
         self.sourceAppName = sourceAppName
@@ -90,7 +108,7 @@ struct NoteDraft: Sendable, Equatable {
     /// a note the user asked for.
     var hasContent: Bool {
         if sourceFileURL != nil { return true }
-        let filled = [title, summary, body].contains {
+        let filled = [title, summary, body, translation ?? ""].contains {
             !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         }
         return filled

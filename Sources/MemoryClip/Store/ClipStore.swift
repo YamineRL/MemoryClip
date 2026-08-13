@@ -510,12 +510,25 @@ final class ClipStore {
     /// The sensitive-content guard runs here for the same reason it runs on
     /// OCR text: the model's output is persisted AND ends up in a note file
     /// outside the 0600 store, so a card number that survived recognition
-    /// must not be laundered through refinement into plaintext on disk.
+    /// must not be laundered through refinement into plaintext on disk. The
+    /// translation is guarded with it and dropped with it — a card number
+    /// translated into English is still a card number.
+    ///
+    /// - Parameters:
+    ///   - language: what the clip's text was recognised as, when it is not
+    ///     English. Recorded whether or not a translation came of it — a
+    ///     vault query for "what did I capture in Arabic" should find the
+    ///     notes this Mac could not translate as well as the ones it could.
+    ///   - translation: the English rendering of `ocrText`, when the clip was
+    ///     not already in English. nil clears any earlier one, which is what
+    ///     a clip whose language could not be translated should end up with.
     func applyRefinement(
         title: String?,
         summary: String?,
         text: String?,
         tags: [String],
+        language: String? = nil,
+        translation: TranslatedText? = nil,
         toClipWith uuid: UUID
     ) {
         guard let item = item(withUUID: uuid) else { return }
@@ -523,12 +536,23 @@ final class ClipStore {
         var acceptedText = text
         var acceptedTitle = title
         var acceptedSummary = summary
+        // Tags follow the text they were derived from. Held as a variable
+        // rather than inferred from `acceptedText == nil` at the assignment
+        // below, because a translated clip legitimately has tags and NO
+        // refined text: its body stays the original language and the model
+        // labelled the translation.
+        var acceptedTags = acceptedText == nil && translation == nil ? [] : tags
+        var acceptedTranslation = translation
         if SensitiveFilter.isFilteringEnabled {
-            let combined = [title, summary, text].compactMap { $0 }.joined(separator: "\n")
+            let combined = [title, summary, text, translation?.text]
+                .compactMap { $0 }
+                .joined(separator: "\n")
             if !combined.isEmpty, SensitiveFilter.isLikelyCardNumber(combined) {
                 acceptedText = nil
                 acceptedTitle = nil
                 acceptedSummary = nil
+                acceptedTags = []
+                acceptedTranslation = nil
                 log.notice("Dropped refinement: likely card number in refined text")
             }
         }
@@ -536,7 +560,9 @@ final class ClipStore {
         item.refinedTitle = acceptedTitle
         item.refinedSummary = acceptedSummary
         item.refinedText = acceptedText
-        item.refinedTags = acceptedText == nil ? [] : tags
+        item.refinedTags = acceptedTags
+        item.translatedText = acceptedTranslation?.text
+        item.sourceLanguage = language ?? acceptedTranslation?.sourceLanguage
         item.refineAttempted = true
         save()
     }

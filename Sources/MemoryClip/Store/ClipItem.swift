@@ -102,6 +102,19 @@ final class ClipItem {
     /// True once refinement has been attempted, successful or not — the same
     /// "never retry forever" contract as `ocrAttempted`.
     var refineAttempted: Bool = false
+    /// The language `ocrText` was recognised in, as a BCP-47 identifier
+    /// ("ar", "zh-Hans"), when it is not English and confident enough to act
+    /// on. nil means English, undetectable, or too short to tell — see
+    /// `LanguageDetector`.
+    ///
+    /// Optional, so an existing store migrates in place.
+    var sourceLanguage: String?
+    /// `ocrText` rendered into English by the on-device translator.
+    ///
+    /// Never replaces `ocrText`, exactly as `refinedText` never does: the
+    /// text that was actually on screen is the record, and the translation is
+    /// a second reading of it that the note carries underneath.
+    var translatedText: String?
     /// Filesystem path (or, for non-file destinations, a human-readable
     /// locator) of the note written for this clip. Non-nil means "a note
     /// exists", which is what makes a second export update rather than
@@ -139,6 +152,8 @@ final class ClipItem {
         refinedText: String? = nil,
         refinedTags: [String] = [],
         refineAttempted: Bool = false,
+        sourceLanguage: String? = nil,
+        translatedText: String? = nil,
         notePath: String? = nil,
         noteExportedAt: Date? = nil
     ) {
@@ -165,6 +180,8 @@ final class ClipItem {
         self.refinedText = refinedText
         self.refinedTags = refinedTags
         self.refineAttempted = refineAttempted
+        self.sourceLanguage = sourceLanguage
+        self.translatedText = translatedText
         self.notePath = notePath
         self.noteExportedAt = noteExportedAt
     }

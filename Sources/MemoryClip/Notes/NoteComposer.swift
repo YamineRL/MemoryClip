@@ -39,6 +39,32 @@ enum NoteComposer {
     /// Heading for the block carrying the untouched recognition.
     static let rawTextHeading = "Original text"
 
+    /// Heading for the block carrying the English rendering.
+    ///
+    /// A function of the draft rather than a constant, because "Translation"
+    /// alone does not say which direction it went: the note's body is the
+    /// language the user photographed, and the reader has to be able to tell
+    /// at a glance which of the two blocks is the machine's. Falls back to
+    /// the bare noun when the source language was not identified.
+    static func translationHeading(for draft: NoteDraft) -> String {
+        guard let identifier = draft.sourceLanguage, !identifier.isEmpty else {
+            return "English translation"
+        }
+        return "English translation from \(LanguageDetector.displayName(forIdentifier: identifier))"
+    }
+
+    /// The line under the translation heading, saying where it came from.
+    static let translationNote = "Translated on this Mac. The text above is what was actually on screen."
+
+    /// The translation to emit, when there is one worth emitting.
+    static func translationToEmit(for draft: NoteDraft) -> String? {
+        guard let translation = draft.translation else { return nil }
+        let trimmed = translation.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        guard trimmed != draft.body.trimmingCharacters(in: .whitespacesAndNewlines) else { return nil }
+        return trimmed
+    }
+
     // MARK: - Markdown
 
     /// The note as a Markdown document: YAML front matter, then the body.
@@ -62,6 +88,12 @@ enum NoteComposer {
             for tag in draft.tags {
                 out += "  - \(yamlEscaped(singleLine(tag)))\n"
             }
+        }
+        if let language = draft.sourceLanguage, !language.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            // The language the note's BODY is in, not the translation's — a
+            // vault query for `lang: ar` is asking "what did I capture in
+            // Arabic", and the answer is the original text.
+            out += "lang: \(yamlEscaped(singleLine(language)))\n"
         }
         out += "memoryclip-uuid: \(draft.clipUUID.uuidString)\n"
         // The ORIGINAL location, kept even when the image was copied into the
@@ -100,6 +132,15 @@ enum NoteComposer {
         let body = draft.body.trimmingCharacters(in: .whitespacesAndNewlines)
         if !body.isEmpty {
             out += body + "\n"
+        }
+
+        if let translation = translationToEmit(for: draft) {
+            // Above the raw-OCR block, not below it: the translation is the
+            // part a reader who does not speak the language came here for,
+            // whereas the raw recognition is provenance.
+            out += "\n## \(escapedHeadingText(translationHeading(for: draft)))\n\n"
+            out += "*\(translationNote)*\n\n"
+            out += translation + "\n"
         }
 
         if let raw = rawTextToEmit(for: draft) {
@@ -194,6 +235,12 @@ enum NoteComposer {
             out += "<p>From: \(htmlEscaped(singleLine(app)))</p>\n"
         }
 
+        if let translation = translationToEmit(for: draft) {
+            out += "<h2>\(htmlEscaped(translationHeading(for: draft)))</h2>\n"
+            out += "<p><i>\(htmlEscaped(translationNote))</i></p>\n"
+            out += htmlParagraphs(translation) + "\n"
+        }
+
         if let raw = rawTextToEmit(for: draft) {
             out += "<h2>\(htmlEscaped(rawTextHeading))</h2>\n"
             out += draft.wasRefined
@@ -257,6 +304,10 @@ enum NoteComposer {
 
         let body = draft.body.trimmingCharacters(in: .whitespacesAndNewlines)
         if !body.isEmpty { lines.append(contentsOf: ["", body]) }
+
+        if let translation = translationToEmit(for: draft) {
+            lines.append(contentsOf: ["", translationHeading(for: draft), "", translation])
+        }
 
         var footer: [String] = []
         if !draft.tags.isEmpty {
