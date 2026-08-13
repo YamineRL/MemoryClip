@@ -92,24 +92,44 @@ struct PreviewView: View {
     /// selection.
     private func loadFullImage() async {
         fullImage = nil
-        guard item.kind == .image, let data = item.imageData, !data.isEmpty else { return }
-        guard !Task.isCancelled else { return }
-        fullImage = NSImage(data: data)
+        guard let payload = item.imagePayload else { return }
+        switch payload {
+        case .data(let data):
+            guard !Task.isCancelled else { return }
+            fullImage = NSImage(data: data)
+        case .fileURL(let url):
+            // A screenshot clip holds a path, so this is real file I/O —
+            // off the main actor, and tolerant of the file having been moved
+            // or trashed since it was captured (the thumbnail stays on
+            // screen in that case, which is why nothing is reported here).
+            let loaded = await Task.detached(priority: .userInitiated) {
+                NSImage(contentsOf: url)
+            }.value
+            guard !Task.isCancelled else { return }
+            fullImage = loaded
+        }
     }
 
     // MARK: Content by kind
 
     @ViewBuilder
     private var content: some View {
-        switch item.kind {
-        case .text, .richText, .link:
-            textContent
-        case .image:
+        // The screenshot check comes first: such a clip's kind is `.file`,
+        // but a list of one path is not what the user opened the preview to
+        // see — the picture and its text are.
+        if item.isScreenshot {
             imageContent
-        case .color:
-            colorContent
-        case .file:
-            fileContent
+        } else {
+            switch item.kind {
+            case .text, .richText, .link:
+                textContent
+            case .image:
+                imageContent
+            case .color:
+                colorContent
+            case .file:
+                fileContent
+            }
         }
     }
 
@@ -170,7 +190,7 @@ struct PreviewView: View {
 
     /// The image clip's OCR text, or nil when Vision found nothing usable.
     private var extractedText: String? {
-        guard item.kind == .image else { return nil }
+        guard item.kind == .image || item.isScreenshot else { return nil }
         let trimmed = item.ocrText?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         return trimmed.isEmpty ? nil : trimmed
     }

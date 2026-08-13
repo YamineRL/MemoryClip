@@ -7,6 +7,15 @@ enum SettingsKeys {
     static let autoPaste: String = "autoPaste"
     static let vimMode: String = "vimMode"
     static let appearance: String = "appearance"
+    /// Which Settings pane was open last (a `SettingsPane` raw value).
+    ///
+    /// Lives here rather than in `NoteSettingsKeys` because it is a preference
+    /// of the settings window itself, alongside `appearance`, not part of the
+    /// screenshot → note pipeline those keys describe. Deliberately left out
+    /// of `register(defaults:)`: the fallback belongs with the enum
+    /// (`SettingsPane.default`), and registering a default here would mean two
+    /// places to change if the first pane ever moves.
+    static let settingsPane: String = "settingsPane"
 }
 
 @MainActor
@@ -17,6 +26,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private(set) var panelController: PanelController!
     private(set) var statusController: StatusController!
     private(set) var ocrCoordinator: OCRCoordinator!
+    private(set) var screenshotWatcher: ScreenshotWatcher!
+    private(set) var noteCoordinator: NoteCoordinator!
+
+    /// Watches for the user picking a different screenshot folder in
+    /// Settings, so the watcher re-points without a relaunch.
+    private var screenshotFolderObserver: (any NSObjectProtocol)?
 
     /// The deferred first maintenance pass (see `scheduleMaintenance`).
     private var maintenanceTask: Task<Void, Never>?
@@ -41,6 +56,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Phase-3 default: on-device OCR of image clips (on).
         OCRCoordinator.registerDefaults()
 
+        // Phase-5 defaults: screenshot capture (off — it needs a folder the
+        // user has to grant access to), refinement (on) and automatic note
+        // writing (off).
+        NoteSettingsKeys.registerDefaults()
+
         // Appearance override (System/Light/Dark), applied before any window
         // exists so the first paint is already in the chosen appearance.
         AppearanceSetting.registerDefaults()
@@ -57,7 +77,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         watcher = PasteboardWatcher(store: store)
         pasteService = PasteService(store: store, watcher: watcher)
         ocrCoordinator = OCRCoordinator(store: store)
-        panelController = PanelController(store: store, pasteService: pasteService, watcher: watcher)
+        screenshotWatcher = ScreenshotWatcher(store: store)
+        noteCoordinator = NoteCoordinator(store: store)
+        panelController = PanelController(
+            store: store,
+            pasteService: pasteService,
+            watcher: watcher,
+            noteCoordinator: noteCoordinator
+        )
         statusController = StatusController(
             store: store,
             watcher: watcher,
@@ -74,9 +101,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self?.ocrCoordinator.processPending()
         }
 
+        // A screenshot carries pixels exactly like a pasteboard image does —
+        // it just keeps them on disk — so it joins the same recognition
+        // queue, which is what feeds refinement and notes downstream.
+        screenshotWatcher.onCapture = { [weak self] _ in
+            self?.ocrCoordinator.processPending()
+        }
+
+        screenshotFolderObserver = NotificationCenter.default.addObserver(
+            forName: .memoryClipScreenshotFolderChanged,
+            object: nil,
+            queue: nil
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                self?.screenshotWatcher.folderDidChange()
+            }
+        }
+
         watcher.start()
+        screenshotWatcher.start()
         // Catch up on images captured while OCR was off or the app was down.
         ocrCoordinator.processPending()
+        // …and on text that was recognised but never refined, for the same
+        // reason: the setting may have been off, or the app may have quit
+        // mid-backlog.
+        noteCoordinator.processPending()
         // Retention + cap enforcement — deferred off the launch path, then
         // periodic (not just once at launch: this agent can stay resident for
         // weeks).
@@ -102,7 +151,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         maintenanceTask?.cancel()
         maintenanceTask = nil
         watcher?.stop()
+        screenshotWatcher?.stop()
         ocrCoordinator?.stop()
+        noteCoordinator?.stop()
+        if let screenshotFolderObserver {
+            NotificationCenter.default.removeObserver(screenshotFolderObserver)
+            self.screenshotFolderObserver = nil
+        }
         // Stop any in-flight queue run before the services it drives go away.
         panelController?.cancelQueue()
         store?.stopMaintenance()

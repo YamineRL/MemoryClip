@@ -2,28 +2,172 @@ import SwiftUI
 import ServiceManagement
 import KeyboardShortcuts
 
-/// Settings window content, split into macOS-style preference tabs.
+/// Settings window content: a sidebar of panes beside the selected pane.
+///
+/// Was a `TabView` of eight `tabItem`s. Eight is past what a tab strip can
+/// carry — the labels crowd until they are unreadable, and a tab strip offers
+/// no keyboard route between panes at all, so the only way to reach Notes was
+/// to aim at it. A `NavigationSplitView` fixes both at once: the sidebar has
+/// room to name and group all eight, and a `List` with a selection binding is
+/// arrow-key navigable and VoiceOver-navigable for free.
+///
+/// The window, not this view, owns the frame (see `SettingsWindowController`).
+/// A settings window that resizes as you move between panes is the classic
+/// tell of a hand-rolled one, so no pane is allowed to size the window: each
+/// fills whatever it is given and scrolls if it must.
 struct SettingsView: View {
-    /// Fixed tab size — settings windows should not resize per tab.
-    private static let tabWidth: CGFloat = Design.Size.sheetWidth
-    private static let tabHeight: CGFloat = Design.Size.sheetHeight
+    /// Survives closing the window, so reopening Settings lands where you left
+    /// it — the whole point of a navigable window is that you can be somewhere
+    /// in it.
+    @AppStorage(SettingsKeys.settingsPane) private var pane: SettingsPane = .default
+
+    /// Focus is explicit because arrow-key navigation is the headline feature
+    /// here and it only works when the list is first responder. Left to
+    /// itself, a freshly ordered-in window puts first responder on the window,
+    /// so the first arrow key press would go nowhere.
+    @FocusState private var focus: Focus?
+
+    private enum Focus: Hashable {
+        case sidebar
+    }
 
     var body: some View {
-        TabView {
-            GeneralSettingsTab()
-                .tabItem { Label("General", systemImage: "gearshape") }
-            HistorySettingsTab()
-                .tabItem { Label("History", systemImage: "clock.arrow.circlepath") }
-            PanelSettingsTab()
-                .tabItem { Label("Panel", systemImage: "rectangle.on.rectangle") }
-            PrivacySettingsTab()
-                .tabItem { Label("Privacy", systemImage: "lock.shield") }
-            ShortcutsSettingsTab()
-                .tabItem { Label("Shortcuts", systemImage: "keyboard") }
-            AboutSettingsTab()
-                .tabItem { Label("About", systemImage: "info.circle") }
+        NavigationSplitView(columnVisibility: .constant(.all)) {
+            sidebar
+        } detail: {
+            detail
         }
-        .frame(width: Self.tabWidth, height: Self.tabHeight)
+        // `.balanced` keeps the sidebar a peer of the detail pane rather than
+        // an overlay that can slide away: in a settings window the index is
+        // permanent furniture, not a disclosure.
+        .navigationSplitViewStyle(.balanced)
+        // Left alone, SwiftUI hands first responder to the first focusable
+        // control in the *detail* pane — General's launch-at-login switch — so
+        // the arrow keys do nothing until the sidebar has been clicked once,
+        // which is exactly the problem this rebuild exists to solve.
+        //
+        // Both halves are needed. `defaultFocus` states the intent for every
+        // later focus reset; the deferred assignment is what actually claims
+        // first responder on the very first appearance, because at `onAppear`
+        // the hosting view is not yet in a key window and a focus request made
+        // then is dropped. One runloop turn later the window is key and it
+        // sticks. AppKit remembers first responder across close/reopen, so
+        // this runs once and every subsequent opening lands on the sidebar too.
+        .defaultFocus($focus, .sidebar, priority: .userInitiated)
+        .onAppear {
+            DispatchQueue.main.async { focus = .sidebar }
+        }
+    }
+
+    private var sidebar: some View {
+        List(selection: $pane) {
+            ForEach(SettingsPane.groups) { group in
+                // Two spellings rather than an `if let` inside one `Section`,
+                // because a `Section` given an `EmptyView` header still
+                // reserves its header slot.
+                if let title = group.title {
+                    Section(title) { rows(of: group) }
+                } else {
+                    Section { rows(of: group) }
+                }
+            }
+        }
+        .listStyle(.sidebar)
+        .focused($focus, equals: .sidebar)
+        .navigationSplitViewColumnWidth(
+            min: Design.Size.settingsSidebarMinWidth,
+            ideal: Design.Size.settingsSidebarWidth,
+            max: Design.Size.settingsSidebarMaxWidth
+        )
+        .accessibilityLabel("Settings panes")
+    }
+
+    private func rows(of group: SettingsPaneGroup) -> some View {
+        ForEach(group.panes) { entry in
+            Label {
+                Text(entry.title)
+            } icon: {
+                SettingsIcon(symbol: entry.symbol, tint: entry.tint)
+            }
+            // The tag is what makes the row selectable, which is what makes
+            // ↑/↓ move between panes.
+            .tag(entry)
+            // The glyph is decorative (`SettingsIcon` hides itself), so the
+            // row would otherwise announce as just its title — which is right,
+            // but only by accident. Stating it keeps it right if the row ever
+            // gains a badge.
+            .accessibilityLabel(entry.title)
+        }
+    }
+
+    private var detail: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            SettingsPaneHeader(pane: pane)
+            Divider()
+            pane.content
+        }
+        // Top alignment so a short pane (History) sits under its header
+        // instead of floating in the middle of the window.
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        // `NavigationSplitView` retitles the window from the detail pane, and
+        // left to itself it would put the pane name there — directly above the
+        // header band that already says it, twice in 40 points. System
+        // Settings can get away with the pane name alone because it is the
+        // only settings window on the Mac; MemoryClip's is one of many, and a
+        // window called "General" says nothing about whose General it is.
+        .navigationTitle(SettingsWindowController.windowTitle)
+    }
+}
+
+/// The band at the top of every pane.
+///
+/// Carries two things a tab strip used to: which pane you are in, and its
+/// glyph, so the sidebar row and the pane you landed on are visibly the same
+/// thing. Fixed height regardless of pane, which is what puts every pane's
+/// first control on the same y.
+private struct SettingsPaneHeader: View {
+    let pane: SettingsPane
+
+    var body: some View {
+        HStack(spacing: Design.Space.roomy) {
+            SettingsIcon(
+                symbol: pane.symbol,
+                tint: pane.tint,
+                size: Design.Size.settingsHeaderIcon,
+                radius: Design.Radius.control
+            )
+            Text(pane.title)
+                .font(.title2.weight(.semibold))
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, Design.Space.wide)
+        .padding(.vertical, Design.Space.roomy)
+        // The same chrome the onboarding window puts behind its header, so
+        // MemoryClip's two "framed content" windows are framed the same way.
+        .background(Design.Palette.chrome)
+        // One element, so VoiceOver reads "General, heading" rather than
+        // stepping through a decorative tile to reach the word.
+        .accessibilityElement(children: .combine)
+        .accessibilityAddTraits(.isHeader)
+    }
+}
+
+extension SettingsPane {
+    /// The pane's form. Unchanged from the tabbed version — this rebuild
+    /// re-housed the panes, it did not redesign them.
+    @MainActor
+    @ViewBuilder
+    var content: some View {
+        switch self {
+        case .general: GeneralSettingsPane()
+        case .shortcuts: ShortcutsSettingsPane()
+        case .history: HistorySettingsPane()
+        case .panel: PanelSettingsPane()
+        case .privacy: PrivacySettingsPane()
+        case .screenshots: ScreenshotSettingsPane()
+        case .notes: NotesSettingsPane()
+        case .about: AboutSettingsPane()
+        }
     }
 }
 
@@ -60,14 +204,21 @@ private struct SettingsHint: View {
 private struct SettingsIcon: View {
     let symbol: String
     let tint: Color
+    var size: CGFloat = Design.Size.settingsIcon
+    var radius: CGFloat = Design.Radius.small
+
+    /// The glyph is set at 55% of the tile — the ratio the 20-point row tile
+    /// was already drawn at — so the larger header tile is the same badge
+    /// scaled up rather than a second, differently-proportioned one.
+    private var glyphSize: CGFloat { size * 0.55 }
 
     var body: some View {
-        RoundedRectangle(cornerRadius: Design.Radius.small, style: .continuous)
+        RoundedRectangle(cornerRadius: radius, style: .continuous)
             .fill(tint.gradient)
-            .frame(width: Design.Size.settingsIcon, height: Design.Size.settingsIcon)
+            .frame(width: size, height: size)
             .overlay {
                 Image(systemName: symbol)
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(.system(size: glyphSize, weight: .semibold))
                     // The tiles are saturated system colours, which macOS
                     // tunes to stay legible under white in both appearances.
                     .foregroundStyle(.white)
@@ -105,7 +256,7 @@ private struct SettingsCallout: View {
     }
 }
 
-/// One key combination in the Shortcuts tab, drawn as a cap.
+/// One key combination in the Shortcuts pane, drawn as a cap.
 ///
 /// Matches the ⌘1…⌘9 hints in the panel's rows, so the same keystroke looks
 /// the same wherever MemoryClip mentions it.
@@ -124,7 +275,7 @@ private struct ShortcutCap: View {
 
 // MARK: - General
 
-private struct GeneralSettingsTab: View {
+private struct GeneralSettingsPane: View {
     @AppStorage(SettingsKeys.autoPaste) private var autoPaste = true
     @AppStorage(SettingsKeys.appearance) private var appearance: AppearanceSetting = .system
 
@@ -222,7 +373,7 @@ private struct GeneralSettingsTab: View {
 
 // MARK: - History
 
-private struct HistorySettingsTab: View {
+private struct HistorySettingsPane: View {
     @AppStorage(SettingsKeys.historyCap) private var historyCap = 200
     @AppStorage(SettingsKeys.retentionDays) private var retentionDays = 30
 
@@ -261,7 +412,7 @@ private struct HistorySettingsTab: View {
 
 // MARK: - Panel
 
-private struct PanelSettingsTab: View {
+private struct PanelSettingsPane: View {
     @AppStorage(SettingsKeys.vimMode) private var vimMode = false
     @AppStorage(OCRCoordinator.enabledKey) private var ocrEnabled = true
 
@@ -286,7 +437,7 @@ private struct PanelSettingsTab: View {
                         SettingsIcon(symbol: "keyboard.fill", tint: Color(nsColor: .systemGray))
                     }
                 }
-                SettingsHint("Gives the panel vim modes: it opens in NORMAL mode where j/k-style keys navigate, and / or i switches to INSERT mode for searching (Esc returns). The current mode is shown in the search bar. See the Shortcuts tab for the full list.")
+                SettingsHint("Gives the panel vim modes: it opens in NORMAL mode where j/k-style keys navigate, and / or i switches to INSERT mode for searching (Esc returns). The current mode is shown in the search bar. See the Shortcuts pane for the full list.")
             }
         }
         .formStyle(.grouped)
@@ -295,7 +446,7 @@ private struct PanelSettingsTab: View {
 
 // MARK: - Privacy
 
-private struct PrivacySettingsTab: View {
+private struct PrivacySettingsPane: View {
     var body: some View {
         Form {
             Section("Lock") {
@@ -349,7 +500,7 @@ private struct PrivacySettingsTab: View {
 
 // MARK: - Shortcuts
 
-private struct ShortcutsSettingsTab: View {
+private struct ShortcutsSettingsPane: View {
     var body: some View {
         Form {
             Section("Global") {
@@ -383,7 +534,7 @@ private struct ShortcutsSettingsTab: View {
 
 // MARK: - About
 
-private struct AboutSettingsTab: View {
+private struct AboutSettingsPane: View {
     /// The app icon's edge on the About screen.
     private static let iconSize: CGFloat = 72
 
@@ -461,4 +612,227 @@ private struct AboutSettingsTab: View {
             .frame(maxWidth: .infinity)
         }
     }
+}
+
+// MARK: - Screenshots
+
+/// Screenshot capture: the folder to watch, and what a captured screenshot
+/// actually costs.
+///
+/// The folder is picked through `NSOpenPanel` rather than typed in, because
+/// the folder that matters (`~/Desktop`, by default) is one macOS guards —
+/// choosing it in a panel is what grants access. See `FolderBookmark`.
+private struct ScreenshotSettingsPane: View {
+    @AppStorage(NoteSettingsKeys.screenshotCaptureEnabled) private var captureEnabled = false
+    @AppStorage(OCRCoordinator.enabledKey) private var ocrEnabled = true
+
+    /// Resolved lazily in `onAppear`: the value depends on a bookmark and on
+    /// another app's preferences, neither of which belongs in a property
+    /// initialiser.
+    @State private var folder: URL?
+
+    var body: some View {
+        Form {
+            Section("Capture") {
+                Toggle(isOn: $captureEnabled) {
+                    Label {
+                        Text("Keep screenshots in history")
+                    } icon: {
+                        SettingsIcon(symbol: "camera.viewfinder", tint: Color(nsColor: .systemGreen))
+                    }
+                }
+                SettingsHint("⇧⌘3 and ⇧⌘4 save a file and never touch the clipboard, so MemoryClip cannot see them otherwise. With this on, each new screenshot appears in your history.")
+            }
+
+            Section("Folder") {
+                LabeledContent {
+                    Button("Choose…") { chooseFolder() }
+                } label: {
+                    Label {
+                        VStack(alignment: .leading, spacing: Design.Space.hair) {
+                            Text("Watching")
+                            Text(folderDisplayPath)
+                                .font(.caption)
+                                .foregroundStyle(Color(nsColor: .secondaryLabelColor))
+                                .lineLimit(1)
+                                .truncationMode(.middle)
+                        }
+                    } icon: {
+                        SettingsIcon(symbol: "folder.fill", tint: Color(nsColor: .systemBlue))
+                    }
+                }
+                SettingsHint("Defaults to wherever macOS saves screenshots. MemoryClip needs your permission to read that folder, which is what choosing it here grants.")
+            }
+
+            Section("What gets stored") {
+                SettingsHint("A link, not a copy: the clip points at the screenshot where it already is, plus a small thumbnail. Deleting a clip — or letting it expire — never deletes your file.")
+                Toggle(isOn: $ocrEnabled) {
+                    Label {
+                        Text("Extract text from images (OCR)")
+                    } icon: {
+                        SettingsIcon(symbol: "text.viewfinder", tint: Color(nsColor: .systemPurple))
+                    }
+                }
+                SettingsHint("Reads the text in each screenshot on-device so you can search for it. The same setting as the one in the Panel pane; it is repeated here because it is what makes a screenshot findable.")
+            }
+        }
+        .formStyle(.grouped)
+        .onAppear { folder = ScreenshotWatcher.resolvedFolder() }
+    }
+
+    private var folderDisplayPath: String {
+        (folder ?? ScreenshotWatcher.resolvedFolder()).path(percentEncoded: false)
+    }
+
+    private func chooseFolder() {
+        let chosen = FolderBookmark.choose(
+            key: NoteSettingsKeys.screenshotFolderBookmark,
+            title: "Choose Screenshot Folder",
+            message: "Pick the folder macOS saves your screenshots to. MemoryClip watches it for new files.",
+            startingAt: folder ?? ScreenshotDetector.configuredLocation()
+        )
+        guard let chosen else { return }
+        folder = chosen
+        NotificationCenter.default.post(name: .memoryClipScreenshotFolderChanged, object: nil)
+    }
+}
+
+// MARK: - Notes
+
+/// The local model and where its output is written.
+private struct NotesSettingsPane: View {
+    @AppStorage(NoteSettingsKeys.refineEnabled) private var refineEnabled = true
+    @AppStorage(NoteSettingsKeys.autoNoteEnabled) private var autoNoteEnabled = false
+    @AppStorage(NoteSettingsKeys.autoNoteMinimumCharacters) private var minimumCharacters = 80
+    @AppStorage(NoteSettingsKeys.destination) private var destinationRaw = NoteDestination.markdownVault.rawValue
+    @AppStorage(NoteSettingsKeys.copyAttachments) private var copyAttachments = true
+    @AppStorage(NoteSettingsKeys.vaultAttachmentFolder) private var attachmentFolder = "attachments"
+    @AppStorage(NoteSettingsKeys.notesAppFolder) private var notesAppFolder = "MemoryClip"
+    @AppStorage(NoteSettingsKeys.shortcutName) private var shortcutName = ""
+
+    @State private var vault: URL?
+
+    private var destination: NoteDestination {
+        NoteDestination(rawValue: destinationRaw) ?? .markdownVault
+    }
+
+    var body: some View {
+        Form {
+            Section("Local model") {
+                Toggle(isOn: $refineEnabled) {
+                    Label {
+                        Text("Clean up extracted text with the on-device model")
+                    } icon: {
+                        SettingsIcon(symbol: "wand.and.sparkles", tint: Color(nsColor: .systemIndigo))
+                    }
+                }
+                if let unavailable = FoundationModelsRefiner.unavailabilityDescription() {
+                    SettingsCallout(text: unavailable, symbol: "info.circle.fill", tint: Color(nsColor: .systemOrange))
+                }
+                SettingsHint("Apple's on-device model fixes OCR slips, rejoins wrapped lines and gives each note a title and summary. It runs on this Mac — nothing is uploaded. The raw extracted text is always kept alongside it, so nothing the model writes replaces what was actually on screen.")
+            }
+
+            Section("Destination") {
+                Picker(selection: $destinationRaw) {
+                    ForEach(NoteDestination.allCases) { option in
+                        Text(option.title).tag(option.rawValue)
+                    }
+                } label: {
+                    Label {
+                        Text("Write notes to")
+                    } icon: {
+                        SettingsIcon(symbol: "square.and.arrow.down.fill", tint: Color(nsColor: .systemTeal))
+                    }
+                }
+                .pickerStyle(.segmented)
+
+                switch destination {
+                case .markdownVault:
+                    markdownOptions
+                case .notesApp:
+                    notesAppOptions
+                case .shortcut:
+                    shortcutOptions
+                }
+            }
+
+            Section("When") {
+                Toggle(isOn: $autoNoteEnabled) {
+                    Label {
+                        Text("Write a note for every screenshot")
+                    } icon: {
+                        SettingsIcon(symbol: "bolt.fill", tint: Color(nsColor: .systemYellow))
+                    }
+                }
+                if autoNoteEnabled {
+                    Stepper(value: $minimumCharacters, in: 0...2000, step: 20) {
+                        Text("…with at least \(minimumCharacters) characters of text")
+                    }
+                }
+                SettingsHint(autoNoteEnabled
+                    ? "Off by default for a reason: a busy day of screenshots is a busy day of notes. The character threshold skips the ones with nothing worth keeping."
+                    : "Notes are written when you ask for one — select a clip in the panel and choose Save as Note. Turn this on to have every screenshot with enough text write itself.")
+            }
+        }
+        .formStyle(.grouped)
+        .onAppear { vault = FolderBookmark.resolve(key: NoteSettingsKeys.vaultBookmark) }
+    }
+
+    @ViewBuilder
+    private var markdownOptions: some View {
+        LabeledContent {
+            Button("Choose…") { chooseVault() }
+        } label: {
+            Label {
+                VStack(alignment: .leading, spacing: Design.Space.hair) {
+                    Text("Folder")
+                    Text(vault?.path(percentEncoded: false) ?? "Not chosen yet")
+                        .font(.caption)
+                        .foregroundStyle(Color(nsColor: .secondaryLabelColor))
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                }
+            } icon: {
+                SettingsIcon(symbol: "folder.fill", tint: Color(nsColor: .systemBlue))
+            }
+        }
+        Toggle("Copy the screenshot into the folder", isOn: $copyAttachments)
+        if copyAttachments {
+            TextField("Attachments subfolder", text: $attachmentFolder)
+        }
+        SettingsHint("Plain Markdown files with YAML front matter — an Obsidian vault, or anything else that reads .md off disk. Copying the screenshot in is what lets the note embed it, and means the note survives you clearing out your Desktop.")
+    }
+
+    @ViewBuilder
+    private var notesAppOptions: some View {
+        TextField("Notes folder", text: $notesAppFolder)
+        SettingsCallout(
+            text: "Notes is the one destination that needs a permission: macOS will ask to let MemoryClip control it the first time. The screenshot goes in as a link — Notes does not accept an image through automation.",
+            symbol: "lock.fill",
+            tint: Color(nsColor: .systemOrange)
+        )
+    }
+
+    @ViewBuilder
+    private var shortcutOptions: some View {
+        TextField("Shortcut name", text: $shortcutName)
+        SettingsHint("MemoryClip runs this Shortcut with the note as its input, so anything Shortcuts can reach — Bear, Things, DEVONthink, a folder in iCloud — can be the destination.")
+    }
+
+    private func chooseVault() {
+        let chosen = FolderBookmark.choose(
+            key: NoteSettingsKeys.vaultBookmark,
+            title: "Choose Note Folder",
+            message: "Pick the folder MemoryClip should write notes into — an Obsidian vault, or any folder of Markdown files.",
+            startingAt: vault
+        )
+        guard let chosen else { return }
+        vault = chosen
+    }
+}
+
+extension Notification.Name {
+    /// Posted when the user picks a different screenshot folder, so the
+    /// watcher can re-point without a relaunch.
+    static let memoryClipScreenshotFolderChanged = Notification.Name("memoryClipScreenshotFolderChanged")
 }

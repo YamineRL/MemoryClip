@@ -82,14 +82,36 @@ protocol ClipDisplayable {
     var colorHex: String? { get }
     var fileURLStrings: [String] { get }
     var sourceAppName: String? { get }
+    /// The local model's title for the clip, when one was produced.
+    var refinedTitle: String? { get }
+    /// The local model's cleaned-up version of `ocrText`, when one was
+    /// produced.
+    var refinedText: String? { get }
+    /// Whether this file clip is a screenshot picked up from the screenshot
+    /// folder.
+    var isScreenshot: Bool { get }
 }
 
 extension ClipItem: ClipDisplayable {}
 
 extension ClipDisplayable {
+    // Defaults for the three properties above, so the test doubles that
+    // conform to this protocol (and predate the note pipeline) keep
+    // compiling. `ClipItem`'s stored properties satisfy the requirements
+    // directly and shadow these.
+    var refinedTitle: String? { nil }
+    var refinedText: String? { nil }
+    var isScreenshot: Bool { false }
+
     /// One-line description used for VoiceOver announcements.
     var announcementSummary: String {
         let raw: String
+        // A refined title beats every other summary when there is one: it is
+        // a sentence about the content, where the alternatives are a file
+        // name or the first line of raw OCR.
+        if let title = refinedTitle?.trimmingCharacters(in: .whitespacesAndNewlines), !title.isEmpty {
+            return title.count > 80 ? String(title.prefix(80)) + "…" : title
+        }
         switch kind {
         case .file:
             raw = fileURLStrings.map { ($0 as NSString).lastPathComponent }.joined(separator: ", ")
@@ -133,6 +155,18 @@ struct ClipFilter: Equatable {
         if item.text?.localizedStandardContains(search) == true { return true }
         // Image clips are searchable through their extracted text.
         if item.ocrText?.localizedStandardContains(search) == true { return true }
+        // …and through what the local model made of it. Note the asymmetry
+        // with `predicate` below, which does NOT carry these two clauses:
+        // that expression is at the documented limit of what the Swift type
+        // checker will compile in reasonable time, and the clips this
+        // actually matters for — screenshots, which are `.file` kind — are
+        // admitted by the predicate wholesale and re-checked here by
+        // `refine(_:)` regardless. The cost is that a pasteboard IMAGE clip
+        // is not searchable by a word that appears only in its refined text,
+        // which is close to no cost at all: refinement is derived from
+        // `ocrText`, and that is indexed.
+        if item.refinedText?.localizedStandardContains(search) == true { return true }
+        if item.refinedTitle?.localizedStandardContains(search) == true { return true }
         if item.colorHex?.localizedStandardContains(search) == true { return true }
         if item.fileURLStrings.contains(where: { $0.localizedStandardContains(search) }) { return true }
         if item.sourceAppName?.localizedStandardContains(search) == true { return true }
@@ -431,6 +465,12 @@ struct PanelActions {
     var toggleQueue: (ClipItem) -> Void
     /// Paste every queued clip, in order, into the previous app.
     var pasteQueue: () -> Void
+    /// Write (or rewrite) this clip's note at the configured destination.
+    var saveNote: (ClipItem) -> Void
+    /// Open the note already written for this clip.
+    var openNote: (ClipItem) -> Void
+    /// Show a screenshot clip's file in the Finder.
+    var revealInFinder: (ClipItem) -> Void
 }
 
 /// The main clip-panel view.
@@ -931,7 +971,10 @@ struct PanelContentView: View {
                                     actions.applyTransform(item, transform)
                                 },
                                 onShowQR: { actions.showQR(item) },
-                                onToggleQueue: { actions.toggleQueue(item) }
+                                onToggleQueue: { actions.toggleQueue(item) },
+                                onSaveNote: { actions.saveNote(item) },
+                                onOpenNote: { actions.openNote(item) },
+                                onRevealInFinder: { actions.revealInFinder(item) }
                             )
                             .id(item.uuid)
                             .contentShape(Rectangle())

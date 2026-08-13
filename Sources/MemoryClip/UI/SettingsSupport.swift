@@ -1,6 +1,131 @@
-import Foundation
+import SwiftUI
 
-/// App name/version strings for the About tab.
+// MARK: - Settings navigation
+
+/// One pane of the Settings window.
+///
+/// The raw values are *storage*, not labels: they are what
+/// `SettingsKeys.settingsPane` persists, so renaming a case would silently
+/// drop returning users back onto General.
+///
+/// Kept here, beside `ShortcutReference`, because it is the same kind of
+/// thing — pure data the settings UI renders — and because a plain enum is
+/// testable without standing up a view.
+enum SettingsPane: String, CaseIterable, Identifiable, Sendable {
+    case general
+    case shortcuts
+    case history
+    case panel
+    case privacy
+    case screenshots
+    case notes
+    case about
+
+    /// What opens when nothing has been chosen yet, and the fallback for a
+    /// stored raw value this build no longer has a case for.
+    static let `default`: SettingsPane = .general
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .general: return "General"
+        case .shortcuts: return "Shortcuts"
+        case .history: return "History"
+        case .panel: return "Panel"
+        case .privacy: return "Privacy"
+        case .screenshots: return "Screenshots"
+        case .notes: return "Notes"
+        case .about: return "About"
+        }
+    }
+
+    /// The glyph a sidebar row and the pane's own header wear.
+    ///
+    /// Where a pane has a signature control the symbol is lifted straight off
+    /// it — History's retention clock, Screenshots' camera — so the sidebar
+    /// reads as an index of what is below rather than a second, unrelated
+    /// icon set. The panes whose forms have no single defining row (General,
+    /// Shortcuts, Panel, About) keep the symbol their old tab item used, which
+    /// is the one users already associate with them.
+    var symbol: String {
+        switch self {
+        case .general: return "gearshape.fill"
+        case .shortcuts: return "keyboard.fill"
+        case .history: return "clock.arrow.circlepath"
+        case .panel: return "rectangle.on.rectangle"
+        case .privacy: return "lock.shield.fill"
+        case .screenshots: return "camera.viewfinder"
+        case .notes: return "note.text"
+        case .about: return "info.circle.fill"
+        }
+    }
+
+    /// The tile colour behind that glyph.
+    ///
+    /// Every pane gets a tint no other pane claims, because in a sidebar the
+    /// colour is what you recognise before you have read the word. Where the
+    /// pane already had a dominant tint inside its form the sidebar reuses it
+    /// (History orange, Panel purple, Privacy pink, Screenshots green, Notes
+    /// teal); the rest take what was left.
+    ///
+    /// System colours rather than literals, so macOS retunes them for Dark
+    /// Mode and Increase Contrast — the same rule the rest of `Design` follows.
+    var tint: Color {
+        switch self {
+        case .general: return Color(nsColor: .systemGray)
+        case .shortcuts: return Color(nsColor: .systemBlue)
+        case .history: return Color(nsColor: .systemOrange)
+        case .panel: return Color(nsColor: .systemPurple)
+        case .privacy: return Color(nsColor: .systemPink)
+        case .screenshots: return Color(nsColor: .systemGreen)
+        case .notes: return Color(nsColor: .systemTeal)
+        case .about: return Color(nsColor: .systemIndigo)
+        }
+    }
+}
+
+/// A titled run of sidebar rows.
+struct SettingsPaneGroup: Identifiable, Sendable {
+    /// `nil` renders as a plain separated run with no header — used for the
+    /// single trailing row, where a one-word category name would be noise.
+    let title: String?
+    let panes: [SettingsPane]
+
+    var id: String { title ?? "\u{1F}untitled" }
+}
+
+extension SettingsPane {
+    /// The sidebar, grouped.
+    ///
+    /// Eight flat rows is a list you read top to bottom every time; grouped,
+    /// you only read the group you are in. The split is by *what the user came
+    /// to change*, not by which subsystem implements it:
+    ///
+    /// - **General** — the app as an app: whether it starts with the Mac, how
+    ///   it looks, and the keys that summon it. Nothing here is about a
+    ///   particular clip.
+    /// - **Clipboard** — the core loop: what gets captured and for how long
+    ///   (History), how the panel behaves while you browse it (Panel), and
+    ///   what MemoryClip refuses to capture or requires Touch ID for
+    ///   (Privacy). Privacy sits here rather than beside About because both
+    ///   its switches are capture policy — they change what lands in history.
+    /// - **Screenshots** — the screenshot → text → note pipeline, which is one
+    ///   feature with an input (the watched folder) and an output (where notes
+    ///   are written). Split across the sidebar it reads as two unrelated
+    ///   panes; together, the order is the order the data flows.
+    /// - About stands alone at the bottom, headerless. It is the one row that
+    ///   changes nothing, and inventing a category for a single identity pane
+    ///   would add a word to read without adding a distinction.
+    static let groups: [SettingsPaneGroup] = [
+        SettingsPaneGroup(title: "General", panes: [.general, .shortcuts]),
+        SettingsPaneGroup(title: "Clipboard", panes: [.history, .panel, .privacy]),
+        SettingsPaneGroup(title: "Screenshots", panes: [.screenshots, .notes]),
+        SettingsPaneGroup(title: nil, panes: [.about])
+    ]
+}
+
+/// App name/version strings for the About pane.
 ///
 /// Pure value type so the assembly logic is testable without a bundle:
 /// under `swift test` (and `swift run`) there is no `Info.plist`, so both
@@ -47,7 +172,7 @@ struct AppVersionInfo: Equatable {
     }
 }
 
-/// One row of the Shortcuts tab's key reference.
+/// One row of the Shortcuts pane's key reference.
 struct ShortcutEntry: Equatable, Identifiable {
     /// The keys as rendered, e.g. `⌘1…⌘9` or `gg`.
     let keys: String
