@@ -1,10 +1,13 @@
 # MemoryClip
 
 A local-first, privacy-focused menu-bar clipboard manager for macOS. MemoryClip keeps
-a history of everything you copy and gives you keyboard-first access to it.
-**Zero network calls**: no sync, no analytics, no accounts. All data stays in a local
-SwiftData store on your Mac — including the text read out of your screenshots and the
-on-device model that tidies it up.
+a history of everything you copy and gives you keyboard-first access to it. It also
+notices the screenshots you take, reads the text out of them, and will turn one into a
+note in your own Markdown vault, Apple Notes or a Shortcut.
+**Zero network calls**: no sync, no analytics, no accounts. Clips live in a local
+SwiftData store on your Mac, the text read out of your screenshots is recognised here,
+and the model that tidies it up runs here too. The only files MemoryClip writes anywhere
+else are the notes you ask it for, in the folder you chose.
 
 Requires macOS 26 on Apple silicon.
 
@@ -63,7 +66,7 @@ From then on, MemoryClip captures every copy in the background. Two ways in:
 
 - Press **⇧⌘V** to open the panel from whichever app you are in.
 - Click the **clipboard glyph** in the menu bar for the five most recent clips, plus
-  Open MemoryClip, Pause, Clear All History, Settings and Quit.
+  Open MemoryClip, Pause Capture, Clear All History, Export, Settings and Quit.
 
 To have it start with your Mac, turn on **Launch at login** in **Settings → General**.
 
@@ -74,12 +77,12 @@ reachable from the keyboard:
 
 | Key | Does |
 | --- | --- |
-| `↑` `↓` | Move through the list |
+| `↑` `↓` | Move through the list (`←` `→` as well, while the search field is empty) |
 | `Return` | Paste the selected clip |
 | `⇧Return` | Paste it as **plain text**, dropping fonts and colours |
 | `⌘1`–`⌘9` | Paste any of the first nine results directly |
-| `Space` | Toggle the preview pane |
-| `Esc` | Close the panel |
+| `Space` | Toggle the preview pane, while the search field is empty |
+| `Esc` | Close the preview, then the panel |
 
 Pasting puts the clip on the clipboard, brings your previous app back to the front,
 and sends a ⌘V for you. If macOS blocks that synthetic keystroke the clip is still on
@@ -88,8 +91,9 @@ for why, and **Settings → General** to turn the attempt off entirely.
 
 ## Finding a clip
 
-Type in the search field to match across clip text, colour values, file names and the
-name of the app a clip came from. Alongside it are filter chips — **All, Text, Images,
+Type in the search field to match across clip text, the text recognised inside an image,
+whatever the on-device model made of it, colour values, file names and the name of the
+app a clip came from. Alongside it are filter chips — **All, Text, Images,
 Links, Files, Colors** — and you can narrow to a single source app ("copied from
 Safari").
 
@@ -100,8 +104,10 @@ than an exact count. Paging bounds what is *drawn*, never what is *findable*.
 
 **Screenshots are searchable too.** Text inside image clips is extracted on-device with
 the Vision framework, in the background, and folded into search: copy a screenshot,
-then find it later by typing words that appear *in* the picture. Those rows carry a
-small `Text` badge. Toggle in **Settings → Panel** (on by default).
+then find it later by typing words that appear *in* the picture. Those rows say
+`text found` under the picture once recognition has run. Toggle in **Settings → Panel**
+(on by default; the same switch is repeated in **Screenshots**, because it is what makes
+a screenshot findable at all).
 
 ## Previewing, and what MemoryClip notices
 
@@ -109,8 +115,8 @@ Press `Space` to open the preview pane, which renders the full clip — text, JS
 text or image — rather than the truncated row. MemoryClip also recognises a few things
 as they go past:
 
-- **Type badges** for email addresses, URLs, phone numbers, JWTs and JSON, shown on the
-  row and in the preview.
+- **Type badges** for email addresses, URLs, phone numbers, JWTs and JSON, shown in the
+  preview pane.
 - **Instant arithmetic** — copy `12*7` and the row shows `= 84`. The parser is
   self-contained and deliberately conservative, so date-like strings such as
   `2026-08-07` are never mistaken for sums.
@@ -119,7 +125,8 @@ as they go past:
 
 ## Transforming text
 
-Right-click a clip, or use the preview's actions, to rewrite it on the way out:
+Right-click a clip to rewrite it on the way out — the preview offers the two JSON ones
+inline, beside its detection badges:
 
 - **UPPERCASE**, **lowercase**, **Title Case**
 - **JSON** format or minify
@@ -160,19 +167,41 @@ sequence such as a lone `g`, then leaves INSERT for NORMAL.
 
 ## Screenshots, and turning them into notes
 
-⇧⌘3 and ⇧⌘4 save a *file* and never touch the clipboard, so a clipboard manager cannot
-see them. Turn on **Settings → Screenshots → Keep screenshots in history** and MemoryClip
-watches wherever macOS saves them (it reads that from your system settings; pick a
-different folder if you like) and adds each new one to your history.
+⇧⌘3, ⇧⌘4 and ⇧⌘5 save a *file* and never touch the clipboard, so a clipboard manager is
+structurally blind to them — only ⌃⇧⌘4, the copy-to-clipboard variant, ever reaches the
+pasteboard. Turn on **Settings → Screenshots → Keep screenshots in history** and
+MemoryClip watches the folder `screencapture` writes to instead, adding each new
+screenshot to your history as it lands.
+
+It is **off by default**, because it needs access to a folder macOS guards. The folder
+comes from your system screenshot settings (the Desktop, unless you changed it); pick a
+different one under **Folder** if you keep them elsewhere. Either way macOS decides
+whether MemoryClip may read it — see [Permissions](#permissions).
+
+**It never imports history.** Switching the feature on marks everything already in the
+folder as seen, so you get the next screenshot rather than the last four years of them.
+Screenshots taken while MemoryClip was closed are still caught up at the next launch,
+newest first and bounded, so a folder with a backlog in it cannot flush the rest of your
+clipboard history out through the cap.
 
 **A link, not a copy.** The clip points at the screenshot where it already is, plus a
 small thumbnail for the row. A day of retina screenshots costs a few kilobytes of
 history rather than a few hundred megabytes — and **deleting a clip, letting it expire,
 or clearing all history never deletes your file.** Pasting one hands over the file
-itself, exactly as copying it in Finder would.
+itself, exactly as copying it in Finder would, and **Reveal in Finder** in the row's
+right-click menu opens it where it lives.
+
+Telling a screenshot from any other picture in the same folder is Spotlight's job:
+macOS marks every file `screencapture` writes with `kMDItemIsScreenCapture`, which is
+exact, and which keeps working whatever you renamed the file prefix to and whatever
+language the Mac is in. Spotlight indexes asynchronously, so a file it has no record of
+yet falls back to "matches the configured prefix, and was made in the last couple of
+minutes" — enough to catch the screenshot from a second ago without adopting every old
+PNG on the Desktop.
 
 Screenshots go through the same on-device text extraction as image clips, so you can
-find one by what it says.
+find one by what it says. A screenshot clip is a *file* clip, so it sits under the
+**Files** chip rather than **Images**.
 
 ### Notes
 
@@ -185,7 +214,10 @@ uploaded, and it needs no account and no permission.
 The raw extracted text is always kept alongside the tidied version, in the clip and in
 the note. Nothing the model writes replaces what was actually on your screen, and a
 rewrite that drops or invents too much of the text is thrown away in favour of the raw
-recognition.
+recognition. On a Mac where Apple Intelligence is off, unsupported, or still downloading
+its model, nothing breaks: the note is written from the raw recognition instead, and
+**Settings → Notes** says which of those it is rather than showing a switch that quietly
+does nothing.
 
 Three destinations, in **Settings → Notes**:
 
@@ -195,9 +227,68 @@ Three destinations, in **Settings → Notes**:
 | **Notes** | Creates a note in Apple Notes, in a folder you name. The screenshot goes in as a link — Notes does not accept an image through automation. | Automation permission |
 | **Shortcut** | Runs a Shortcut with the note as its input, so Bear, Things, DEVONthink or anything else Shortcuts reaches can be the destination. | A Shortcut name |
 
+The Markdown folder is the default and the only one that asks nothing of any other app:
+you pick a folder, MemoryClip writes `.md` files into it, and the screenshot is copied
+into an `attachments` subfolder (both names are yours to change). Apple Notes writes into
+a folder called `MemoryClip` unless you rename it.
+
 Notes are written **when you ask for one**. If you would rather not ask, turn on
 **Write a note for every screenshot** and set how much text a screenshot needs before it
-earns one — a busy day of screenshots is otherwise a busy day of notes.
+earns one — 80 characters by default, because a busy day of screenshots is otherwise a
+busy day of notes. Automatic notes are screenshots only; anything else has to be asked
+for. Either way the model works one clip at a time in the background, so a backlog costs
+you time rather than a hot Mac.
+
+A clip that already has a note says so — its row reads `Screenshot · noted`, and the
+right-click menu offers **Update Note** and **Open Note** instead of **Save as Note**.
+Updating rewrites the same file rather than leaving a second copy beside it, and it
+follows a note you moved or renamed inside your vault.
+
+### What a Markdown note looks like
+
+Written as `2026-08-13 1422 Deploy checklist.md` — timestamp first, so the folder sorts
+chronologically and two screenshots of the same window do not collide:
+
+```markdown
+---
+title: "Deploy checklist"
+created: 2026-08-13T14:22:03Z
+source: "Screenshot"
+tags:
+  - "deploy"
+  - "release"
+memoryclip-uuid: 5B7C2A19-3E64-4C0F-9A11-8D2F6E0B4A73
+screenshot: "/Users/you/Desktop/Screenshot 2026-08-13 at 14.22.01.png"
+---
+
+# Deploy checklist
+
+> A four-step release checklist, screenshotted from the team wiki.
+
+![[2026-08-13 1422 Deploy checklist.png]]
+
+1. Freeze the branch and tag it.
+2. Run the migration on staging.
+3. Smoke-test the queue workers.
+4. Announce in #releases.
+
+## Original text
+
+*Exactly as recognised, before the on-device model cleaned it up.*
+
+Deploy checklist
+1. Freeze the branch and tag it.
+2. Run the migra- tion on staging.
+…
+```
+
+Every string is quoted on purpose: the input is text read off a screen, and a heading
+that happens to contain a colon would otherwise rewrite the note's own metadata. The
+`screenshot:` key always points at the **original** file even when a copy was made — it
+is the way back to the full-resolution picture. `memoryclip-uuid` is what lets a
+re-export find the note it wrote last time. `created` is UTC because Dataview and every
+other front-matter reader parses it; the file name is in your local time, because you
+are the one who remembers taking the screenshot at 14:22.
 
 ## Keeping your history tidy
 
@@ -241,7 +332,9 @@ makes no network calls at all — no sync, no accounts, no analytics.
   no Screen Recording or Accessibility permission to do any of this.
 - **Screenshots are referenced, not copied.** A screenshot clip holds the path to your
   file and a thumbnail. MemoryClip never moves, rewrites or deletes the file — removing
-  the clip removes only the clip.
+  the clip removes only the clip. The one time it reads the pixels back out is to make a
+  thumbnail, to recognise the text, and — if you write a Markdown note — to copy the
+  picture into your vault so the note can embed it. The original is untouched either way.
 - **The local model is local.** Text cleanup uses Apple's on-device model through the
   Foundation Models framework. There is no cloud fallback, no request leaves the
   machine, and refinement is skipped entirely when the model is unavailable — the raw
@@ -269,11 +362,17 @@ system's built-in LocalAuthentication prompt and needs no grant of its own.
 
 Optional, and only if you use the matching feature:
 
-- **Files and folders** — watching your screenshot folder, and writing notes into the
-  folder you pick. Both folders are chosen in a standard open panel, which is what
-  grants the access; MemoryClip never reaches into a folder you did not choose.
+- **Files and folders** — reading your screenshot folder, and writing notes into the
+  folder you pick. macOS guards the Desktop, Documents and Downloads, so the first time
+  MemoryClip reads or writes in one of them it asks; allowing it is enough. Choosing the
+  folder yourself in **Settings → Screenshots** or **Settings → Notes** is the other way
+  in, and the one to use for a folder anywhere else. Either grant is remembered as a
+  *security-scoped bookmark* rather than a path, because a stored path would survive a
+  relaunch and the access would not. MemoryClip never reaches into a folder you did not
+  point it at.
 - **Automation (Notes)** — only when you set Notes as your note destination. macOS asks
-  the first time. Every other destination needs no permission at all.
+  the first time. Every other destination, the screenshot watcher and the on-device
+  model need no permission at all.
 
 Optional: if you grant MemoryClip **Accessibility** access (System Settings → Privacy &
 Security → Accessibility), it will also *auto-paste* the selected clip into your
@@ -288,12 +387,12 @@ Eight panes, grouped in a sidebar:
 
 | Group | Pane | Contains |
 | --- | --- | --- |
-| General | **General** | Launch at login, auto-paste |
+| General | **General** | Launch at login, theme, auto-paste |
 | General | **Shortcuts** | The global hotkey recorder, plus a full key reference |
 | Clipboard | **History** | History cap, retention window |
 | Clipboard | **Panel** | Image OCR, vim navigation |
 | Clipboard | **Privacy** | Touch ID lock, sensitive-content filtering, permission notes |
-| Screenshots | **Screenshots** | Screenshot capture, the folder to watch |
+| Screenshots | **Screenshots** | Screenshot capture, the folder to watch, image OCR |
 | Screenshots | **Notes** | The on-device model, note destination, automatic notes |
 | — | **About** | Version, privacy summary, replay the welcome tour |
 
@@ -320,6 +419,9 @@ MemoryClip is built to stay quick with a real history, not just a demo-sized one
   immediately even on a big store.
 - **Text extraction runs in bounded bursts**, several images at a time with pauses, so a
   backlog of screenshots is worked through without taking the machine over.
+- **Refinement runs one clip at a time**, also in bounded bursts. The on-device model is
+  a single shared resource, so asking it for several notes at once would buy contention
+  rather than speed; a backlog is drained in the background instead.
 
 ## Building from source
 
@@ -340,7 +442,7 @@ The DMG reaches users through Releases instead.
 
 ```sh
 ./Scripts/publish_release.sh            # tag = v<bundle version>
-./Scripts/publish_release.sh v0.2.0     # explicit tag
+./Scripts/publish_release.sh v0.2.42    # explicit tag
 DRAFT=1 ./Scripts/publish_release.sh    # draft, to eyeball first
 ```
 
@@ -361,7 +463,9 @@ swift run     # run from the debug build
 swift test    # unit tests (store, parser, transforms, detection, calc, QR,
               # sensitive filter, export, OCR, vim keys, settings support,
               # onboarding flow, search predicate, thumbnails, maintenance
-              # scheduling, store rename migration — 384 tests)
+              # scheduling, store rename migration, screenshot detection and
+              # watching, the refinement guard, note composition and note sink
+              # configuration — 519 tests)
 
 MEMORYCLIP_BENCH=1 swift test    # the above plus the benchmarks (slow)
 ```
@@ -376,19 +480,23 @@ measuring tool rather than a regression gate.
 
 ```
 Sources/MemoryClip/
-├── App/            MemoryClipApp (SwiftUI entry), AppDelegate (wiring), HotKeys, Log
+├── App/            main (AppKit entry + main menu), AppDelegate (wiring),
+│                   AppearanceSetting, HotKeys, Log
 ├── Capture/        PasteboardWatcher (changeCount polling), ContentParser (type
 │                   detection + SHA-256 hashing), CapturedClip (parsed payload),
 │                   SensitiveFilter (card numbers + credential apps),
 │                   TextDetector (email/URL/phone/JWT/JSON badges),
 │                   ScreenshotDetector (where screenshots land, and what is one),
 │                   ScreenshotWatcher (folder watch → referenced clips)
-├── Store/          ClipItem (SwiftData model), ClipStore (insert/dedup/fetch,
-│                   cap & retention enforcement)
+├── Store/          ClipItem (SwiftData model, incl. ImagePayload — pasteboard
+│                   bytes or a referenced file — plus the OCR, refinement and
+│                   note fields), ClipStore (insert/dedup/fetch, screenshot
+│                   references, cap & retention enforcement)
 ├── Actions/        PasteService (writes clip to pasteboard, posts ⌘V via CGEvent),
 │                   TransformService (text transforms), CalcEvaluator (instant
 │                   arithmetic), QRService (CoreImage QR), ExportService (JSON/CSV),
-│                   OCRService + OCRCoordinator (Vision text extraction)
+│                   OCRService + OCRCoordinator (Vision text extraction, from a
+│                   data blob or a file on disk)
 ├── Notes/          NoteRefiner (protocol, passthrough, hallucination guard) +
 │                   FoundationModelsRefiner (on-device cleanup), NoteDraft,
 │                   NoteComposer (Markdown/HTML/file names), NoteSink +
@@ -396,12 +504,15 @@ Sources/MemoryClip/
 │                   NoteCoordinator (refinement drain + export), NoteSettings
 ├── Security/       AppLockService (optional Touch ID / passcode gate)
 ├── UI/             PanelController + PanelView (search, smart filters,
-│                   keyboard-first list), ClipRowView, PreviewView (Space-toggle
-│                   preview pane), QRWindowController, StatusController (menu-bar
-│                   dropdown + export), SettingsView (sidebar of eight preference panes) +
-│                   SettingsSupport (version info, shortcut reference),
+│                   keyboard-first card strip), ClipCardView, PreviewView
+│                   (Space-toggle preview pane), VimNavigator (the modal state
+│                   machine), QRWindowController, StatusController (menu-bar
+│                   dropdown + export), SettingsWindowController + SettingsView
+│                   (sidebar of eight preference panes) + SettingsSupport (version
+│                   info, shortcut reference), DesignSystem, ClipDisplay,
 │                   OnboardingController + OnboardingView (first-run tour)
-└── Support/        NSColor+Hex, FolderBookmark (user-chosen folders, kept)
+└── Support/        NSColor+Hex, FolderBookmark (security-scoped bookmarks for the
+                    folders the user picked, so the grant outlives a relaunch)
 
 Resources/Info.plist    LSUIElement app metadata (bundle id, version, icon name)
 Resources/AppIcon.icns  app icon, generated by Scripts/make_icon.swift (committed)
@@ -411,12 +522,12 @@ Scripts/make_dmg.sh     make_app.sh + drag-to-install dist/MemoryClip-<version>.
 Scripts/publish_release.sh  tag + GitHub release with the DMG attached
 ```
 
-Screenshot flow: `screencapture` writes a file → `ScreenshotWatcher` debounces the
-folder event, waits for the file to stop growing and checks it is a screenshot →
-`ClipStore.insertScreenshot` records a *reference* → the thumbnail backfill and
-`OCRCoordinator` read the pixels straight off disk → `NoteCoordinator` refines the
-recognised text with the on-device model → a `NoteSink` writes the note, on request or
-automatically.
+Screenshot flow: `screencapture` writes a file → `ScreenshotWatcher` debounces the folder
+event, asks `ScreenshotDetector` whether the file is a screenshot at all, and waits for
+it to stop growing → `ClipStore.insertScreenshot` records a *reference* → the thumbnail
+backfill and `OCRCoordinator` read the pixels straight off disk → `NoteCoordinator`
+refines the recognised text with the on-device model, bounded by `RefinementGuard` → a
+`NoteSink` writes the note, on request or automatically.
 
 Paste flow: panel/dropdown selection → `PasteService.write` puts the payload on the
 general pasteboard → watcher is told to ignore its own write → previous app is
