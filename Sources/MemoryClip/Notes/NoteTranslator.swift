@@ -51,6 +51,13 @@ struct TranslatedText: Sendable, Equatable {
 
 /// Anything that can turn foreign-language text into English.
 protocol NoteTranslator: Sendable {
+    /// Every language this Mac can translate into English, downloaded or not.
+    ///
+    /// Read live rather than hard-coded: the list is Apple's, it grows with
+    /// macOS releases, and a list of our own would be wrong the moment one
+    /// does. Settings turns it into the menu the user picks from.
+    func supportedLanguages() async -> [Locale.Language]
+
     /// Whether `language` could be translated right now, without a download.
     ///
     /// Three-valued rather than a Bool because the middle case is the one the
@@ -243,5 +250,87 @@ enum LanguageDetector {
         Locale.current.localizedString(forIdentifier: identifier)
             ?? Locale.current.localizedString(forLanguageCode: identifier)
             ?? identifier
+    }
+}
+
+// MARK: - Catalog
+
+/// One row of the language menu in Settings.
+struct TranslationLanguage: Identifiable, Sendable, Equatable {
+    /// A stable identifier for the row — the language code plus its script
+    /// where the script matters ("ar", "zh-Hans").
+    let id: String
+    /// What the user reads: the language's name in their own language.
+    let name: String
+    /// The language object to hand back to the framework, taken from its own
+    /// list rather than rebuilt from `id`, so we never ask it about an
+    /// identifier it did not offer.
+    let language: Locale.Language
+
+    static func == (lhs: TranslationLanguage, rhs: TranslationLanguage) -> Bool { lhs.id == rhs.id }
+}
+
+/// Turning the framework's list of supported languages into a menu.
+///
+/// Pure, and separate from the provider, so the grouping and naming rules are
+/// testable on a machine with no translation assets at all — the same split
+/// as `LanguageDetector` against `AppleTranslator`.
+enum TranslationCatalog {
+    /// The menu, sorted by name in the user's locale.
+    ///
+    /// Three rules, each earning its place against the raw list (38 entries
+    /// on macOS 26.5):
+    ///
+    /// 1. **English is dropped.** It is the target; "translate English into
+    ///    English" is not an option, it is a no-op.
+    /// 2. **Regions are collapsed, scripts are not.** Apple lists es-ES,
+    ///    es-MX and es-US separately, and offering three Spanishes to someone
+    ///    who wants to read a screenshot is a choice with no right answer.
+    ///    Script is different: Simplified and Traditional Chinese are not the
+    ///    same text, so zh-Hans and zh-Hant stay apart.
+    /// 3. **Names carry the script only when it disambiguates.** Naming the
+    ///    grouped identifier directly gives "Danish (Latin)" and "Thai
+    ///    (Thai)"; naming the bare language code gives "Chinese" twice. So
+    ///    the script is spelled out exactly where a language has more than
+    ///    one of them, and left off everywhere else.
+    static func menu(from languages: [Locale.Language], excluding target: Locale.Language) -> [TranslationLanguage] {
+        let targetCode = target.languageCode?.identifier
+
+        // First pass: group by language + script, keeping the framework's own
+        // first entry for each, and count the scripts per language.
+        var order: [String] = []
+        var byKey: [String: Locale.Language] = [:]
+        var scriptsByCode: [String: Set<String>] = [:]
+        for language in languages {
+            guard let code = language.languageCode?.identifier, code != targetCode else { continue }
+            let script = language.script?.identifier
+            let key = [code, script].compactMap { $0 }.joined(separator: "-")
+            scriptsByCode[code, default: []].insert(script ?? "")
+            guard byKey[key] == nil else { continue }
+            byKey[key] = language
+            order.append(key)
+        }
+
+        return order.compactMap { key -> TranslationLanguage? in
+            guard let language = byKey[key], let code = language.languageCode?.identifier else { return nil }
+            let needsScript = (scriptsByCode[code]?.count ?? 0) > 1
+            let name = needsScript
+                ? (Locale.current.localizedString(forIdentifier: key) ?? key)
+                : (Locale.current.localizedString(forLanguageCode: code) ?? key)
+            return TranslationLanguage(id: key, name: name, language: language)
+        }
+        .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+    }
+
+    /// The row a detected-language identifier belongs to, if any.
+    ///
+    /// Matched on language code rather than on the whole identifier: the
+    /// pipeline records what `NLLanguageRecognizer` saw ("ar", "zh-Hans"),
+    /// and the menu is keyed on what the Translation framework offers, which
+    /// need not be spelled the same way.
+    static func row(matching identifier: String, in menu: [TranslationLanguage]) -> TranslationLanguage? {
+        let code = Locale.Language(identifier: identifier).languageCode?.identifier
+        return menu.first { $0.id == identifier }
+            ?? menu.first { $0.language.languageCode?.identifier == code }
     }
 }
