@@ -32,6 +32,15 @@ let repoRoot = scriptURL.deletingLastPathComponent().deletingLastPathComponent()
 let iconsetURL = repoRoot.appendingPathComponent(".build/icon/AppIcon.iconset")
 let icnsURL = repoRoot.appendingPathComponent("Resources/AppIcon.icns")
 
+/// The README header art. Same drawing, emitted as a plain PNG so GitHub can
+/// show it — GitHub cannot render a .icns, and a hand-exported copy would
+/// drift the moment the icon changed.
+let logoURL = repoRoot.appendingPathComponent("docs/logo.png")
+
+/// Rendered at 2x the 128px the README displays it at, so it stays crisp on a
+/// Retina screen without carrying a megabyte into the repository.
+let logoPixels = 256
+
 // MARK: - Geometry helpers
 
 func rounded(_ rect: CGRect, _ radius: CGFloat) -> CGPath {
@@ -310,6 +319,12 @@ do {
 
     let bytes = (try fm.attributesOfItem(atPath: icnsURL.path)[.size] as? Int) ?? 0
     print("OK: wrote \(icnsURL.path) (\(bytes) bytes)")
+
+    try fm.createDirectory(
+        at: logoURL.deletingLastPathComponent(), withIntermediateDirectories: true
+    )
+    try renderPNG(size: logoPixels, to: logoURL)
+    print("OK: wrote \(logoURL.path) (\(logoPixels)px)")
 } catch {
     FileHandle.standardError.write(Data("error: \(error)\n".utf8))
     exit(1)

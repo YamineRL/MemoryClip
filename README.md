@@ -1,4 +1,10 @@
-# MemoryClip
+<p align="center">
+  <img src="docs/logo.png" alt="" width="128" height="128">
+</p>
+
+<h1 align="center">MemoryClip</h1>
+
+<p align="center">Your clipboard, remembered. Locally.</p>
 
 A local-first, privacy-focused menu-bar clipboard manager for macOS. MemoryClip keeps
 a history of everything you copy and gives you keyboard-first access to it. It also
