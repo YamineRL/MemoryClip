@@ -120,9 +120,17 @@ enum Design {
         /// filter chips beside it do not shift as a query is typed.
         static let searchFieldWidth: CGFloat = 150
 
-        /// The onboarding window.
+        /// The onboarding window. `OnboardingController` builds its window's
+        /// content rect from these too, so the frame is stated once.
+        ///
+        /// The height is the Settings window's, and for the same reason: the
+        /// tour stopped being pages of prose when it started carrying the
+        /// destination picker and the launch-at-login switch. At the 420 points
+        /// it used to be, the notes page pushed its picker below the fold —
+        /// still reachable by scrolling, which is precisely the wrong place for
+        /// the one control the page exists to offer.
         static let sheetWidth: CGFloat = 520
-        static let sheetHeight: CGFloat = 420
+        static let sheetHeight: CGFloat = settingsHeight
 
         /// The Settings window, which is a sidebar plus a detail pane rather
         /// than a tab strip: the width is `settingsSidebarWidth` on top of the

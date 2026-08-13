@@ -80,8 +80,16 @@ final class OnboardingController: NSObject, NSWindowDelegate {
     private func ensureWindow() {
         guard window == nil else { return }
 
+        // The content rect comes from the same tokens `OnboardingView` frames
+        // itself with. Spelled out separately, the two drifted the moment the
+        // view grew: the window kept its old 420 points and clipped the page.
         let window = OnboardingWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 520, height: 420),
+            contentRect: NSRect(
+                x: 0,
+                y: 0,
+                width: Design.Size.sheetWidth,
+                height: Design.Size.sheetHeight
+            ),
             styleMask: [.titled, .closable],
             backing: .buffered,
             defer: false

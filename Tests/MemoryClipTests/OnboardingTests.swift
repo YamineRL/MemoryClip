@@ -139,6 +139,68 @@ final class OnboardingTests: XCTestCase {
         )
     }
 
+    // MARK: Inline setup
+
+    /// The tour offers controls, not just prose, and each one is offered
+    /// exactly once. A case nothing shows is a control the user can never
+    /// reach; two pages sharing a case is the same switch asked for twice,
+    /// which is how a tour starts turning into the Settings window.
+    func testEverySetupControlIsOfferedOnExactlyOnePage() {
+        let offered = OnboardingFlow.steps.compactMap(\.setup)
+        XCTAssertEqual(
+            Set(offered).count, offered.count,
+            "two pages offer the same setting: \(offered.map(\.rawValue))"
+        )
+        for control in OnboardingSetup.allCases {
+            XCTAssertTrue(
+                offered.contains(control),
+                "\(control.rawValue) is defined but no step shows it, so nothing can reach it"
+            )
+        }
+    }
+
+    /// The destination page is the reason the tour gained controls at all: the
+    /// Markdown folder has no default, so a user who never opens Settings
+    /// meets `NoteError.noDestinationConfigured` instead of a note. It must
+    /// keep both halves — the action that writes a note, and the picker.
+    func testNoteStepOffersTheDestinationPicker() throws {
+        let step = try XCTUnwrap(OnboardingFlow.steps.first { $0.id == "notes" })
+        XCTAssertEqual(
+            step.setup, .noteDestination,
+            "the notes page must carry the destination picker, not merely describe it"
+        )
+        let text = step.bullets.joined(separator: " ")
+        XCTAssertTrue(
+            text.contains("Save as Note"),
+            "the page must name the panel action that writes a note, as ClipCardView spells it: \(text)"
+        )
+        XCTAssertTrue(
+            text.contains("Settings → Notes"),
+            "the page must say where the same settings live afterwards: \(text)"
+        )
+    }
+
+    /// Nothing the tour offers may become a gate. The flow is what `Next` and
+    /// `Done` consult, and it has no notion of a step being satisfied — this
+    /// pins that: every page is reachable and leavable with the setup
+    /// untouched, which is what makes the controls optional in fact and not
+    /// just in intent.
+    func testEveryPageIsPassableWithoutUsingItsControl() {
+        var index = 0
+        while !OnboardingFlow.isLast(index) {
+            let next = OnboardingFlow.nextIndex(after: index)
+            XCTAssertEqual(
+                next, index + 1,
+                "\(OnboardingFlow.step(at: index).id) did not advance — a step that holds the tour up is a blocking step"
+            )
+            index = next
+        }
+        XCTAssertEqual(
+            index, OnboardingFlow.count - 1,
+            "walking Next without configuring anything must reach the last page, where Done lives"
+        )
+    }
+
     // MARK: Navigation / index clamping
 
     func testNextAdvancesOneStep() {
