@@ -56,6 +56,17 @@ final class NoteCoordinator {
     private let refiner: any NoteRefiner
     private var task: Task<Void, Never>?
     private var runID = 0
+
+    /// A `processPending()` that arrived while a drain was already running.
+    ///
+    /// The drain re-queries as it loops, so a kick during one is *usually*
+    /// picked up for free. The exception is the instant between its last
+    /// query coming back empty and the handle being cleared: recognition
+    /// finishing in that window would have its kick dropped, and the clip
+    /// would sit unrefined until the next launch. Noting the request and
+    /// re-arming at the end closes that window — the same shape
+    /// `ScreenshotWatcher` uses for `rescanRequested`.
+    private var rerunRequested = false
     /// See `OCRCoordinator.settingsObserver` — same lifetime, same reason for
     /// the `nonisolated(unsafe)`: `deinit` is nonisolated and has to
     /// unregister it.
@@ -100,14 +111,23 @@ final class NoteCoordinator {
     /// Calls while a run is in flight are ignored; the in-flight run picks up
     /// whatever arrives while it loops.
     func processPending() {
-        guard task == nil else { return }
+        guard task == nil else {
+            rerunRequested = true
+            return
+        }
+        rerunRequested = false
         runID &+= 1
         let token = runID
         task = Task { @MainActor [weak self] in
             let backlogRemains = await self?.drain() ?? false
             guard let self, self.runID == token else { return }
             self.task = nil
-            if backlogRemains { self.scheduleResume(token: token) }
+            if backlogRemains {
+                self.scheduleResume(token: token)
+            } else if self.rerunRequested {
+                self.rerunRequested = false
+                self.processPending()
+            }
         }
     }
 
@@ -115,6 +135,7 @@ final class NoteCoordinator {
     func stop() {
         task?.cancel()
         task = nil
+        rerunRequested = false
         runID &+= 1
     }
 
