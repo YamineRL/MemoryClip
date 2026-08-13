@@ -15,6 +15,8 @@ private struct StubTranslator: NoteTranslator {
         self.translate = translate
     }
 
+    func supportedLanguages() async -> [Locale.Language] { [Locale.Language(identifier: "ar")] }
+
     func readiness(for language: Locale.Language) async -> TranslationReadiness { .ready }
 
     func translate(_ text: String, from language: Locale.Language) async -> TranslatedText? {
@@ -372,5 +374,65 @@ final class TranslationPipelineTests: XCTestCase {
         let refreshed = try XCTUnwrap(store.item(withUUID: item.uuid))
         XCTAssertEqual(refreshed.refinedTags, ["meeting"])
         XCTAssertEqual(refreshed.translatedText, "The meeting is on Tuesday")
+    }
+}
+
+// MARK: - The language menu
+
+final class TranslationCatalogTests: XCTestCase {
+    /// Shaped like the framework's own list on macOS 26.5: maximal
+    /// identifiers, several regions per language, both Chinese scripts.
+    private let supported = [
+        "en-Latn-US", "en-Latn-GB", "ar-Arab-AE", "zh-Hans-CN", "zh-Hant-TW", "zh-Hant-HK",
+        "es-Latn-ES", "es-Latn-MX", "fr-Latn-FR", "fr-Latn-CA", "da-Latn-DK", "th-Thai-TH",
+    ].map(Locale.Language.init(identifier:))
+
+    private func menu() -> [TranslationLanguage] {
+        TranslationCatalog.menu(from: supported, excluding: Locale.Language(identifier: "en-US"))
+    }
+
+    func testTargetLanguageIsNotOffered() {
+        XCTAssertFalse(menu().contains { $0.language.languageCode?.identifier == "en" })
+    }
+
+    /// Regions collapse — three Spanishes is a choice with no right answer —
+    /// but scripts do not: Simplified and Traditional are not the same text.
+    func testRegionsCollapseAndScriptsDoNot() {
+        let ids = menu().map(\.id)
+        XCTAssertEqual(ids.filter { $0.hasPrefix("es") }.count, 1)
+        XCTAssertEqual(ids.filter { $0.hasPrefix("fr") }.count, 1)
+        XCTAssertTrue(ids.contains("zh-Hans"))
+        XCTAssertTrue(ids.contains("zh-Hant"))
+    }
+
+    /// The script is spelled out only where a language has more than one, so
+    /// the list reads "Danish", not "Danish (Latin)".
+    func testNamesCarryTheScriptOnlyWhenItDisambiguates() {
+        let names = Dictionary(uniqueKeysWithValues: menu().map { ($0.id, $0.name) })
+        XCTAssertEqual(names["da-Latn"], "Danish")
+        XCTAssertEqual(names["ar-Arab"], "Arabic")
+        XCTAssertEqual(names["th-Thai"], "Thai")
+        XCTAssertTrue(names["zh-Hans"]?.contains("Simplified") == true, "\(names["zh-Hans"] ?? "nil")")
+        XCTAssertTrue(names["zh-Hant"]?.contains("Traditional") == true, "\(names["zh-Hant"] ?? "nil")")
+    }
+
+    func testMenuIsSortedByName() {
+        let names = menu().map(\.name)
+        XCTAssertEqual(names, names.sorted { $0.localizedStandardCompare($1) == .orderedAscending })
+    }
+
+    /// The language object handed back is the framework's own, never one
+    /// rebuilt from the row's id.
+    func testRowsCarryTheFrameworksOwnLanguage() throws {
+        let arabic = try XCTUnwrap(menu().first { $0.id == "ar-Arab" })
+        XCTAssertEqual(arabic.language.maximalIdentifier, "ar-Arab-AE")
+    }
+
+    /// The pipeline records what the recognizer saw ("ar"), which is not how
+    /// the framework spells it ("ar-Arab-AE") — the menu still has to match.
+    func testDetectedIdentifiersMatchTheirRow() {
+        XCTAssertEqual(TranslationCatalog.row(matching: "ar", in: menu())?.id, "ar-Arab")
+        XCTAssertEqual(TranslationCatalog.row(matching: "zh-Hans", in: menu())?.id, "zh-Hans")
+        XCTAssertNil(TranslationCatalog.row(matching: "sw", in: menu()))
     }
 }

@@ -33,6 +33,14 @@ import Translation
 struct AppleTranslator: NoteTranslator {
     init() {}
 
+    func supportedLanguages() async -> [Locale.Language] {
+        #if canImport(Translation)
+        return await LanguageAvailability().supportedLanguages
+        #else
+        return []
+        #endif
+    }
+
     func readiness(for language: Locale.Language) async -> TranslationReadiness {
         #if canImport(Translation)
         switch await LanguageAvailability().status(from: language, to: NoteTranslation.target) {
@@ -141,6 +149,7 @@ struct AppleTranslator: NoteTranslator {
 /// be on the machine running them.
 struct DisabledTranslator: NoteTranslator {
     init() {}
+    func supportedLanguages() async -> [Locale.Language] { [] }
     func readiness(for language: Locale.Language) async -> TranslationReadiness { .unsupported }
     func translate(_ text: String, from language: Locale.Language) async -> TranslatedText? { nil }
 }

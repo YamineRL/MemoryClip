@@ -230,11 +230,17 @@ and the note's title, summary and tags are written from the English, so a note c
 in Arabic is still findable in a vault you search in English.
 
 macOS ships some translation languages and downloads the rest on demand, and only the
-Settings window can start a download. When MemoryClip meets a language whose assets are
-missing it writes the note untranslated in the language it was captured in, and lists the
-language under **Settings → Notes → Translation** with a **Download** button. Clips
-captured before the download keep the text they were saved with; screenshot the page
-again to get a translated note. The switch above it turns the whole thing off.
+Settings window can start a download — a translation session created off a view is not
+allowed to ask. **Settings → Notes → Translation** lists every language Apple can
+translate into English (22 on macOS 26), says whether it is already downloaded, and
+fetches it when it is not. The pack goes into the store the whole system shares, so a
+language you fetch here is the same one Translate and Safari use.
+
+When MemoryClip meets a language whose assets are missing it writes the note untranslated
+rather than failing, and says so in Settings — the language it needed is preselected in
+the menu. Clips captured before the download keep the text they were saved with;
+screenshot the page again to get a translated note. The switch above the menu turns the
+whole thing off.
 
 Translation is also what makes the on-device model useful here: it reads 23 languages and
 Vision now recognises 30, so for a screenshot in the gap — Arabic, Russian, Thai — the
