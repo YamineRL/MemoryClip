@@ -4,45 +4,45 @@
 <dict>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>en</string>
+	<key>CFBundleDisplayName</key>
+	<string>MemoryClip</string>
 	<key>CFBundleExecutable</key>
 	<string>MemoryClip</string>
-	<key>CFBundleIdentifier</key>
-	<string>app.memoryclip</string>
 	<key>CFBundleIconFile</key>
 	<string>AppIcon</string>
+	<key>CFBundleIdentifier</key>
+	<string>app.memoryclip</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
 	<key>CFBundleName</key>
-	<string>MemoryClip</string>
-	<key>CFBundleDisplayName</key>
 	<string>MemoryClip</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
-	<string>0.1.0</string>
-	<key>CFBundleVersion</key>
-	<string>1</string>
-	<key>CFBundleInfoDictionaryVersion</key>
-	<string>6.0</string>
+	<string>0.2.42</string>
 	<key>CFBundleSupportedPlatforms</key>
 	<array>
 		<string>MacOSX</string>
 	</array>
+	<key>CFBundleVersion</key>
+	<string>2</string>
 	<key>LSApplicationCategoryType</key>
 	<string>public.app-category.productivity</string>
 	<key>LSMinimumSystemVersion</key>
 	<string>26.0</string>
 	<key>LSUIElement</key>
 	<true/>
-	<key>NSHighResolutionCapable</key>
-	<true/>
-	<key>NSPrincipalClass</key>
-	<string>NSApplication</string>
 	<key>NSAppleEventsUsageDescription</key>
 	<string>MemoryClip needs permission to control Notes so it can save a screenshot's text as a note. It is only used when you choose Notes as your note destination.</string>
 	<key>NSDesktopFolderUsageDescription</key>
 	<string>MemoryClip watches your screenshot folder — the Desktop, unless you changed it — so new screenshots can be kept in your clipboard history.</string>
 	<key>NSDocumentsFolderUsageDescription</key>
 	<string>MemoryClip writes notes into the folder you choose, which is often inside Documents.</string>
+	<key>NSHighResolutionCapable</key>
+	<true/>
 	<key>NSHumanReadableCopyright</key>
 	<string>© 2026 MemoryClip</string>
+	<key>NSPrincipalClass</key>
+	<string>NSApplication</string>
 </dict>
 </plist>
