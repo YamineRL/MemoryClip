@@ -70,13 +70,27 @@ final class NotePipelineTests: XCTestCase {
         try? FileManager.default.removeItem(at: root)
     }
 
+    /// - Parameter text: drawn into the PNG when the test needs real
+    ///   recognition to happen. The default renders a blank image, which is
+    ///   all the tests that call `applyOCR` themselves need.
     @discardableResult
-    private func writeScreenshot(named name: String) throws -> URL {
-        let size = NSSize(width: 200, height: 80)
+    private func writeScreenshot(named name: String, text: String? = nil) throws -> URL {
+        let size = text == nil
+            ? NSSize(width: 200, height: 80)
+            : NSSize(width: 900, height: 200)
         let image = NSImage(size: size)
         image.lockFocus()
         NSColor.white.setFill()
         NSRect(origin: .zero, size: size).fill()
+        if let text {
+            (text as NSString).draw(
+                at: NSPoint(x: 30, y: 60),
+                withAttributes: [
+                    .font: NSFont.systemFont(ofSize: 56, weight: .semibold),
+                    .foregroundColor: NSColor.black,
+                ]
+            )
+        }
         image.unlockFocus()
         guard let tiff = image.tiffRepresentation,
               let rep = NSBitmapImageRep(data: tiff),
@@ -256,6 +270,74 @@ final class NotePipelineTests: XCTestCase {
         XCTAssertNil(try XCTUnwrap(store.item(withUUID: short.uuid)).notePath)
         XCTAssertNotNil(try XCTUnwrap(store.item(withUUID: long.uuid)).notePath)
         XCTAssertEqual(try noteFiles().count, 1)
+    }
+
+    /// The handoff AppDelegate makes between the two coordinators.
+    ///
+    /// This is the wiring that was missing: recognition filled in `ocrText`
+    /// and stopped there, so refinement — and with it every automatic note —
+    /// only ever ran at launch. A screenshot taken while the app was up was
+    /// recognised and then sat in the queue until the next relaunch. The
+    /// assertion is deliberately end-to-end (a real file in the vault)
+    /// rather than "the callback fired": what broke was the chain, not a
+    /// closure.
+    func testRecognitionHandsOffToRefinementAndWritesANote() async throws {
+        UserDefaults.standard.set(true, forKey: OCRCoordinator.enabledKey)
+        UserDefaults.standard.set(true, forKey: NoteSettingsKeys.autoNoteEnabled)
+        UserDefaults.standard.set(10, forKey: NoteSettingsKeys.autoNoteMinimumCharacters)
+        defer { UserDefaults.standard.set(false, forKey: NoteSettingsKeys.autoNoteEnabled) }
+
+        let url = try writeScreenshot(named: "Handoff.png", text: "DEPLOY CHECKLIST BUILD")
+        let store = try ClipStore(inMemory: true)
+        let item = try XCTUnwrap(store.insertScreenshot(at: url))
+
+        let notes = NoteCoordinator(store: store, refiner: StubRefiner())
+        let ocr = OCRCoordinator(store: store)
+        // Exactly what AppDelegate wires up.
+        ocr.onRecognition = { [weak notes] in notes?.processPending() }
+        ocr.processPending()
+
+        var attempts = 0
+        while try noteFiles().isEmpty, attempts < 150 {
+            try await Task.sleep(for: .milliseconds(100))
+            attempts += 1
+        }
+        ocr.stop()
+        notes.stop()
+
+        let refreshed = try XCTUnwrap(store.item(withUUID: item.uuid))
+        XCTAssertNotNil(refreshed.ocrText, "recognition never ran")
+        XCTAssertTrue(refreshed.refineAttempted, "recognition never woke refinement")
+        XCTAssertNotNil(refreshed.notePath, "the clip was refined but no note was written")
+        XCTAssertEqual(try noteFiles().count, 1)
+    }
+
+    /// A kick that lands in the instant between the drain's last empty query
+    /// and its handle being cleared must not be dropped — that clip would
+    /// otherwise wait for the next launch.
+    func testAKickDuringADrainIsNotLost() async throws {
+        let store = try ClipStore(inMemory: true)
+        let first = try XCTUnwrap(store.insertScreenshot(at: try writeScreenshot(named: "First.png")))
+        store.applyOCR("the first recognised paragraph, long enough to refine", toClipWith: first.uuid)
+
+        let coordinator = NoteCoordinator(store: store, refiner: StubRefiner())
+        coordinator.processPending()
+
+        // Arrives while the first drain is in flight, and queues a clip the
+        // running drain may already have queried past.
+        let second = try XCTUnwrap(store.insertScreenshot(at: try writeScreenshot(named: "Second.png")))
+        store.applyOCR("the second recognised paragraph, also long enough", toClipWith: second.uuid)
+        coordinator.processPending()
+
+        var attempts = 0
+        while !store.pendingRefinement(limit: 1).isEmpty, attempts < 100 {
+            try await Task.sleep(for: .milliseconds(50))
+            attempts += 1
+        }
+        coordinator.stop()
+
+        XCTAssertTrue(store.pendingRefinement(limit: 10).isEmpty)
+        XCTAssertTrue(try XCTUnwrap(store.item(withUUID: second.uuid)).refineAttempted)
     }
 
     // MARK: - Draft assembly

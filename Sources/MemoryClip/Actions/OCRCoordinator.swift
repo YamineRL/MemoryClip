@@ -57,6 +57,20 @@ final class OCRCoordinator {
         return defaults.bool(forKey: enabledKey)
     }
 
+    /// Called on the main actor after a batch has had its recognition
+    /// results applied, when at least one clip came back with text.
+    ///
+    /// Recognition is the *middle* of the pipeline, not the end: the text it
+    /// writes is what refinement and note export consume. Without this hook
+    /// those two only ever ran at launch, so a screenshot taken while the app
+    /// was up was recognised and then sat there — the clip had `ocrText` and
+    /// nothing ever asked for a note. AppDelegate wires this to
+    /// `NoteCoordinator.processPending()`.
+    ///
+    /// Fired per batch rather than per drain so a long catch-up starts
+    /// producing notes immediately instead of at the end of the backlog.
+    var onRecognition: (@MainActor () -> Void)?
+
     private let store: ClipStore
     private var task: Task<Void, Never>?
     /// Identifies the drain that owns `task`. A run whose token no longer
@@ -178,15 +192,21 @@ final class OCRCoordinator {
             guard !pending.isEmpty else { return false }
 
             let results = await Self.recognizeAll(pending, concurrency: Self.concurrency)
+            var recognizedAny = false
             for (uuid, text) in results {
                 // ocrAttempted is set here even when text is nil, so a clip
                 // Vision could make nothing of is never re-queued forever.
                 store.applyOCR(text, toClipWith: uuid)
                 if let text {
+                    recognizedAny = true
                     log.notice("OCR extracted \(text.count) characters from an image clip")
                 }
             }
             processed += results.count
+            // Only when there is text: a batch Vision made nothing of leaves
+            // no clip pending refinement, so waking that stage would be a
+            // query for an empty queue.
+            if recognizedAny { onRecognition?() }
 
             // Anything skipped (OCR switched off, or cancelled, mid-batch)
             // is left pending on purpose: it is picked up when OCR is

@@ -108,6 +108,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self?.ocrCoordinator.processPending()
         }
 
+        // …and recognised text hands on to refinement, which is what writes
+        // the note. Without this the chain stopped at OCR: only the catch-up
+        // call below ever started refinement, so a screenshot taken while the
+        // app was running never became a note until the next launch.
+        ocrCoordinator.onRecognition = { [weak self] in
+            self?.noteCoordinator.processPending()
+        }
+
         screenshotFolderObserver = NotificationCenter.default.addObserver(
             forName: .memoryClipScreenshotFolderChanged,
             object: nil,
