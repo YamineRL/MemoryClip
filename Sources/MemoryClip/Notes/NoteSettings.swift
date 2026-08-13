@@ -18,6 +18,13 @@ enum NoteSettingsKeys {
     // Refinement
     static let refineEnabled = "noteRefineEnabled"
 
+    // Translation
+    static let translateEnabled = "noteTranslateEnabled"
+    /// Languages the pipeline met and could not translate because their
+    /// assets are not downloaded. Written by `NoteTranslation`, read by
+    /// Settings — which is the only place that can start the download.
+    static let translationPending = "noteTranslationPending"
+
     // Notes
     static let autoNoteEnabled = "autoNoteEnabled"
     static let autoNoteMinimumCharacters = "autoNoteMinimumCharacters"
@@ -32,11 +39,13 @@ enum NoteSettingsKeys {
     /// a folder the user has to grant access to) and automatic note writing
     /// (a note per screenshot would bury a vault — the manual action is the
     /// default way in). Refinement is ON but inert until something asks for
-    /// a note or a screenshot is captured.
+    /// a note or a screenshot is captured, and so is translation, which in
+    /// addition only ever fires for text that is not already English.
     static func registerDefaults() {
         UserDefaults.standard.register(defaults: [
             screenshotCaptureEnabled: false,
             refineEnabled: true,
+            translateEnabled: true,
             autoNoteEnabled: false,
             autoNoteMinimumCharacters: 80,
             destination: NoteDestination.markdownVault.rawValue,
