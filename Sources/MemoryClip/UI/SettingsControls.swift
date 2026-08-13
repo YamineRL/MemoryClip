@@ -1,0 +1,448 @@
+import SwiftUI
+import ServiceManagement
+
+/// The controls MemoryClip has to offer in more than one window.
+///
+/// Everything here started life inside `SettingsView` as a private type. It
+/// moved when the first-run tour stopped merely *describing* configuration and
+/// started carrying it: a user is asked where notes should go while they are
+/// being told notes exist, not sent to a pane to hunt for the same three-way
+/// picker afterwards. That only works if there is one picker — a second copy in
+/// the tour would be free to drift from the pane, and, worse, free to grow its
+/// own folder-bookmark handling, which is the one piece of this that macOS
+/// punishes getting wrong (see `FolderBookmark`).
+///
+/// So the rule for this file: a control lands here the moment a second window
+/// needs it, and both windows then render the same struct with the same
+/// settings keys behind it. The tour never writes a key the Settings window
+/// cannot see, and never invents one of its own.
+
+// MARK: - Form furniture
+
+/// The explanatory line that sits under a settings control.
+///
+/// Was repeated ten times as `Text(...).font(.caption).foregroundStyle(.secondary)`;
+/// naming it keeps every hint on the same size, colour and wrapping rule, and
+/// gives one place to adjust the contrast of the whole settings window.
+struct SettingsHint: View {
+    private let text: String
+
+    init(_ text: String) {
+        self.text = text
+    }
+
+    var body: some View {
+        Text(text)
+            .font(.caption)
+            .foregroundStyle(Color(nsColor: .secondaryLabelColor))
+            // Long hints must wrap rather than being truncated to one line.
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+/// The tinted, rounded glyph that leads a settings row.
+///
+/// Gives every control the same leading slot, so a form of otherwise
+/// unrelated toggles and pickers scans as one column instead of a wall of
+/// left-aligned sentences. The colour is what distinguishes a row at a
+/// glance; the symbol says which one.
+struct SettingsIcon: View {
+    let symbol: String
+    let tint: Color
+    var size: CGFloat = Design.Size.settingsIcon
+    var radius: CGFloat = Design.Radius.small
+
+    /// The glyph is set at 55% of the tile — the ratio the 20-point row tile
+    /// was already drawn at — so the larger header tile is the same badge
+    /// scaled up rather than a second, differently-proportioned one.
+    private var glyphSize: CGFloat { size * 0.55 }
+
+    var body: some View {
+        RoundedRectangle(cornerRadius: radius, style: .continuous)
+            .fill(tint.gradient)
+            .frame(width: size, height: size)
+            .overlay {
+                Image(systemName: symbol)
+                    .font(.system(size: glyphSize, weight: .semibold))
+                    // The tiles are saturated system colours, which macOS
+                    // tunes to stay legible under white in both appearances.
+                    .foregroundStyle(.white)
+            }
+            .accessibilityHidden(true)
+    }
+}
+
+/// An inline message that has to be noticed — a launch-at-login failure, the
+/// Automation permission Apple Notes needs, a translation download that did
+/// not finish.
+///
+/// A bare red caption disappears into a grouped form; a tinted, outlined
+/// block with its own glyph reads as "something went wrong here" without
+/// resorting to an alert.
+struct SettingsCallout: View {
+    let text: String
+    var symbol: String = "exclamationmark.triangle.fill"
+    // `.systemRed`, which macOS retunes per appearance, rather than the flat
+    // `.red` that reads muddy on a dark form background.
+    var tint: Color = Color(nsColor: .systemRed)
+
+    var body: some View {
+        HStack(alignment: .firstTextBaseline, spacing: Design.Space.snug) {
+            Image(systemName: symbol)
+                .foregroundStyle(tint)
+                .accessibilityHidden(true)
+            Text(text)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .font(.caption)
+        .padding(.horizontal, Design.Space.roomy)
+        .padding(.vertical, Design.Space.normal)
+        .designPane(radius: Design.Radius.control, fill: tint.opacity(0.12))
+    }
+}
+
+// MARK: - Launch at login
+
+/// The launch-at-login switch, and the failure `SMAppService` only reports at
+/// the moment you ask it to register.
+///
+/// Shared with the tour because the first launch is when the question is
+/// actually live: MemoryClip has no Dock icon to be relaunched from, so a user
+/// who does not turn this on meets it again only by remembering it exists. One
+/// switch, reversible, needing no permission and no picker — which is the whole
+/// bar for something appearing on a page of the tour.
+///
+/// - Parameter showsHint: the tour's welcome page already says MemoryClip is a
+///   menu-bar app with no Dock icon, so it turns the line off rather than
+///   printing the same sentence twice on one page.
+struct LaunchAtLoginToggle: View {
+    var showsHint: Bool = true
+
+    /// Read from the service rather than stored: the login item is launchd's
+    /// state, not MemoryClip's, and it can be revoked in System Settings →
+    /// General → Login Items while the app is running.
+    @State private var launchAtLogin = SMAppService.mainApp.status == .enabled
+    @State private var launchAtLoginError: String?
+
+    var body: some View {
+        Group {
+            // An explicit HStack rather than a labelled `Toggle` (or a
+            // `LabeledContent`): both of those lean on the enclosing `Form` to
+            // put the switch on the trailing edge, and the tour has no Form —
+            // there the labelled Toggle drew as "[switch] Launch at login" and
+            // the LabeledContent drew the pair centred. A Spacer is read the
+            // same way by both windows.
+            HStack(spacing: Design.Space.normal) {
+                Label {
+                    Text("Launch at login")
+                } icon: {
+                    SettingsIcon(symbol: "power", tint: Color(nsColor: .systemGreen))
+                }
+                Spacer(minLength: Design.Space.normal)
+                Toggle("Launch at login", isOn: launchAtLoginBinding)
+                    .labelsHidden()
+            }
+            if let launchAtLoginError {
+                SettingsCallout(text: launchAtLoginError)
+            }
+            if showsHint {
+                SettingsHint("MemoryClip runs as a menu-bar app: no Dock icon, no window until you open the panel.")
+            }
+        }
+    }
+
+    /// Binds the toggle to SMAppService so registration errors surface in-UI.
+    private var launchAtLoginBinding: Binding<Bool> {
+        Binding(
+            get: { launchAtLogin },
+            set: { newValue in
+                do {
+                    if newValue {
+                        try SMAppService.mainApp.register()
+                    } else {
+                        try SMAppService.mainApp.unregister()
+                    }
+                    launchAtLoginError = nil
+                } catch {
+                    launchAtLoginError = launchAtLoginMessage(for: error)
+                }
+                launchAtLogin = SMAppService.mainApp.status == .enabled
+            }
+        )
+    }
+
+    /// Turns SMAppService's opaque failures into something a user can act on.
+    ///
+    /// The common one is `EINVAL` ("Invalid argument"), which launchd returns
+    /// when the bundle lives outside `/Applications` — running the app straight
+    /// out of `dist/` hits this every time. The raw message gives no hint of
+    /// that, so name the actual requirement.
+    private func launchAtLoginMessage(for error: Error) -> String {
+        let bundlePath = Bundle.main.bundleURL.path
+        let installed =
+            bundlePath.hasPrefix("/Applications/")
+            || bundlePath.hasPrefix(NSHomeDirectory() + "/Applications/")
+        if !installed {
+            return "Launch at login needs MemoryClip in your Applications folder. Move MemoryClip.app there, reopen it, and try again."
+        }
+        return error.localizedDescription
+    }
+}
+
+// MARK: - Note destination
+
+/// Where notes are written, and whatever the chosen destination still needs
+/// before it can be written to.
+///
+/// The three destinations are not equally ready out of the box, and that is
+/// what this view exists to close: Apple Notes has a folder name registered
+/// ("MemoryClip") and works as soon as macOS grants Automation, a Shortcut is
+/// unusable until one is named, and the Markdown folder — the default — has no
+/// folder at all until someone picks one in an `NSOpenPanel`. That last case is
+/// the reason the picker is offered during the tour: `NoteSinkFactory` throws
+/// `noDestinationConfigured` for it, so a user who never visits Settings meets
+/// the feature as an error message.
+///
+/// - Parameter showsDetail: Settings shows everything the destination can be
+///   tuned with — the attachment switches and the guide to which apps read
+///   these files. The tour shows only the fields a destination cannot work
+///   without, because a page of the tour that grows into the Notes pane is a
+///   worse page than the one it replaced.
+struct NoteDestinationSetup: View {
+    var showsDetail: Bool = true
+
+    @AppStorage(NoteSettingsKeys.destination) private var destinationRaw = NoteDestination.markdownVault.rawValue
+    @AppStorage(NoteSettingsKeys.copyAttachments) private var copyAttachments = true
+    @AppStorage(NoteSettingsKeys.vaultAttachmentFolder) private var attachmentFolder = "attachments"
+    @AppStorage(NoteSettingsKeys.notesAppFolder) private var notesAppFolder = "MemoryClip"
+    @AppStorage(NoteSettingsKeys.shortcutName) private var shortcutName = ""
+
+    /// The folder the stored bookmark currently resolves to, so both windows
+    /// open showing what is already configured rather than "Not chosen yet" —
+    /// re-running the tour must not read as though the vault were gone.
+    /// Resolved in `onAppear` because resolving a security-scoped bookmark is
+    /// filesystem work, not something to do in a property initialiser that
+    /// SwiftUI may run on every body evaluation.
+    @State private var vault: URL?
+
+    private var destination: NoteDestination {
+        NoteDestination(rawValue: destinationRaw) ?? .markdownVault
+    }
+
+    var body: some View {
+        // A `Group`, not a `VStack`: inside a `Form` these have to arrive as
+        // separate rows (which is what gives each its own inset and divider),
+        // and inside the tour's plain stack they simply stack. A container
+        // would fix one of those two and break the other.
+        Group {
+            Picker(selection: $destinationRaw) {
+                ForEach(NoteDestination.allCases) { option in
+                    Text(option.title).tag(option.rawValue)
+                }
+            } label: {
+                Label {
+                    Text("Write notes to")
+                } icon: {
+                    SettingsIcon(symbol: "square.and.arrow.down.fill", tint: Color(nsColor: .systemTeal))
+                }
+            }
+            .pickerStyle(.segmented)
+            // Attached to the picker rather than to the Group above: a Group is
+            // transparent, so a modifier on it runs once per child — three
+            // bookmark resolutions, two of them on rows that come and go with
+            // the selection. The picker is the child that is always present.
+            .onAppear { vault = FolderBookmark.resolve(key: NoteSettingsKeys.vaultBookmark) }
+
+            switch destination {
+            case .markdownVault:
+                markdownOptions
+            case .notesApp:
+                notesAppOptions
+            case .shortcut:
+                shortcutOptions
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var markdownOptions: some View {
+        HStack(spacing: Design.Space.normal) {
+            Label {
+                VStack(alignment: .leading, spacing: Design.Space.hair) {
+                    Text("Folder")
+                    Text(vault?.path(percentEncoded: false) ?? "Not chosen yet")
+                        .font(.caption)
+                        .foregroundStyle(Color(nsColor: .secondaryLabelColor))
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                }
+            } icon: {
+                SettingsIcon(symbol: "folder.fill", tint: Color(nsColor: .systemBlue))
+            }
+            // The label takes the width rather than a Spacer taking what is
+            // left of it: a chosen folder's path is far wider than "Not chosen
+            // yet", and letting the label size to its content walked the
+            // button several hundred points left the moment one was picked.
+            // Pinned this way the button holds still and the path truncates.
+            .frame(maxWidth: .infinity, alignment: .leading)
+            Button("Choose…") { chooseVault() }
+        }
+        if showsDetail {
+            Toggle("Copy the screenshot into the folder", isOn: $copyAttachments)
+            if copyAttachments {
+                HStack(spacing: Design.Space.normal) {
+                    Text("Attachments subfolder")
+                    TextField("Attachments subfolder", text: $attachmentFolder)
+                        .labelsHidden()
+                        // Fills the rest of the row, the way a field labelled
+                        // by an enclosing Form does.
+                        .frame(maxWidth: .infinity)
+                }
+            }
+            MarkdownCompatibilityGuide(copiesAttachments: copyAttachments)
+            SettingsHint("Plain Markdown files with YAML front matter — an Obsidian vault, or anything else that reads .md off disk. Copying the screenshot in is what lets the note embed it, and means the note survives you clearing out your Desktop.")
+        } else {
+            SettingsHint("Plain Markdown files with YAML front matter — an Obsidian vault, or anything else that reads .md off disk. Choosing the folder here is also what grants MemoryClip access to it.")
+        }
+    }
+
+    @ViewBuilder
+    private var notesAppOptions: some View {
+        // The label is spelled out rather than left to the field's own title:
+        // a `TextField`'s title is drawn as a leading label inside a `Form`
+        // and dropped everywhere else, so in the tour — a plain stack — the
+        // field arrived with nothing saying what it was.
+        HStack(spacing: Design.Space.normal) {
+            Text("Notes folder")
+            TextField("Notes folder", text: $notesAppFolder)
+                .labelsHidden()
+                .frame(maxWidth: .infinity)
+        }
+        SettingsCallout(
+            text: "Notes is the one destination that needs a permission: macOS will ask to let MemoryClip control it the first time. The screenshot goes in as a link — Notes does not accept an image through automation.",
+            symbol: "lock.fill",
+            tint: Color(nsColor: .systemOrange)
+        )
+    }
+
+    @ViewBuilder
+    private var shortcutOptions: some View {
+        HStack(spacing: Design.Space.normal) {
+            Text("Shortcut name")
+            TextField("Shortcut name", text: $shortcutName)
+                .labelsHidden()
+                .frame(maxWidth: .infinity)
+        }
+        SettingsHint("MemoryClip runs this Shortcut with the note as its input, so anything Shortcuts can reach — Bear, Things, DEVONthink, a folder in iCloud — can be the destination.")
+    }
+
+    private func chooseVault() {
+        let chosen = FolderBookmark.choose(
+            key: NoteSettingsKeys.vaultBookmark,
+            title: "Choose Note Folder",
+            message: "Pick the folder MemoryClip should write notes into — an Obsidian vault, or any folder of Markdown files.",
+            startingAt: vault
+        )
+        guard let chosen else { return }
+        vault = chosen
+    }
+}
+
+// MARK: - Markdown compatibility
+
+/// "Which app can open these notes, and what do I set?"
+///
+/// A folder of Markdown files is the most portable destination MemoryClip
+/// has and the least self-explanatory: the folder picker asks for a folder
+/// without saying what a good one would be, and the two switches under it
+/// (copy the screenshot in, and where) are the difference between a note that
+/// renders and one that shows a broken embed. That question is answered here
+/// rather than in a README nobody has open while they are choosing a folder.
+///
+/// Collapsed by default — it is reference material, not a step — and the
+/// advice tracks the attachment switch, because which link style the note
+/// gets is exactly what the switch decides.
+private struct MarkdownCompatibilityGuide: View {
+    let copiesAttachments: Bool
+    @State private var expanded = false
+
+    var body: some View {
+        DisclosureGroup(isExpanded: $expanded) {
+            VStack(alignment: .leading, spacing: Design.Space.snug) {
+                Text(preamble)
+                    .foregroundStyle(Color(nsColor: .secondaryLabelColor))
+                ForEach(Self.apps) { app in
+                    VStack(alignment: .leading, spacing: Design.Space.hair) {
+                        Text(app.name).fontWeight(.medium)
+                        Text(app.advice)
+                            .foregroundStyle(Color(nsColor: .secondaryLabelColor))
+                    }
+                }
+                Text(Self.elsewhere)
+                    .foregroundStyle(Color(nsColor: .secondaryLabelColor))
+            }
+            .font(.callout)
+            .padding(.top, Design.Space.hair)
+        } label: {
+            Label {
+                Text("Which apps can open these notes?")
+            } icon: {
+                SettingsIcon(symbol: "questionmark.circle.fill", tint: Color(nsColor: .systemGray))
+            }
+        }
+    }
+
+    /// The two things apps actually differ on, said once so each entry below
+    /// can be a sentence rather than a paragraph.
+    private var preamble: String {
+        let embed = copiesAttachments
+            ? "The screenshot is copied in and embedded as ![[name.png]] — a wiki-style embed that Obsidian and Logseq resolve and most other editors show as plain text."
+            : "The screenshot is not copied, so the note links to it where it sits with an ordinary [Screenshot](file://…) link, which every Markdown editor renders."
+        return """
+            Every note is a plain .md file named "2026-08-13 1422 Title.md", with YAML \
+            front matter (title, created, source, tags, lang) above the text. Anything \
+            that reads Markdown off disk can open one; apps differ on two things only — \
+            whether they understand front matter, and whether they resolve wiki-style \
+            embeds.
+
+            \(embed)
+            """
+    }
+
+    private struct App: Identifiable {
+        let name: String
+        let advice: String
+        var id: String { name }
+    }
+
+    private static let apps: [App] = [
+        App(
+            name: "Obsidian",
+            advice: "Pick your vault folder, or any folder inside it. Keep \"Copy the screenshot into the folder\" on — that is what makes the embed resolve. Front matter shows up as note properties, so tags work as tags and you can query lang, source and created from Dataview."
+        ),
+        App(
+            name: "Logseq",
+            advice: "Pick the \"pages\" folder inside your graph, and set the attachments subfolder to \"assets\" — the folder Logseq keeps its files in. It reads front matter, and re-indexes new files when the graph is reopened."
+        ),
+        App(
+            name: "iA Writer, Typora, Zettlr, VS Code",
+            advice: "Pick any folder these already watch. They render standard Markdown, so turn \"Copy the screenshot into the folder\" off and the note links to the screenshot instead of embedding it — an embed they cannot resolve shows up as literal ![[…]] text."
+        ),
+        App(
+            name: "DEVONthink",
+            advice: "Pick any folder, then index it (File → Index Files and Folders). Indexed notes stay files on disk, so MemoryClip can still update one in place."
+        ),
+        App(
+            name: "iCloud Drive, Dropbox, Syncthing",
+            advice: "A synced folder works like any other. Notes are written whole, so a half-written file is never what syncs."
+        ),
+    ]
+
+    private static let elsewhere = """
+        Bear, Craft, Notion and Things do not keep notes as files. Use the Shortcut \
+        destination for those — MemoryClip hands the note to a Shortcut, which can put it \
+        anywhere Shortcuts reaches. For Apple Notes, use the Notes destination.
+        """
+}

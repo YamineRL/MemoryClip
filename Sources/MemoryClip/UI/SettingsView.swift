@@ -1,5 +1,4 @@
 import SwiftUI
-import ServiceManagement
 import KeyboardShortcuts
 #if canImport(Translation)
 import Translation
@@ -174,90 +173,13 @@ extension SettingsPane {
     }
 }
 
-// MARK: - Shared pieces
+// MARK: - Pane furniture
 
-/// The explanatory line that sits under a settings control.
-///
-/// Was repeated ten times as `Text(...).font(.caption).foregroundStyle(.secondary)`;
-/// naming it keeps every hint on the same size, colour and wrapping rule, and
-/// gives one place to adjust the contrast of the whole settings window.
-private struct SettingsHint: View {
-    private let text: String
-
-    init(_ text: String) {
-        self.text = text
-    }
-
-    var body: some View {
-        Text(text)
-            .font(.caption)
-            .foregroundStyle(Color(nsColor: .secondaryLabelColor))
-            // Long hints must wrap rather than being truncated to one line.
-            .fixedSize(horizontal: false, vertical: true)
-            .frame(maxWidth: .infinity, alignment: .leading)
-    }
-}
-
-/// The tinted, rounded glyph that leads a settings row.
-///
-/// Gives every control the same leading slot, so a form of otherwise
-/// unrelated toggles and pickers scans as one column instead of a wall of
-/// left-aligned sentences. The colour is what distinguishes a row at a
-/// glance; the symbol says which one.
-private struct SettingsIcon: View {
-    let symbol: String
-    let tint: Color
-    var size: CGFloat = Design.Size.settingsIcon
-    var radius: CGFloat = Design.Radius.small
-
-    /// The glyph is set at 55% of the tile — the ratio the 20-point row tile
-    /// was already drawn at — so the larger header tile is the same badge
-    /// scaled up rather than a second, differently-proportioned one.
-    private var glyphSize: CGFloat { size * 0.55 }
-
-    var body: some View {
-        RoundedRectangle(cornerRadius: radius, style: .continuous)
-            .fill(tint.gradient)
-            .frame(width: size, height: size)
-            .overlay {
-                Image(systemName: symbol)
-                    .font(.system(size: glyphSize, weight: .semibold))
-                    // The tiles are saturated system colours, which macOS
-                    // tunes to stay legible under white in both appearances.
-                    .foregroundStyle(.white)
-            }
-            .accessibilityHidden(true)
-    }
-}
-
-/// An inline message that has to be noticed — currently only the
-/// launch-at-login failure.
-///
-/// A bare red caption disappears into a grouped form; a tinted, outlined
-/// block with its own glyph reads as "something went wrong here" without
-/// resorting to an alert.
-private struct SettingsCallout: View {
-    let text: String
-    var symbol: String = "exclamationmark.triangle.fill"
-    // `.systemRed`, which macOS retunes per appearance, rather than the flat
-    // `.red` that reads muddy on a dark form background.
-    var tint: Color = Color(nsColor: .systemRed)
-
-    var body: some View {
-        HStack(alignment: .firstTextBaseline, spacing: Design.Space.snug) {
-            Image(systemName: symbol)
-                .foregroundStyle(tint)
-                .accessibilityHidden(true)
-            Text(text)
-                .fixedSize(horizontal: false, vertical: true)
-                .frame(maxWidth: .infinity, alignment: .leading)
-        }
-        .font(.caption)
-        .padding(.horizontal, Design.Space.roomy)
-        .padding(.vertical, Design.Space.normal)
-        .designPane(radius: Design.Radius.control, fill: tint.opacity(0.12))
-    }
-}
+// `SettingsHint`, `SettingsIcon`, `SettingsCallout`, the launch-at-login
+// switch and the note-destination picker used to live here as private types.
+// They moved to `SettingsControls.swift` when the first-run tour started
+// offering the same setup, so both windows render one implementation instead
+// of two that can drift. What is left below is used by this window only.
 
 /// One key combination in the Shortcuts pane, drawn as a cap.
 ///
@@ -282,23 +204,10 @@ private struct GeneralSettingsPane: View {
     @AppStorage(SettingsKeys.autoPaste) private var autoPaste = true
     @AppStorage(SettingsKeys.appearance) private var appearance: AppearanceSetting = .system
 
-    @State private var launchAtLogin = SMAppService.mainApp.status == .enabled
-    @State private var launchAtLoginError: String?
-
     var body: some View {
         Form {
             Section("Startup") {
-                Toggle(isOn: launchAtLoginBinding) {
-                    Label {
-                        Text("Launch at login")
-                    } icon: {
-                        SettingsIcon(symbol: "power", tint: Color(nsColor: .systemGreen))
-                    }
-                }
-                if let launchAtLoginError {
-                    SettingsCallout(text: launchAtLoginError)
-                }
-                SettingsHint("MemoryClip runs as a menu-bar app: no Dock icon, no window until you open the panel.")
+                LaunchAtLoginToggle()
             }
 
             Section("Appearance") {
@@ -334,43 +243,6 @@ private struct GeneralSettingsPane: View {
         .onChange(of: appearance) { _, newValue in
             applyAppearanceSetting(newValue)
         }
-    }
-
-    /// Binds the toggle to SMAppService so registration errors surface in-UI.
-    private var launchAtLoginBinding: Binding<Bool> {
-        Binding(
-            get: { launchAtLogin },
-            set: { newValue in
-                do {
-                    if newValue {
-                        try SMAppService.mainApp.register()
-                    } else {
-                        try SMAppService.mainApp.unregister()
-                    }
-                    launchAtLoginError = nil
-                } catch {
-                    launchAtLoginError = launchAtLoginMessage(for: error)
-                }
-                launchAtLogin = SMAppService.mainApp.status == .enabled
-            }
-        )
-    }
-
-    /// Turns SMAppService's opaque failures into something a user can act on.
-    ///
-    /// The common one is `EINVAL` ("Invalid argument"), which launchd returns
-    /// when the bundle lives outside `/Applications` — running the app straight
-    /// out of `dist/` hits this every time. The raw message gives no hint of
-    /// that, so name the actual requirement.
-    private func launchAtLoginMessage(for error: Error) -> String {
-        let bundlePath = Bundle.main.bundleURL.path
-        let installed =
-            bundlePath.hasPrefix("/Applications/")
-            || bundlePath.hasPrefix(NSHomeDirectory() + "/Applications/")
-        if !installed {
-            return "Launch at login needs MemoryClip in your Applications folder. Move MemoryClip.app there, reopen it, and try again."
-        }
-        return error.localizedDescription
     }
 }
 
@@ -700,103 +572,6 @@ private struct ScreenshotSettingsPane: View {
     }
 }
 
-// MARK: - Markdown compatibility
-
-/// "Which app can open these notes, and what do I set?"
-///
-/// A folder of Markdown files is the most portable destination MemoryClip
-/// has and the least self-explanatory: the folder picker asks for a folder
-/// without saying what a good one would be, and the two switches under it
-/// (copy the screenshot in, and where) are the difference between a note that
-/// renders and one that shows a broken embed. That question is answered here
-/// rather than in a README nobody has open while they are choosing a folder.
-///
-/// Collapsed by default — it is reference material, not a step — and the
-/// advice tracks the attachment switch, because which link style the note
-/// gets is exactly what the switch decides.
-private struct MarkdownCompatibilityGuide: View {
-    let copiesAttachments: Bool
-    @State private var expanded = false
-
-    var body: some View {
-        DisclosureGroup(isExpanded: $expanded) {
-            VStack(alignment: .leading, spacing: Design.Space.snug) {
-                Text(preamble)
-                    .foregroundStyle(Color(nsColor: .secondaryLabelColor))
-                ForEach(Self.apps) { app in
-                    VStack(alignment: .leading, spacing: Design.Space.hair) {
-                        Text(app.name).fontWeight(.medium)
-                        Text(app.advice)
-                            .foregroundStyle(Color(nsColor: .secondaryLabelColor))
-                    }
-                }
-                Text(Self.elsewhere)
-                    .foregroundStyle(Color(nsColor: .secondaryLabelColor))
-            }
-            .font(.callout)
-            .padding(.top, Design.Space.hair)
-        } label: {
-            Label {
-                Text("Which apps can open these notes?")
-            } icon: {
-                SettingsIcon(symbol: "questionmark.circle.fill", tint: Color(nsColor: .systemGray))
-            }
-        }
-    }
-
-    /// The two things apps actually differ on, said once so each entry below
-    /// can be a sentence rather than a paragraph.
-    private var preamble: String {
-        let embed = copiesAttachments
-            ? "The screenshot is copied in and embedded as ![[name.png]] — a wiki-style embed that Obsidian and Logseq resolve and most other editors show as plain text."
-            : "The screenshot is not copied, so the note links to it where it sits with an ordinary [Screenshot](file://…) link, which every Markdown editor renders."
-        return """
-            Every note is a plain .md file named "2026-08-13 1422 Title.md", with YAML \
-            front matter (title, created, source, tags, lang) above the text. Anything \
-            that reads Markdown off disk can open one; apps differ on two things only — \
-            whether they understand front matter, and whether they resolve wiki-style \
-            embeds.
-
-            \(embed)
-            """
-    }
-
-    private struct App: Identifiable {
-        let name: String
-        let advice: String
-        var id: String { name }
-    }
-
-    private static let apps: [App] = [
-        App(
-            name: "Obsidian",
-            advice: "Pick your vault folder, or any folder inside it. Keep \"Copy the screenshot into the folder\" on — that is what makes the embed resolve. Front matter shows up as note properties, so tags work as tags and you can query lang, source and created from Dataview."
-        ),
-        App(
-            name: "Logseq",
-            advice: "Pick the \"pages\" folder inside your graph, and set the attachments subfolder to \"assets\" — the folder Logseq keeps its files in. It reads front matter, and re-indexes new files when the graph is reopened."
-        ),
-        App(
-            name: "iA Writer, Typora, Zettlr, VS Code",
-            advice: "Pick any folder these already watch. They render standard Markdown, so turn \"Copy the screenshot into the folder\" off and the note links to the screenshot instead of embedding it — an embed they cannot resolve shows up as literal ![[…]] text."
-        ),
-        App(
-            name: "DEVONthink",
-            advice: "Pick any folder, then index it (File → Index Files and Folders). Indexed notes stay files on disk, so MemoryClip can still update one in place."
-        ),
-        App(
-            name: "iCloud Drive, Dropbox, Syncthing",
-            advice: "A synced folder works like any other. Notes are written whole, so a half-written file is never what syncs."
-        ),
-    ]
-
-    private static let elsewhere = """
-        Bear, Craft, Notion and Things do not keep notes as files. Use the Shortcut \
-        destination for those — MemoryClip hands the note to a Shortcut, which can put it \
-        anywhere Shortcuts reaches. For Apple Notes, use the Notes destination.
-        """
-}
-
 // MARK: - Translation downloads
 
 /// The language list and its per-language readiness, held outside any view.
@@ -1102,17 +877,6 @@ private struct NotesSettingsPane: View {
     @AppStorage(NoteSettingsKeys.translateEnabled) private var translateEnabled = true
     @AppStorage(NoteSettingsKeys.autoNoteEnabled) private var autoNoteEnabled = false
     @AppStorage(NoteSettingsKeys.autoNoteMinimumCharacters) private var minimumCharacters = 80
-    @AppStorage(NoteSettingsKeys.destination) private var destinationRaw = NoteDestination.markdownVault.rawValue
-    @AppStorage(NoteSettingsKeys.copyAttachments) private var copyAttachments = true
-    @AppStorage(NoteSettingsKeys.vaultAttachmentFolder) private var attachmentFolder = "attachments"
-    @AppStorage(NoteSettingsKeys.notesAppFolder) private var notesAppFolder = "MemoryClip"
-    @AppStorage(NoteSettingsKeys.shortcutName) private var shortcutName = ""
-
-    @State private var vault: URL?
-
-    private var destination: NoteDestination {
-        NoteDestination(rawValue: destinationRaw) ?? .markdownVault
-    }
 
     var body: some View {
         Form {
@@ -1144,28 +908,10 @@ private struct NotesSettingsPane: View {
                 SettingsHint("A screenshot in Arabic, Japanese or Russian is read in its own language and the note carries both: the text exactly as it was on screen, and an English translation underneath it. Translation runs on this Mac. The title, summary and tags are written from the English, so the note is findable in a vault you search in English.\n\nTick as many languages as you like — those are the ones MemoryClip will translate, and ticking one downloads its assets if macOS does not have them yet. With none ticked it translates any language this Mac can already handle. The packs go into the store the whole system shares, so a language you fetch here is the one Translate and Safari use.")
             }
 
+            // The same view the first-run tour renders, so the folder a user
+            // picked during the tour is the folder this pane shows.
             Section("Destination") {
-                Picker(selection: $destinationRaw) {
-                    ForEach(NoteDestination.allCases) { option in
-                        Text(option.title).tag(option.rawValue)
-                    }
-                } label: {
-                    Label {
-                        Text("Write notes to")
-                    } icon: {
-                        SettingsIcon(symbol: "square.and.arrow.down.fill", tint: Color(nsColor: .systemTeal))
-                    }
-                }
-                .pickerStyle(.segmented)
-
-                switch destination {
-                case .markdownVault:
-                    markdownOptions
-                case .notesApp:
-                    notesAppOptions
-                case .shortcut:
-                    shortcutOptions
-                }
+                NoteDestinationSetup()
             }
 
             Section("When") {
@@ -1187,60 +933,6 @@ private struct NotesSettingsPane: View {
             }
         }
         .formStyle(.grouped)
-        .onAppear { vault = FolderBookmark.resolve(key: NoteSettingsKeys.vaultBookmark) }
-    }
-
-    @ViewBuilder
-    private var markdownOptions: some View {
-        LabeledContent {
-            Button("Choose…") { chooseVault() }
-        } label: {
-            Label {
-                VStack(alignment: .leading, spacing: Design.Space.hair) {
-                    Text("Folder")
-                    Text(vault?.path(percentEncoded: false) ?? "Not chosen yet")
-                        .font(.caption)
-                        .foregroundStyle(Color(nsColor: .secondaryLabelColor))
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-                }
-            } icon: {
-                SettingsIcon(symbol: "folder.fill", tint: Color(nsColor: .systemBlue))
-            }
-        }
-        Toggle("Copy the screenshot into the folder", isOn: $copyAttachments)
-        if copyAttachments {
-            TextField("Attachments subfolder", text: $attachmentFolder)
-        }
-        MarkdownCompatibilityGuide(copiesAttachments: copyAttachments)
-        SettingsHint("Plain Markdown files with YAML front matter — an Obsidian vault, or anything else that reads .md off disk. Copying the screenshot in is what lets the note embed it, and means the note survives you clearing out your Desktop.")
-    }
-
-    @ViewBuilder
-    private var notesAppOptions: some View {
-        TextField("Notes folder", text: $notesAppFolder)
-        SettingsCallout(
-            text: "Notes is the one destination that needs a permission: macOS will ask to let MemoryClip control it the first time. The screenshot goes in as a link — Notes does not accept an image through automation.",
-            symbol: "lock.fill",
-            tint: Color(nsColor: .systemOrange)
-        )
-    }
-
-    @ViewBuilder
-    private var shortcutOptions: some View {
-        TextField("Shortcut name", text: $shortcutName)
-        SettingsHint("MemoryClip runs this Shortcut with the note as its input, so anything Shortcuts can reach — Bear, Things, DEVONthink, a folder in iCloud — can be the destination.")
-    }
-
-    private func chooseVault() {
-        let chosen = FolderBookmark.choose(
-            key: NoteSettingsKeys.vaultBookmark,
-            title: "Choose Note Folder",
-            message: "Pick the folder MemoryClip should write notes into — an Obsidian vault, or any folder of Markdown files.",
-            startingAt: vault
-        )
-        guard let chosen else { return }
-        vault = chosen
     }
 }
 
