@@ -74,12 +74,23 @@ struct RefinementInput: Sendable {
     /// Screenshots are the noisy case — they are the ones carrying window
     /// chrome — so a provider can lean on this when prompting.
     var isScreenshot: Bool
+    /// What language `rawText` is in, when it was identified confidently.
+    /// nil for English and for anything too short or too mixed to call —
+    /// both of which a provider must treat as "go ahead".
+    var language: Locale.Language?
 
-    init(rawText: String, sourceAppName: String? = nil, capturedAt: Date = Date(), isScreenshot: Bool = false) {
+    init(
+        rawText: String,
+        sourceAppName: String? = nil,
+        capturedAt: Date = Date(),
+        isScreenshot: Bool = false,
+        language: Locale.Language? = nil
+    ) {
         self.rawText = rawText
         self.sourceAppName = sourceAppName
         self.capturedAt = capturedAt
         self.isScreenshot = isScreenshot
+        self.language = language
     }
 }
 
@@ -110,6 +121,24 @@ protocol NoteRefiner: Sendable {
 
     /// Never throws: a refiner that cannot run returns the passthrough result.
     func refine(_ input: RefinementInput) async -> RefinedNote
+
+    /// Whether this refiner can read `language` at all.
+    ///
+    /// Apple's on-device model reads 23 locales and no others, so a
+    /// screenshot of Arabic, Hindi, Russian or Thai has nothing to gain from
+    /// being sent to it and something to lose — a rewrite in a language the
+    /// model does not know is not a cleanup. The caller uses this to choose
+    /// what to hand over: the original text when the model can read it, the
+    /// English translation when it cannot.
+    ///
+    /// nil means "not determined", which is the answer for English and for
+    /// text too short to identify, and must be treated as supported.
+    func supportsLanguage(_ language: Locale.Language?) -> Bool
+}
+
+extension NoteRefiner {
+    /// Refiners that are not model-backed have no language they cannot read.
+    func supportsLanguage(_ language: Locale.Language?) -> Bool { true }
 }
 
 // MARK: - Passthrough

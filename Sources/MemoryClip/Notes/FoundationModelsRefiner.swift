@@ -102,6 +102,30 @@ struct FoundationModelsRefiner: NoteRefiner {
         #endif
     }
 
+    /// Whether the on-device model reads this language.
+    ///
+    /// `SystemLanguageModel.supportedLanguages` listed 23 locales on macOS
+    /// 26.5 — the western European set plus Japanese, Korean, Chinese,
+    /// Turkish and Vietnamese. Arabic, Hindi, Russian, Thai, Polish and
+    /// Ukrainian were absent, and every one of those is a language Vision
+    /// now recognises, so this check is what stops recognition's new reach
+    /// from turning into refinement's new failure mode.
+    ///
+    /// Compared on language code alone: the model's list is regional
+    /// (`pt-Latn-BR`, `en-Latn-GB`) and a screenshot's detected language is
+    /// not, and there is no case where a model that reads pt-BR should refuse
+    /// pt-PT text.
+    func supportsLanguage(_ language: Locale.Language?) -> Bool {
+        guard let code = language?.languageCode?.identifier else { return true }
+        #if canImport(FoundationModels)
+        return SystemLanguageModel.default.supportedLanguages.contains {
+            $0.languageCode?.identifier == code
+        }
+        #else
+        return false
+        #endif
+    }
+
     /// A sentence explaining why refinement will not run, or nil when it
     /// will. Written for Settings, which shows it under the toggle — the
     /// alternative is a switch that appears to work and silently does
@@ -144,6 +168,12 @@ struct FoundationModelsRefiner: NoteRefiner {
 
         let (sent, remainder) = Self.bounded(input.rawText)
         guard !sent.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return await fallback.refine(input)
+        }
+        // Second gate on the same rule the caller applies, so a call site
+        // that forgets cannot hand the model a language it does not read.
+        guard supportsLanguage(input.language) else {
+            log.notice("Note refinement skipped: unsupported language")
             return await fallback.refine(input)
         }
 

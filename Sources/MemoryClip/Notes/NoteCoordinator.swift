@@ -43,6 +43,10 @@ final class NoteCoordinator {
         UserDefaults.standard.bool(forKey: NoteSettingsKeys.refineEnabled)
     }
 
+    nonisolated static var isTranslationEnabled: Bool {
+        UserDefaults.standard.bool(forKey: NoteSettingsKeys.translateEnabled)
+    }
+
     nonisolated static var isAutoNoteEnabled: Bool {
         UserDefaults.standard.bool(forKey: NoteSettingsKeys.autoNoteEnabled)
     }
@@ -54,6 +58,7 @@ final class NoteCoordinator {
 
     private let store: ClipStore
     private let refiner: any NoteRefiner
+    private let translator: any NoteTranslator
     private var task: Task<Void, Never>?
     private var runID = 0
 
@@ -81,12 +86,19 @@ final class NoteCoordinator {
     /// user looks.
     private(set) var lastError: NoteError?
 
-    /// - Parameter refiner: injectable so tests can drive the pipeline with a
-    ///   deterministic stand-in instead of a model whose availability depends
-    ///   on the machine, the OS settings and whether an asset has downloaded.
-    init(store: ClipStore, refiner: (any NoteRefiner)? = nil) {
+    /// - Parameters:
+    ///   - refiner: injectable so tests can drive the pipeline with a
+    ///     deterministic stand-in instead of a model whose availability
+    ///     depends on the machine, the OS settings and whether an asset has
+    ///     downloaded.
+    ///   - translator: injectable for the same reason, and with more force —
+    ///     which language pairs are installed varies from Mac to Mac, so a
+    ///     test that used the real one would pass or fail on the contents of
+    ///     the machine's asset cache.
+    init(store: ClipStore, refiner: (any NoteRefiner)? = nil, translator: (any NoteTranslator)? = nil) {
         self.store = store
         self.refiner = refiner ?? FoundationModelsRefiner()
+        self.translator = translator ?? AppleTranslator()
         self.lastKnownEnabled = Self.isRefinementEnabled
         settingsObserver = NotificationCenter.default.addObserver(
             forName: UserDefaults.didChangeNotification,
@@ -189,6 +201,19 @@ final class NoteCoordinator {
         let isScreenshot: Bool
     }
 
+    /// What the two model stages produced for one clip: the note fields, and
+    /// the English rendering when the text was not in English to begin with.
+    private struct ProcessedClip: Sendable {
+        let refined: RefinedNote
+        let translation: TranslatedText?
+        /// The refined text to STORE. nil for a translated clip: its note
+        /// body stays the original language, and what the model cleaned up
+        /// was the translation, which is carried in `translation` instead.
+        /// Writing it to `refinedText` would replace the user's own text with
+        /// English in the panel, in search, and in the note.
+        let refinedTextToStore: String?
+    }
+
     /// Flatten a queued clip into a job, or nil when it has nothing to refine
     /// (which cannot happen for a clip the query returned — `ocrText` is
     /// non-nil by construction — but keeps this total rather than forced).
@@ -202,33 +227,112 @@ final class NoteCoordinator {
                 rawText: raw,
                 sourceAppName: item.sourceAppName,
                 capturedAt: item.createdAt,
-                isScreenshot: item.isScreenshot
+                isScreenshot: item.isScreenshot,
+                language: LanguageDetector.dominantLanguage(of: raw)
             ),
             isScreenshot: item.isScreenshot
         )
     }
 
     private func refine(_ job: RefinementJob) async {
-        let raw = job.input.rawText
-        // Too short to be worth a model call — but still marked attempted,
-        // with the raw text as its own "refinement", so the clip leaves the
-        // queue and can still become a note.
-        let refined: RefinedNote
-        if raw.count < Self.minimumRefinableCharacters {
-            refined = await PassthroughRefiner().refine(job.input)
-        } else {
-            refined = await refiner.refine(job.input)
-        }
+        let processed = await process(job)
 
         store.applyRefinement(
-            title: refined.title,
-            summary: refined.summary,
-            text: refined.cleanedText,
-            tags: refined.tags,
+            title: processed.refined.title,
+            summary: processed.refined.summary,
+            text: processed.refinedTextToStore,
+            tags: processed.refined.tags,
+            language: Self.recordedLanguage(for: job.input),
+            translation: processed.translation,
             toClipWith: job.uuid
         )
 
-        await autoExportIfWanted(uuid: job.uuid, isScreenshot: job.isScreenshot, textLength: raw.count)
+        await autoExportIfWanted(
+            uuid: job.uuid,
+            isScreenshot: job.isScreenshot,
+            textLength: job.input.rawText.count
+        )
+    }
+
+    /// Translate if the text is not in English, then refine — the pair of
+    /// model stages, in the one order that works.
+    ///
+    /// Translation runs FIRST because refinement depends on its result. The
+    /// on-device model reads 23 locales; Vision now recognises 30. For a
+    /// clip in the gap — Arabic, Russian, Thai — the model cannot clean the
+    /// original text, cannot title it and cannot tag it, so refining the
+    /// original would produce a note whose every field was a fallback. Given
+    /// the translation it can do all three, and the note ends up with an
+    /// English title, an English summary and English tags over text that is
+    /// still in the language it was captured in.
+    ///
+    /// The original is never overwritten. `refinedTextToStore` is nil
+    /// whenever a translation was made, so `ClipItem.refinedText` stays empty
+    /// and the note's body is the recognised text — the translation sits
+    /// beneath it as its own section.
+    private func process(_ job: RefinementJob) async -> ProcessedClip {
+        let raw = job.input.rawText
+        // Too short to be worth either model — but still marked attempted,
+        // with the raw text as its own "refinement", so the clip leaves the
+        // queue and can still become a note.
+        guard raw.count >= Self.minimumRefinableCharacters else {
+            return ProcessedClip(
+                refined: await PassthroughRefiner().refine(job.input),
+                translation: nil,
+                refinedTextToStore: raw
+            )
+        }
+
+        let translation = await translateIfWanted(job.input)
+
+        guard let translation else {
+            let refined = await refiner.refine(job.input)
+            return ProcessedClip(refined: refined, translation: nil, refinedTextToStore: refined.cleanedText)
+        }
+
+        // Refine the TRANSLATION. Its language is English by construction, so
+        // this is the one path where the model is guaranteed to be able to
+        // read what it is given.
+        var translated = job.input
+        translated.rawText = translation.text
+        translated.language = NoteTranslation.target
+        let refined = await refiner.refine(translated)
+
+        return ProcessedClip(
+            refined: refined,
+            // The model's cleanup of the translation is what the note shows,
+            // so it replaces the raw translation — unlike the original text,
+            // which the raw OCR on the clip still records.
+            translation: TranslatedText(
+                text: refined.cleanedText,
+                sourceLanguage: translation.sourceLanguage
+            ),
+            refinedTextToStore: nil
+        )
+    }
+
+    /// The language identifier to store on the clip: the detected one when
+    /// the text was not English, nil otherwise.
+    ///
+    /// Stored even when translation did not happen — off, unsupported, or the
+    /// assets are not downloaded — because "this note is in Arabic" is true
+    /// and useful either way, and it is what tells the user which of their
+    /// notes a later download would have helped.
+    private static func recordedLanguage(for input: RefinementInput) -> String? {
+        guard let language = input.language, LanguageDetector.needsTranslation(language) else { return nil }
+        return LanguageDetector.identifier(for: language)
+    }
+
+    /// The English rendering of this clip, when it needs one and the Mac can
+    /// make it.
+    ///
+    /// Returns nil for the ordinary case — English text — without touching
+    /// the translator at all, so the common path costs one language
+    /// identification and nothing else.
+    private func translateIfWanted(_ input: RefinementInput) async -> TranslatedText? {
+        guard Self.isTranslationEnabled else { return nil }
+        guard let language = input.language, LanguageDetector.needsTranslation(language) else { return nil }
+        return await translator.translate(input.rawText, from: language)
     }
 
     // MARK: - Notes
@@ -255,12 +359,14 @@ final class NoteCoordinator {
     func exportNote(for item: ClipItem) async -> Result<NoteReceipt, NoteError> {
         let uuid = item.uuid
         if !item.refineAttempted, Self.isRefinementEnabled, let job = Self.job(for: item) {
-            let refined = await refiner.refine(job.input)
+            let processed = await process(job)
             store.applyRefinement(
-                title: refined.title,
-                summary: refined.summary,
-                text: refined.cleanedText,
-                tags: refined.tags,
+                title: processed.refined.title,
+                summary: processed.refined.summary,
+                text: processed.refinedTextToStore,
+                tags: processed.refined.tags,
+                language: Self.recordedLanguage(for: job.input),
+                translation: processed.translation,
                 toClipWith: uuid
             )
         }
@@ -324,16 +430,25 @@ final class NoteCoordinator {
         let rawText: String? = (wasRefined && !ocr.isEmpty && ocr != body) ? ocr : nil
 
         let title = item.refinedTitle?.trimmingCharacters(in: .whitespacesAndNewlines)
+        // Built from the translation when there is one: a heuristic title is
+        // the text's own first line, and a file named from a line of Arabic
+        // is a file the user cannot find in an English-sorted vault. When the
+        // model titled the clip this is unused anyway.
+        let titleSource = item.translatedText?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
+            ? item.translatedText!
+            : body
         let fallbackTitle = RefinementGuard.clampedTitle(
             PassthroughRefiner.heuristicTitle(
                 for: RefinementInput(
-                    rawText: body,
+                    rawText: titleSource,
                     sourceAppName: item.sourceAppName,
                     capturedAt: item.createdAt,
                     isScreenshot: item.isScreenshot
                 )
             )
         )
+
+        let translation = item.translatedText?.trimmingCharacters(in: .whitespacesAndNewlines)
 
         return NoteDraft(
             clipUUID: item.uuid,
@@ -342,6 +457,11 @@ final class NoteCoordinator {
             tags: item.refinedTags,
             body: body,
             rawText: rawText,
+            // Dropped when it is the body: nothing is gained by printing the
+            // same paragraph twice under a heading that says it is a
+            // translation of itself.
+            translation: (translation?.isEmpty == false && translation != body) ? translation : nil,
+            sourceLanguage: item.sourceLanguage,
             wasRefined: wasRefined,
             createdAt: item.createdAt,
             sourceAppName: item.sourceAppName,
