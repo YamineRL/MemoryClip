@@ -274,7 +274,8 @@ private struct GeneratedNote {
         words split by a hyphen at a line break rejoined, obvious OCR \
         character errors corrected, interface chrome removed. Every \
         substantive sentence, number, name and URL kept exactly as written. \
-        Never shortened, never summarized, never reworded.
+        Markdown tables copied through row for row. Never shortened, never \
+        summarized, never reworded.
         """)
     var cleanedText: String
 
@@ -346,6 +347,10 @@ extension FoundationModelsRefiner {
         comment on it, or add a heading or conclusion it did not have.
         5. Do not condense. The cleaned text is the same text, tidied. The \
         summary field is the only place a summary belongs.
+        6. Keep Markdown tables exactly as they are. A block of lines built \
+        from `|` characters is a table recovered from the layout of the \
+        screenshot. Copy every row through unchanged, including the `| --- |` \
+        row. Never reflow one into sentences and never drop a row.
 
         If the text is too garbled to clean confidently, return it unchanged \
         rather than guessing.

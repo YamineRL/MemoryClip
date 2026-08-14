@@ -279,14 +279,44 @@ enum NoteComposer {
     }
 
     /// Blank-line-separated blocks become `<p>` elements; single newlines
-    /// inside a block become `<br>`.
+    /// inside a block become `<br>`; a recognized table becomes a `<table>`.
+    ///
+    /// The table branch is not cosmetic. Notes renders the body as HTML, so a
+    /// Markdown table left as text arrives as a paragraph of pipes — the one
+    /// destination where the structure recognition just recovered would be
+    /// thrown away again on the way in.
     private static func htmlParagraphs(_ text: String) -> String {
-        text
-            .components(separatedBy: "\n\n")
-            .map { $0.trimmingCharacters(in: .newlines) }
+        MarkdownTable.blocks(in: text)
+            .map { block in
+                switch block {
+                case .table(let table): return htmlTable(table)
+                case .text(let value):
+                    return value
+                        .components(separatedBy: "\n\n")
+                        .map { $0.trimmingCharacters(in: .newlines) }
+                        .filter { !$0.isEmpty }
+                        .map { "<p>\(htmlParagraphBody($0))</p>" }
+                        .joined(separator: "\n")
+                }
+            }
             .filter { !$0.isEmpty }
-            .map { "<p>\(htmlParagraphBody($0))</p>" }
             .joined(separator: "\n")
+    }
+
+    /// One table as HTML. Notes keeps `<table>`, `<tr>`, `<th>` and `<td>`;
+    /// anything finer (alignment, widths) it drops, so none is emitted.
+    private static func htmlTable(_ table: MarkdownTable) -> String {
+        var out = "<table>\n<thead>\n<tr>"
+        for cell in table.header { out += "<th>\(htmlEscaped(cell))</th>" }
+        out += "</tr>\n</thead>\n<tbody>\n"
+        for row in table.rows {
+            out += "<tr>"
+            for cell in MarkdownTable.fitted(row, to: table.columnCount) {
+                out += "<td>\(htmlEscaped(cell))</td>"
+            }
+            out += "</tr>\n"
+        }
+        return out + "</tbody>\n</table>"
     }
 
     // MARK: - Plain text

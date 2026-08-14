@@ -373,6 +373,22 @@ enum RefinementGuard {
     /// drops a token and adds one, and short inputs are where repairs land.
     static let shortTextInventionAllowance = 3
 
+    /// Whether every table in `raw` is still a table in `cleaned`.
+    ///
+    /// Compares table count and total row count, not the cells: a model is
+    /// allowed to fix `l`/`1` inside a cell, which is the whole point of
+    /// running it, and is not allowed to lose a row or flatten the grid.
+    /// True when `raw` had no table, which is the common case and costs a
+    /// single scan.
+    static func preservesTables(cleaned: String, raw: String) -> Bool {
+        let rawTables = MarkdownTable.tables(in: raw)
+        guard !rawTables.isEmpty else { return true }
+        let cleanedTables = MarkdownTable.tables(in: cleaned)
+        guard cleanedTables.count >= rawTables.count else { return false }
+        return cleanedTables.reduce(0) { $0 + $1.rows.count }
+            >= rawTables.reduce(0) { $0 + $1.rows.count }
+    }
+
     /// Whether `cleaned` is a believable rewrite of `raw`.
     ///
     /// Rejecting is cheap — the caller falls back to passthrough and the user
@@ -385,6 +401,13 @@ enum RefinementGuard {
         // below cannot see it: a two-token input emptied entirely is "2
         // dropped", inside the short-input allowance.
         if !rawIsEmpty, cleanedIsEmpty { return false }
+
+        // Tables are checked before the token counts because the counts
+        // cannot see them: a model that reflowed a table into prose keeps
+        // every word, so retention and invention both score perfectly on the
+        // one rewrite that destroyed structure the recognition worked to
+        // recover.
+        if !preservesTables(cleaned: cleaned, raw: raw) { return false }
 
         let rawTokens = Set(tokens(raw))
         let cleanedTokens = Set(tokens(cleaned))
