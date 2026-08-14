@@ -12,6 +12,7 @@ set -euo pipefail
 #   ./Scripts/publish_release.sh v0.2.0       # explicit tag
 #   DRAFT=1 ./Scripts/publish_release.sh      # draft, so you can eyeball it first
 #   PRERELEASE=1 ./Scripts/publish_release.sh # mark it a pre-release
+#   SKIP_CASK=1 ./Scripts/publish_release.sh  # leave the Homebrew cask alone
 #
 # Releases are full releases by default. A pre-release is hidden from the
 # repository header and is never served as "latest", so shipping one by
@@ -119,4 +120,31 @@ for asset in "$(basename "$DMG")" "$(basename "$ZIP")"; do
         || die "$asset is missing from release $TAG"
 done
 
+# --- 4. Point the Homebrew cask at what was just published. ------------------
+# This repository doubles as the Homebrew tap, so the cask is part of the
+# release rather than an afterthought: until it names the new version and its
+# checksum, `brew install --cask memoryclip` still installs the old one.
+#
+# A draft release is skipped — its assets are not downloadable yet, so there is
+# nothing for the cask to checksum.
+if [ "${SKIP_CASK:-0}" = "1" ]; then
+    echo "==> Skipping the Homebrew cask (SKIP_CASK=1)"
+elif [ "${DRAFT:-0}" = "1" ]; then
+    echo "==> Release is a draft — publish it, then run: ./Scripts/update_cask.sh $VERSION"
+else
+    echo "==> Updating the Homebrew cask"
+    "$ROOT/Scripts/update_cask.sh" "$VERSION"
+
+    if [ -n "$(git status --porcelain -- Casks/memoryclip.rb)" ]; then
+        git commit --quiet -m "Point the Homebrew cask at $VERSION" -- Casks/memoryclip.rb
+        git push --quiet origin "$BRANCH" \
+            || die "the cask was committed but could not be pushed — push $BRANCH by hand"
+        echo "    committed and pushed the cask bump"
+    else
+        echo "    cask already at $VERSION"
+    fi
+fi
+
 echo "OK: $(gh release view "$TAG" --json url --jq .url)"
+echo "    tap:     brew tap yaminerl/memoryclip https://github.com/YamineRL/MemoryClip"
+echo "    install: brew trust yaminerl/memoryclip && brew install --cask memoryclip"
