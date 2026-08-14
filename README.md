@@ -8,16 +8,15 @@
 
 <p align="center"><a href="https://github.com/YamineRL/MemoryClip/actions/workflows/ci.yml"><img src="https://github.com/YamineRL/MemoryClip/actions/workflows/ci.yml/badge.svg" alt="CI"></a></p>
 
-A local-first menu-bar clipboard manager for macOS. It keeps a history of everything you
-copy and gives you keyboard-first access to it. It also notices the screenshots you take,
-reads the text out of them — in 30 languages, translated into English when it is not one
-you read — and turns one into a note in **[Obsidian](https://obsidian.md)** or any other
-folder of Markdown files, in Apple Notes, or through a Shortcut.
+A local-first menu-bar clipboard manager for macOS: keyboard-first history of everything
+you copy. It also notices your screenshots, reads the text out of them — 30 languages,
+translated into English when it is not one you read — and turns one into a note in
+**[Obsidian](https://obsidian.md)**, any other folder of Markdown, Apple Notes, or a
+Shortcut.
 
 **Zero network calls**: no sync, no analytics, no accounts. Clips live in a local
-SwiftData store on your Mac, and the models that read, tidy and translate your screenshots
-run here too. The only files MemoryClip writes anywhere else are the notes you ask for, in
-the folder you chose.
+SwiftData store, and the models that read, tidy and translate run here too. The only files
+written anywhere else are the notes you asked for, in the folder you chose.
 
 Requires macOS 26 on Apple silicon.
 
@@ -54,33 +53,27 @@ brew trust yaminerl/memoryclip
 brew install --cask memoryclip
 ```
 
-The tap line carries a URL because this repository *is* the tap: the cask lives in
-[`Casks/memoryclip.rb`](Casks/memoryclip.rb), beside the source it installs. The trust
-line is Homebrew 6, which refuses casks from third-party taps until you vouch for them —
-skip it and you must name the cask in full every time, `brew upgrade` included. After
-that, `brew upgrade --cask memoryclip` and `brew uninstall --cask memoryclip` work as
-usual; `--zap` takes the clip history and preferences too.
+The tap line takes a URL because this repository *is* the tap
+([`Casks/memoryclip.rb`](Casks/memoryclip.rb)); the trust line is Homebrew 6, which will
+not load third-party casks until you vouch for them. `brew upgrade`, `brew uninstall` and
+`--zap` work as usual after that.
 
 **By hand**: download the `.dmg` from
-[Releases](https://github.com/yaminerl/MemoryClip/releases) and drag MemoryClip to
-Applications. The app is **ad-hoc signed only** — no Developer ID, no notarisation — so
-Gatekeeper blocks the first launch on any Mac that did not build it. Strip the quarantine
-flag, which is the one thing the cask does for you:
+[Releases](https://github.com/yaminerl/MemoryClip/releases) and drag it to Applications.
+The app is **ad-hoc signed** — no Developer ID, no notarisation — so Gatekeeper blocks the
+first launch until you strip the quarantine flag, which is all the cask does for you:
 
 ```sh
 xattr -dr com.apple.quarantine /Applications/MemoryClip.app
 ```
 
-Either way there is no Dock icon: MemoryClip is a menu-bar agent. Look for the clipboard
-glyph, or press **⇧⌘V**. First launch gives you a short tour, replayable from
-**Settings → About**. To start it with your Mac, turn on **Launch at login** in
-**Settings → General**.
+There is no Dock icon either way. Press **⇧⌘V**, or find the clipboard glyph in the menu
+bar. **Launch at login** is in **Settings → General**.
 
 ## Using it
 
-⇧⌘V opens the panel from whichever app you are in, newest clip first, list already
-focused. The menu-bar glyph gives the last five clips plus Pause Capture, Clear All
-History, Settings and Quit.
+⇧⌘V opens the panel from any app, newest clip first, list already focused. The menu-bar
+glyph gives the last five clips, Pause Capture, Clear All History, Settings and Quit.
 
 | Key | Does |
 | --- | --- |
@@ -91,27 +84,23 @@ History, Settings and Quit.
 | `Space` | Toggle the preview pane, while the search field is empty |
 | `Esc` | Close the preview, then the panel |
 
-Pasting puts the clip on the clipboard, brings your previous app back to the front and
-sends a ⌘V for you. If macOS blocks that synthetic keystroke the clip is still on the
-clipboard, so ⌘V yourself and nothing is lost — see [Permissions](#permissions).
+Pasting puts the clip on the clipboard, reactivates your previous app and sends a ⌘V. If
+macOS blocks that synthetic keystroke the clip is still on the clipboard — see
+[Permissions](#permissions).
 
-**Search** matches clip text, the text recognised inside an image, whatever the on-device
-model made of it, colour values, file names and the app a clip came from. Filter chips
-narrow to **All, Text, Images, Links, Files, Colors**, or to a single source app. It runs
-in the database over an index and fetches a page at a time, so a store of tens of
-thousands of clips opens and filters like a nearly empty one; while further pages load the
-footer reads `200+ clips`. Paging bounds what is *drawn*, never what is *findable*.
+**Search** matches clip text, text recognised inside images, the model's summary, colour
+values, file names and the source app, with chips for **All, Text, Images, Links, Files,
+Colors**. It runs in the database over an index, a page at a time, so tens of thousands of
+clips filter like an empty store — paging bounds what is *drawn*, never what is
+*findable*.
 
-**Along the way** MemoryClip badges emails, URLs, phone numbers, JWTs and JSON; evaluates
-copied arithmetic, so `12*7` shows `= 84` (conservatively — `2026-08-07` is not a sum);
-and offers a QR code for link clips, generated on-device. Right-click a clip to transform
-it on the way out: **UPPERCASE/lowercase/Title Case**, **JSON** format or minify,
-**Base64**, **URL** encoding, **sort** or **deduplicate lines**. **Add to Queue** collects
-clips and **Paste N** sends the whole queue to your previous app in order.
+**Along the way** it badges emails, URLs, phone numbers, JWTs and JSON, shows `= 84` under
+a copied `12*7`, and offers a QR code for links. Right-click to transform a clip on the
+way out — case, JSON, Base64, URL encoding, sort or dedupe lines — or **Add to Queue**,
+and **Paste N** sends the lot in order.
 
-**Vim navigation** — off by default, **Settings → Panel**. Properly modal, with the
-current mode shown in the search bar, so navigation never depends on whether the search
-field happens to be empty. In NORMAL:
+**Vim navigation** — off by default, **Settings → Panel**. Properly modal, the mode shown
+in the search bar. In NORMAL:
 
 | Key | Does |
 | --- | --- |
@@ -124,49 +113,38 @@ field happens to be empty. In NORMAL:
 | `q` `⇧Q` | Add to the queue / paste the whole queue |
 | `/` `i` | Fresh search / edit the existing query → INSERT |
 
-**Housekeeping.** Pin a clip to keep it regardless of the limits; the newest 200 clips are
-kept and clips older than 30 days are swept, both adjustable in **Settings → History**,
-both exempting pins. Re-copying something you already have bumps it back to the top
-instead of duplicating it. Pause capture from the menu bar, clear everything from the
-dropdown or the panel (both confirm), and export the lot to JSON or CSV from
-**Settings → History** — large histories stream to disk a clip at a time.
+**Housekeeping.** The newest 200 clips are kept and anything older than 30 days is swept,
+both adjustable in **Settings → History**, both exempting pins. Re-copying bumps a clip to
+the top instead of duplicating it. Pause capture from the menu bar, clear everything from
+the dropdown or the panel, and export to JSON or CSV from **Settings → History**.
 
 ## Screenshots into notes
 
-⇧⌘3, ⇧⌘4 and ⇧⌘5 write a *file* and never touch the clipboard, so a clipboard manager is
-structurally blind to them. Turn on **Settings → Screenshots → Keep screenshots in
-history** and MemoryClip watches the folder `screencapture` writes to instead. It is off
-by default because it needs a folder macOS guards, and switching it on marks what is
-already there as seen — you get the next screenshot, not the last four years of them.
+⇧⌘3, ⇧⌘4 and ⇧⌘5 write a file and never touch the clipboard. Turn on
+**Settings → Screenshots → Keep screenshots in history** and MemoryClip watches that
+folder instead. Off by default, since it needs a folder macOS guards, and it starts from
+your next screenshot rather than the last four years of them.
 
-A screenshot clip is **a link, not a copy**: it points at the file where it already is,
-plus a small thumbnail for the row. Deleting the clip, letting it expire or clearing all
-history never touches your file, and **Reveal in Finder** opens it where it lives.
-Telling a screenshot from any other picture in the folder is Spotlight's job — macOS marks
-what `screencapture` writes with `kMDItemIsScreenCapture`.
+Screenshot clips are **links, not copies**: the file stays where it is, with a thumbnail
+for the row. Deleting a clip never touches it, and **Reveal in Finder** opens it.
 
-Text inside images is extracted on-device with Vision and folded into search, so you can
-find a screenshot by words that appear *in* it; those rows read `text found`. The language
-is detected rather than assumed — 30 of them, Arabic through Ukrainian.
+Vision reads the text inside images on-device and folds it into search, so you can find a
+screenshot by words that appear *in* it — 30 languages, detected rather than assumed.
+Those rows read `text found`.
 
 ### Notes
 
-Any clip with text in it can become a note: right-click → **Save as Note**. First the
-text goes through **Apple's on-device model**, which fixes OCR slips, rejoins wrapped
-lines, drops interface chrome and writes a title, a summary and a few tags. The raw
-recognition is always kept alongside it — a rewrite that drops or invents too much of the
-text is thrown away in favour of it — and where Apple Intelligence is off or unavailable
-the note is written from the raw recognition instead, which **Settings → Notes** says
-plainly rather than showing a switch that does nothing.
+Any clip with text can become a note: right-click → **Save as Note**. **Apple's on-device
+model** first fixes OCR slips, rejoins wrapped lines, drops interface chrome and writes a
+title, summary and tags. The raw recognition is kept alongside it, and is used outright
+when the model is unavailable or when a rewrite drops or invents too much of the text.
 
-A screenshot that is not in English is read in its own language and **translated on this
-Mac**, the note carrying both: the text as it was on screen, and an English translation
-underneath. The original is the record. Title, summary and tags come from the English, so
-a note captured in Arabic is still findable in a vault you search in English.
-**Settings → Notes → Translation** lists the 22 languages Apple can translate into English
-on macOS 26; tick the ones you want and macOS fetches any missing assets into the store the
-whole system shares. With none ticked it translates whatever this Mac already handles, and
-a language whose assets are still missing gets an untranslated note that says so.
+A screenshot that is not in English is **translated on this Mac** and the note carries
+both — the text as it was on screen, and an English translation under it. Title, summary
+and tags come from the English, so a note captured in Arabic is findable in a vault you
+search in English. Tick the languages you want in **Settings → Notes → Translation** (22
+on macOS 26) and macOS fetches what it needs; with none ticked it handles whatever this
+Mac already can.
 
 Three destinations, in **Settings → Notes**:
 
@@ -176,17 +154,15 @@ Three destinations, in **Settings → Notes**:
 | **Notes** | Creates a note in Apple Notes, in a folder you name. The screenshot goes in as a link — Notes does not accept an image through automation. | Automation permission |
 | **Shortcut** | Runs a Shortcut with the note as its input, so Bear, Things, DEVONthink or anything else Shortcuts reaches can be the destination. | A Shortcut name |
 
-Notes are written when you ask. If you would rather not ask, **Write a note for every
-screenshot** does it automatically above a text threshold (80 characters by default).
-A clip that already has a note reads `Screenshot · noted` and offers **Update Note** and
-**Open Note**, which rewrite the same file rather than leaving a second copy beside it —
-even one you moved or renamed inside your vault.
+Notes are written when you ask, or automatically above a text threshold if you turn on
+**Write a note for every screenshot**. A clip that has one reads `Screenshot · noted` and
+offers **Update Note**, which rewrites the same file — even one you moved or renamed
+inside your vault.
 
 ### Where notes go
 
 Every note is a plain `.md` file named `2026-08-13 1422 Title.md` — timestamp first, so
-the folder sorts chronologically and two screenshots of the same window do not collide —
-with front matter above the text:
+the folder sorts chronologically and two shots of the same window do not collide:
 
 ```markdown
 ---
@@ -213,81 +189,71 @@ screenshot: "/Users/you/Desktop/Screenshot 2026-08-13 at 14.22.01.png"
 *Exactly as recognised, before the on-device model cleaned it up.*
 ```
 
-Every string is quoted on purpose: this is text read off a screen, and a heading that
-happens to contain a colon would otherwise rewrite the note's own metadata. `screenshot:`
-points at the **original** file even when a copy was made, `memoryclip-uuid` is what lets
-a re-export find the note it wrote last time, and `created` is UTC because that is what
-Dataview parses — while the file name is in your local time, because you are the one who
-remembers taking the screenshot at 14:22.
+Every string is quoted because a heading with a colon in it would otherwise rewrite the
+note's own metadata. `screenshot:` points at the original file even when a copy was made,
+`memoryclip-uuid` lets an update find the note it wrote last time, and `created` is UTC
+for Dataview while the file name is local time, for you.
 
-Anything that reads Markdown off disk can open one. Apps differ on two things only —
-whether they understand front matter, and whether they resolve wiki-style `![[embeds]]` —
-and the **Copy the screenshot into the folder** switch decides which link style a note
-gets: on, the picture is copied in and embedded as `![[name.png]]`; off, the note links to
-it where it sits with an ordinary `[Screenshot](file://…)` link that every editor renders.
+Anything that reads Markdown off disk opens one. Apps differ on two things only — front
+matter, and wiki-style `![[embeds]]` — which is what the **Copy the screenshot into the
+folder** switch is for: on, the picture is copied in and embedded; off, the note links to
+it where it sits, in a form every editor renders.
 
-- **[Obsidian](https://obsidian.md)** — your vault, or any folder in it. Keep copying
-  **on**: that is what makes the embed resolve. Front matter becomes note properties, so
-  tags are tags and `lang`, `source` and `created` are Dataview-queryable.
+- **[Obsidian](https://obsidian.md)** — your vault, or any folder in it, copying **on**.
+  Front matter becomes note properties, so tags are tags and `lang`, `source` and
+  `created` are Dataview-queryable.
 - **[Logseq](https://logseq.com)** — the `pages` folder of your graph, attachments set to
   `assets`.
 - **[iA Writer](https://ia.net/writer)**, **[Typora](https://typora.io)**,
-  **[Zettlr](https://www.zettlr.com)**, VS Code — any folder they watch, with copying
-  **off**; an embed they cannot resolve shows as literal `![[…]]`.
+  **[Zettlr](https://www.zettlr.com)**, VS Code — any folder they watch, copying **off**.
 - **[DEVONthink](https://www.devontechnologies.com/apps/devonthink)** — index the folder,
   so notes stay files MemoryClip can update in place.
-- **[Joplin](https://joplinapp.org)** — import it, and re-import after later edits, since
-  Joplin copies notes into its own database.
+- **[Joplin](https://joplinapp.org)** — import, and re-import after later edits.
 - **iCloud Drive, Dropbox, Syncthing** — notes are written whole, so a half-written file
-  is never what syncs.
+  never syncs.
 
 Bear, Craft, Notion and Things keep no files: use the **Shortcut** destination. The same
-guidance is in the app, under **Settings → Notes → Which apps can open these notes?**
+guidance is in **Settings → Notes → Which apps can open these notes?**
 
 ## Privacy and security
 
 Everything happens on this Mac — a local SwiftData store, and no network calls at all.
 
-- **The store is owner-only**, at `~/Library/Application Support/app.memoryclip/`, the
-  directory `0700` and the files `0600`.
-- **Password managers are skipped.** MemoryClip honours the standard pasteboard opt-out
-  markers (`org.nspasteboard.TransientType`, `AutoGeneratedType`, `ConcealedType`) and
-  skips known credential apps outright.
+- **The store is owner-only**, at `~/Library/Application Support/app.memoryclip/` —
+  directory `0700`, files `0600`.
+- **Password managers are skipped**: the standard pasteboard opt-out markers
+  (`org.nspasteboard.TransientType`, `AutoGeneratedType`, `ConcealedType`), and known
+  credential apps outright.
 - **Card numbers are never captured** — Luhn-validated numbers are dropped from plain
-  text, rich text, OCR output and translations alike (**Settings → Privacy**).
-- **Detection is app-identity based**: the source app's bundle identifier and name, never
-  window titles or the screen — which is why no Screen Recording grant is needed.
+  text, rich text, OCR output and translations alike.
+- **Detection is app-identity based**: bundle identifier and name, never window titles or
+  the screen, which is why no Screen Recording grant is needed.
 - **The model and the translator are local.** Foundation Models and Translation run
-  on-device with no cloud fallback; when the model is unavailable, refinement is skipped
-  rather than sent anywhere.
-- **Notes leave the store on purpose** — a note is a file in the folder you chose, with
-  that folder's ordinary permissions rather than the `0600` clip store.
-- **Optional Touch ID lock** (**Settings → Privacy**) gates the panel behind
-  LocalAuthentication, redacts the menu-bar dropdown to clip kinds, and always
-  re-authenticates for Export and Clear All History.
+  on-device with no cloud fallback.
+- **Notes leave the store on purpose** — a note is a file in your folder, with that
+  folder's permissions rather than the store's `0600`.
+- **Optional Touch ID lock** gates the panel, redacts the dropdown to clip kinds, and
+  always re-authenticates for Export and Clear All History.
 
-MemoryClip is built to be usable with VoiceOver: rows carry labels describing the clip's
-kind, content and state, mode and selection changes are announced, and every row action is
-reachable from the keyboard.
+VoiceOver is supported throughout: rows carry labels for kind, content and state, mode and
+selection changes are announced, and every row action is reachable from the keyboard.
 
 ## Permissions
 
 **None** for the core job: capture, store, search, and copy clips back. No Screen
 Recording, no Input Monitoring, no network. Optional, and only with the matching feature:
 
-- **Files and folders** — reading your screenshot folder, writing notes into the folder
-  you pick. macOS guards the Desktop, Documents and Downloads and asks the first time;
-  choosing the folder yourself in Settings is the other way in. Each grant is remembered
-  as a *security-scoped bookmark* rather than a path, so it outlives a relaunch.
-  MemoryClip never reaches into a folder you did not point it at.
+- **Files and folders** — to read your screenshot folder and write notes into the one you
+  pick. Each grant is kept as a *security-scoped bookmark* rather than a path, so it
+  outlives a relaunch, and MemoryClip never reaches into a folder you did not point it at.
 - **Automation** — only when Apple Notes is your note destination.
 - **Accessibility** — only to auto-paste with a synthetic ⌘V. Without it the clip still
-  reaches the clipboard; the attempt can be turned off in **Settings → General**.
+  reaches the clipboard.
 
 ## Settings
 
-Eight panes, grouped in a sidebar. ↑/↓ move between them, Tab reaches the controls, and
-the window reopens wherever you left it.
+Eight panes in a sidebar; ↑/↓ move between them, and the window reopens where you left
+it.
 
 | Group | Pane | Contains |
 | --- | --- | --- |
@@ -309,11 +275,10 @@ swift build && swift run # debug build, run from it
 swift test               # 553 unit tests (benchmarks skipped)
 ```
 
-`make_app.sh` regenerates `Resources/AppIcon.icns` with `swift Scripts/make_icon.swift`
-if it is missing, so that only needs running when the artwork changes. Everything lands in
-`dist/`, which is gitignored: **no build output is ever committed.** The benchmarks build
-stores of up to 50k clips and are skipped unless `MEMORYCLIP_BENCH=1` is set — a measuring
-tool rather than a regression gate.
+`make_app.sh` regenerates `Resources/AppIcon.icns` if it is missing, so
+`Scripts/make_icon.swift` only needs running when the artwork changes. Everything lands in
+gitignored `dist/`: **no build output is ever committed.** The benchmarks build stores of
+up to 50k clips and are skipped unless `MEMORYCLIP_BENCH=1` is set.
 
 ### Cutting a release
 
@@ -323,16 +288,16 @@ DRAFT=1 ./Scripts/publish_release.sh    # draft, to eyeball first
 ./Scripts/update_cask.sh 0.2.48         # repair a cask that drifted
 ```
 
-The script builds the DMG, tags the commit, creates the GitHub release with the `sha256`
-in its notes, then points the Homebrew cask at what it just published and pushes that
-one-line bump — a tap naming the previous version keeps installing the previous version.
-The checksum comes from the asset GitHub serves, not the local copy in `dist/`. It refuses
-to run on a dirty tree or an unpushed commit, since a published binary should correspond
-to source anyone can fetch. Drafts skip the cask, their assets not being downloadable yet;
-`SKIP_CASK=1` opts out. Needs the [GitHub CLI](https://cli.github.com), authenticated.
+Builds the DMG, tags the commit, creates the release with its `sha256`, then points the
+cask at what it just published and pushes that one-line bump — a tap naming the previous
+version keeps installing the previous version. The checksum comes from the asset GitHub
+serves, not the local copy. It refuses to run on a dirty tree or an unpushed commit, since
+a published binary should correspond to source anyone can fetch. Drafts skip the cask,
+their assets not being downloadable yet; `SKIP_CASK=1` opts out. Needs the
+[GitHub CLI](https://cli.github.com).
 
-Version numbers come from `CFBundleShortVersionString` in `Resources/Info.plist`; bump it
-there and the app, the DMG name, the tag and the cask all follow.
+Versions come from `CFBundleShortVersionString` in `Resources/Info.plist`: bump it and the
+app, the DMG name, the tag and the cask all follow.
 
 ### Architecture
 
@@ -352,20 +317,17 @@ Sources/MemoryClip/
 └── Support/    NSColor+Hex, FolderBookmark (security-scoped bookmarks)
 ```
 
-Screenshot flow: `screencapture` writes a file → `ScreenshotWatcher` debounces the folder
-event and `ScreenshotDetector` decides whether it is a screenshot →
-`ClipStore.insertScreenshot` records a *reference* → thumbnails and `OCRCoordinator` read
-the pixels off disk → `NoteCoordinator` translates when needed, refines under
-`RefinementGuard`, and a `NoteSink` writes the note.
+Screenshot flow: `screencapture` writes a file → `ScreenshotWatcher` debounces,
+`ScreenshotDetector` rules on it → `ClipStore.insertScreenshot` records a *reference* →
+thumbnails and `OCRCoordinator` read the pixels off disk → `NoteCoordinator` translates,
+refines under `RefinementGuard`, and a `NoteSink` writes the note.
 
 Paste flow: selection → `PasteService.write` puts the payload on the pasteboard → the
-watcher is told to ignore its own write → the previous app is reactivated → synthetic ⌘V,
-when auto-paste is on and permitted.
+watcher ignores its own write → the previous app is reactivated → synthetic ⌘V.
 
-Scripts and packaging: `make_icon.swift` draws the icon, `make_app.sh` and `make_dmg.sh`
-build the artefacts, `publish_release.sh` releases them, and `update_cask.sh` points
-[`Casks/memoryclip.rb`](Casks/memoryclip.rb) — this repository doubles as the Homebrew
-tap — at the result.
+Packaging: `make_app.sh` and `make_dmg.sh` build, `publish_release.sh` releases, and
+`update_cask.sh` points [`Casks/memoryclip.rb`](Casks/memoryclip.rb) at the result — this
+repository doubles as the Homebrew tap.
 
 ## Prior art
 
