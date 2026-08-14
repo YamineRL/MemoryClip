@@ -48,6 +48,67 @@ final class TableConsumerTests: XCTestCase {
         XCTAssertTrue(NoteComposer.plainText(for: draft(body: table)).contains(table))
     }
 
+    // MARK: - Block separation
+
+    /// A table butted against the paragraph above it renders as a table only
+    /// if the reader's parser lets one interrupt a paragraph. The note
+    /// guarantees the blank line instead of finding out.
+    func testTablesGetABlankLineEitherSideInTheNote() {
+        let glued = "Quarterly revenue\n| Region | Q3 |\n| --- | --- |\n| North | 1,204 |\nSource: finance"
+        let markdown = NoteComposer.markdown(for: draft(body: glued))
+
+        XCTAssertTrue(markdown.contains("Quarterly revenue\n\n| Region | Q3 |"), markdown)
+        XCTAssertTrue(markdown.contains("| North | 1,204 |\n\nSource: finance"), markdown)
+    }
+
+    /// The raw-OCR block carries recognition output, so it carries tables too.
+    func testTheRawBlockKeepsItsTableSpaced() {
+        var draft = draft(body: "cleaned up")
+        draft.rawText = "Quarterly revenue\n| Region | Q3 |\n| --- | --- |\n| North | 1,204 |"
+        draft.wasRefined = true
+        XCTAssertTrue(
+            NoteComposer.markdown(for: draft).contains("Quarterly revenue\n\n| Region | Q3 |"),
+            NoteComposer.markdown(for: draft)
+        )
+    }
+
+    func testTextWithNoTableIsPassedThroughUnchanged() {
+        let text = "one\ntwo\n\nthree"
+        XCTAssertEqual(NoteComposer.tablesSeparated(text), text)
+    }
+
+    func testCorrectlySpacedTablesAreLeftAlone() {
+        let text = "Above\n\n| A | B |\n| --- | --- |\n| 1 | 2 |\n\nBelow"
+        XCTAssertEqual(NoteComposer.tablesSeparated(text), text)
+    }
+
+    // MARK: - Titles
+
+    /// The title is the note's file name as well as its front matter, so a
+    /// screenshot of nothing but a table must not be filed as
+    /// `| Region | Q3 | Q4 |.md`.
+    func testATableOnlyScreenshotIsTitledFromItsHeaderRow() {
+        let input = RefinementInput(
+            rawText: "| Region | Q3 | Q4 |\n| --- | --- | --- |\n| North | 1,204 | 1,881 |"
+        )
+        XCTAssertEqual(PassthroughRefiner.heuristicTitle(for: input), "Region Q3 Q4")
+    }
+
+    func testAHeadingBeatsTheTableItSitsAbove() {
+        let input = RefinementInput(
+            rawText: "Quarterly revenue\n\n| Region | Q3 |\n| --- | --- |\n| North | 1,204 |"
+        )
+        XCTAssertEqual(PassthroughRefiner.heuristicTitle(for: input), "Quarterly revenue")
+    }
+
+    /// And so does one below it: a table is never the best title available.
+    func testAHeadingBelowATableIsStillPreferredToTheHeaderRow() {
+        let input = RefinementInput(
+            rawText: "| Region | Q3 |\n| --- | --- |\n| North | 1,204 |\n\nQuarterly revenue"
+        )
+        XCTAssertEqual(PassthroughRefiner.heuristicTitle(for: input), "Quarterly revenue")
+    }
+
     // MARK: - Guard
 
     private let raw = """

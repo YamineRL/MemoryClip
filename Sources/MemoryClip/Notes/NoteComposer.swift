@@ -131,7 +131,7 @@ enum NoteComposer {
 
         let body = draft.body.trimmingCharacters(in: .whitespacesAndNewlines)
         if !body.isEmpty {
-            out += body + "\n"
+            out += tablesSeparated(body) + "\n"
         }
 
         if let translation = translationToEmit(for: draft) {
@@ -140,7 +140,7 @@ enum NoteComposer {
             // whereas the raw recognition is provenance.
             out += "\n## \(escapedHeadingText(translationHeading(for: draft)))\n\n"
             out += "*\(translationNote)*\n\n"
-            out += translation + "\n"
+            out += tablesSeparated(translation) + "\n"
         }
 
         if let raw = rawTextToEmit(for: draft) {
@@ -153,10 +153,46 @@ enum NoteComposer {
             out += draft.wasRefined
                 ? "*Exactly as recognised, before the on-device model cleaned it up.*\n\n"
                 : "*Exactly as recognised.*\n\n"
-            out += raw + "\n"
+            out += tablesSeparated(raw) + "\n"
         }
 
         return out
+    }
+
+    /// `text` with a blank line either side of every table in it.
+    ///
+    /// A table is a block, and a block needs the blank line: butted straight
+    /// against the paragraph above it, whether it still renders as a table
+    /// depends on whether the reader's parser lets one interrupt a paragraph.
+    /// Obsidian is the destination, GitHub and every other Markdown viewer are
+    /// where these notes end up afterwards, and the recognition is only worth
+    /// doing if the result survives all of them — so the separation is
+    /// guaranteed here rather than assumed of the parser.
+    ///
+    /// The blank lines are the only change: text with no table in it is
+    /// returned untouched, and a table already spaced correctly — which is how
+    /// `TableLayout` writes them — is left exactly as it was.
+    static func tablesSeparated(_ text: String) -> String {
+        let blocks = MarkdownTable.blocks(in: text)
+        guard blocks.contains(where: { if case .table = $0 { return true } else { return false } }) else {
+            return text
+        }
+
+        var lines: [String] = []
+        for block in blocks {
+            switch block {
+            case .text(let value):
+                let incoming = value.components(separatedBy: "\n")
+                if lines.last?.isEmpty == false, incoming.first?.isEmpty == false {
+                    lines.append("")
+                }
+                lines.append(contentsOf: incoming)
+            case .table(let table):
+                if lines.last?.isEmpty == false { lines.append("") }
+                lines.append(contentsOf: table.markdown.components(separatedBy: "\n"))
+            }
+        }
+        return lines.joined(separator: "\n")
     }
 
     /// How the screenshot appears in the Markdown body, if at all.

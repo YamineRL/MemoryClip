@@ -191,10 +191,30 @@ struct PassthroughRefiner: NoteRefiner {
     /// qualify, so "Fix #4213", "2.1 release notes" and "→ next steps" all
     /// still title their notes.
     static func heuristicTitle(for input: RefinementInput) -> String {
-        for line in input.rawText.split(separator: "\n", omittingEmptySubsequences: true) {
-            guard line.contains(where: { $0.isLetter || $0.isNumber }) else { continue }
-            let trimmed = trimmingTrailingPunctuation(String(line))
-            let clamped = RefinementGuard.clampedTitle(trimmed)
+        var firstHeader: [String]?
+        for block in MarkdownTable.blocks(in: input.rawText) {
+            switch block {
+            case .table(let table):
+                // Held, not used yet: a heading below the table still makes a
+                // better title than the table's own column names.
+                if firstHeader == nil { firstHeader = table.header }
+            case .text(let value):
+                for line in value.split(separator: "\n", omittingEmptySubsequences: true) {
+                    guard line.contains(where: { $0.isLetter || $0.isNumber }) else { continue }
+                    let trimmed = trimmingTrailingPunctuation(String(line))
+                    let clamped = RefinementGuard.clampedTitle(trimmed)
+                    if !clamped.isEmpty { return clamped }
+                }
+            }
+        }
+
+        // A screenshot of nothing but a table. Its header row names what the
+        // table is about ("Region Q3 Q4"), which beats a timestamp — but as
+        // words, not as the Markdown row it is stored as: this title is also
+        // the note's file name, and `| Region | Q3 | Q4 |.md` is not one.
+        if let firstHeader {
+            let joined = firstHeader.filter { !$0.isEmpty }.joined(separator: " ")
+            let clamped = RefinementGuard.clampedTitle(trimmingTrailingPunctuation(joined))
             if !clamped.isEmpty { return clamped }
         }
         return timestampTitle(for: input)
