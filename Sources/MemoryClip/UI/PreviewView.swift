@@ -175,9 +175,7 @@ struct PreviewView: View {
                         .font(Design.Typography.meta)
                         .foregroundStyle(Color(nsColor: .secondaryLabelColor))
                     ScrollView {
-                        Text(extracted)
-                            .font(.system(size: bodyFontSize))
-                            .textSelection(.enabled)
+                        extractedBody(extracted)
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }
                 }
@@ -186,6 +184,60 @@ struct PreviewView: View {
                 .frame(maxHeight: Design.Size.previewExtractedTextHeight)
             }
         }
+    }
+
+    /// Extracted text, with any table in it drawn as a table.
+    ///
+    /// Recognition stores tables as Markdown (see `TableLayout`), which is the
+    /// right thing to store and the wrong thing to show: a column of pipes in
+    /// a proportional font is harder to read than the screenshot it came from.
+    /// So the pane parses them back out and lays them on a grid, and leaves
+    /// everything else as the plain, selectable text it already was.
+    @ViewBuilder
+    private func extractedBody(_ text: String) -> some View {
+        VStack(alignment: .leading, spacing: Design.Space.roomy) {
+            ForEach(Array(MarkdownTable.blocks(in: text).enumerated()), id: \.offset) { _, block in
+                switch block {
+                case .text(let value):
+                    let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+                    if !trimmed.isEmpty {
+                        Text(trimmed)
+                            .font(.system(size: bodyFontSize))
+                            .textSelection(.enabled)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                case .table(let table):
+                    tableGrid(table)
+                }
+            }
+        }
+    }
+
+    /// One recognized table. Monospaced digits so a column of numbers lines
+    /// up under its header the way it did on screen, and a rule under the
+    /// header row because that is the only thing separating it from the data
+    /// once the pipes are gone.
+    private func tableGrid(_ table: MarkdownTable) -> some View {
+        Grid(alignment: .leading, horizontalSpacing: Design.Space.loose, verticalSpacing: Design.Space.snug) {
+            GridRow {
+                ForEach(Array(table.header.enumerated()), id: \.offset) { _, cell in
+                    Text(cell)
+                        .font(.system(size: bodyFontSize, weight: .semibold))
+                        .textSelection(.enabled)
+                }
+            }
+            Divider().gridCellColumns(table.columnCount)
+            ForEach(Array(table.rows.enumerated()), id: \.offset) { _, row in
+                GridRow {
+                    ForEach(Array(row.enumerated()), id: \.offset) { _, cell in
+                        Text(cell)
+                            .font(.system(size: bodyFontSize).monospacedDigit())
+                            .textSelection(.enabled)
+                    }
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     /// The image clip's OCR text, or nil when Vision found nothing usable.
