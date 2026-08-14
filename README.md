@@ -132,6 +132,10 @@ Vision reads the text inside images on-device and folds it into search, so you c
 screenshot by words that appear *in* it — 30 languages, detected rather than assumed.
 Those rows read `text found`.
 
+A screenshot **of a table comes back as a table**. Columns are recovered from where the
+words sat on the page, stored as Markdown, drawn as a grid in the preview and carried into
+notes — a real `<table>` in Apple Notes, a Markdown table in a vault.
+
 ### Notes
 
 Any clip with text can become a note: right-click → **Save as Note**. **Apple's on-device
