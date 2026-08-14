@@ -173,6 +173,42 @@ final class OCRPipelineBenchmarks: XCTestCase {
         }
     }
 
+    // MARK: - Table detection
+
+    /// What the table pass costs on an image that has no table in it — the
+    /// case it runs on every time and must not be paid for.
+    ///
+    /// Measures the two halves separately: asking Vision for a box per word
+    /// (`OCRService.fragments`), and the geometry search over them
+    /// (`TableLayout`).
+    func testTablePassOverhead() async throws {
+        try requireBench()
+        var request = RecognizeTextRequest()
+        request.recognitionLevel = OCRService.recognitionLevel
+        request.usesLanguageCorrection = true
+
+        for (name, data) in [("terminal", syntheticScreenshot()), ("light", lightScreenshot())] {
+            guard let observations = try? await request.perform(on: data) else { continue }
+            let lines = OCRService.recognizedLines(from: observations)
+
+            var fragments: [TextFragment] = []
+            var boxMillis = 0.0
+            var layoutMillis = 0.0
+            for _ in 0..<5 {
+                var start = DispatchTime.now().uptimeNanoseconds
+                fragments = OCRService.fragments(in: lines)
+                boxMillis += Double(DispatchTime.now().uptimeNanoseconds - start) / 1_000_000
+
+                start = DispatchTime.now().uptimeNanoseconds
+                _ = TableLayout.textWithTables(lines: lines.map(\.text), fragments: fragments)
+                layoutMillis += Double(DispatchTime.now().uptimeNanoseconds - start) / 1_000_000
+            }
+            report("table/\(name) word boxes", boxMillis / 5,
+                   extra: "\(lines.count) lines, \(fragments.count) words")
+            report("table/\(name) layout search", layoutMillis / 5)
+        }
+    }
+
     // MARK: - .fast vs .accurate
 
     func testRecognitionLevelComparison() async throws {
