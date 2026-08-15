@@ -56,7 +56,7 @@ final class OCRTableTests: XCTestCase {
                     triggers, milestone tracking, sponsor enforcement, reminders, cron jobs, \
                     content repurposing, and audience engagement.
                     """,
-                    "Python, SQLite, Redis, OpenAI APIs",
+                    "Python, SQLite, Redis, Celery",
                 ],
                 [
                     "Streamz",
@@ -81,12 +81,19 @@ final class OCRTableTests: XCTestCase {
 
         // The wrapped cell has to come back whole: first line, last line, and
         // the column beside it that ran out of text three lines early.
+        //
+        // Every string asserted on here avoids bare acronyms. Vision reads a
+        // standalone capital I as a lowercase l when no surrounding word tells
+        // it otherwise — "APIs" came back "APls" on the CI runner and passed
+        // on the maintainer's Mac. What this test is for is the geometry, so
+        // the fixture spends real words rather than staking the suite on which
+        // Vision version the image happens to ship.
         let agent = try XCTUnwrap(table.rows.first)
         XCTAssertEqual(agent.first, "StreamSyncAgent", recognized)
         XCTAssertTrue(agent[1].hasPrefix("Backend"), recognized)
         XCTAssertTrue(agent[1].hasSuffix("and audience engagement."), recognized)
         XCTAssertTrue(agent[2].hasPrefix("Python, SQLite, Redis"), recognized)
-        XCTAssertTrue(agent[2].hasSuffix("APIs"), recognized)
+        XCTAssertTrue(agent[2].hasSuffix("Celery"), recognized)
 
         let streamz = try XCTUnwrap(table.rows.last)
         XCTAssertEqual(streamz.first, "Streamz", recognized)
