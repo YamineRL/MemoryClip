@@ -81,6 +81,7 @@ glyph gives the last five clips, Pause Capture, Clear All History, Settings and 
 | `Return` | Paste the selected clip |
 | `⇧Return` | Paste it as **plain text**, dropping fonts and colours |
 | `⌘1`–`⌘9` | Paste any of the first nine results directly |
+| `⌘S` | Save the selected clip as a note, if it carries any text |
 | `Space` | Toggle the preview pane, while the search field is empty |
 | `Esc` | Close the preview, then the panel |
 
@@ -111,6 +112,7 @@ in the search bar. In NORMAL:
 | `p` | Pin the clip |
 | `dd` | Delete the clip, after a confirmation |
 | `q` `⇧Q` | Add to the queue / paste the whole queue |
+| `n` | Save the clip as a note (`⌘S` does the same in either mode) |
 | `/` `i` | Fresh search / edit the existing query → INSERT |
 
 **Housekeeping.** The newest 200 clips are kept and anything older than 30 days is swept,

@@ -137,7 +137,7 @@ enum OnboardingFlow {
             bullets: [
                 "Image OCR: text inside screenshots is extracted with the Vision framework in the background, so you can find an image by the words in it.",
                 "Queue mode: mark several clips (context menu → Add to Queue), then paste them in order with one action.",
-                "Vim keys: opt in under Settings → Panel for j/k, gg/G, ⌃d/⌃u, o/⇧O, p, dd, q/⇧Q in normal mode; press / or i to search, Esc to go back to normal.",
+                "Vim keys: opt in under Settings → Panel for j/k, gg/G, ⌃d/⌃u, o/⇧O, p, n, dd, q/⇧Q in normal mode; press / or i to search, Esc to go back to normal.",
             ]
         ),
         OnboardingStep(
@@ -146,7 +146,7 @@ enum OnboardingFlow {
             title: "Keep a clip as a note",
             subtitle: "The one thing worth setting up now: where those notes land.",
             bullets: [
-                "Any clip carrying text — including the text read out of a screenshot — can be written out: select it in the panel and choose “Save as Note” from its context menu.",
+                "Any clip carrying text — including the text read out of a screenshot — can be written out: select it in the panel and press ⌘S, or choose “Save as Note” from its context menu.",
                 "Where this Mac has Apple Intelligence, the on-device model gives the note a title, a summary and tags; text in another language is translated into English first. Both run here, and both are already on (Settings → Notes).",
                 "Choose a destination below. The Markdown folder is the default and starts out unset — until a folder is chosen, saving a note just tells you to choose one.",
                 "Screenshots can do this by themselves: Settings → Screenshots keeps new ones in your history, and Settings → Notes can write a note for every screenshot with enough text in it.",

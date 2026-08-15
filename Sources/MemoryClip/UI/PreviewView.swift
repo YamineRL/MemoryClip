@@ -242,9 +242,7 @@ struct PreviewView: View {
 
     /// The image clip's OCR text, or nil when Vision found nothing usable.
     private var extractedText: String? {
-        guard item.kind == .image || item.isScreenshot else { return nil }
-        let trimmed = item.ocrText?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        return trimmed.isEmpty ? nil : trimmed
+        ClipDisplay.extractedText(for: item)
     }
 
     @ViewBuilder

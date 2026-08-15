@@ -449,6 +449,14 @@ enum PanelInputMode: Equatable {
         case .insert: return "Search mode. Escape to return to normal mode."
         }
     }
+
+    /// Whether plain characters are read as vim commands rather than typed.
+    ///
+    /// The whole reason the bare-letter bindings can exist: in insert mode
+    /// every character belongs to the query, so `n` types an `n` and only
+    /// normal mode may claim it. The modified shortcuts (⌘S, ⌘1–⌘9) run in
+    /// both modes precisely because they are unreachable by typing.
+    var readsVimKeys: Bool { self == .normal }
 }
 
 /// Callbacks the panel UI uses to talk back to controllers.
@@ -586,7 +594,7 @@ struct PanelContentView: View {
 
     /// True while keystrokes should be read as vim commands.
     private var isNormalMode: Bool {
-        vimModeEnabled && inputMode == .normal
+        vimModeEnabled && inputMode.readsVimKeys
     }
 
     // MARK: Paging
@@ -889,11 +897,23 @@ struct PanelContentView: View {
                 return .handled
             }
             .onKeyPress(phases: .down) { press in
-                if press.modifiers.contains(.command),
-                   let digit = press.characters.first?.wholeNumberValue,
-                   (1...9).contains(digit) {
-                    quickPaste(digit)
-                    return .handled
+                if press.modifiers.contains(.command) {
+                    if let digit = press.characters.first?.wholeNumberValue,
+                       (1...9).contains(digit) {
+                        quickPaste(digit)
+                        return .handled
+                    }
+                    // ⌘S rather than a bare letter, because the panel's search
+                    // field is live: outside vim normal mode every plain key
+                    // belongs to the query. ⌘S is free here — the app owns no
+                    // Save menu item, and the Edit menu only claims the
+                    // standard ⌘Z/X/C/V/A — and it is the gesture every other
+                    // Mac app uses to write the thing in front of you to disk,
+                    // which is exactly what this does.
+                    if press.characters.lowercased() == "s" {
+                        saveSelectedNote()
+                        return .handled
+                    }
                 }
                 return handleVimKey(press)
             }
@@ -1265,6 +1285,8 @@ struct PanelContentView: View {
             setMode(.insert)
         case .enterInsert:
             setMode(.insert)
+        case .saveNote:
+            saveSelectedNote()
         }
     }
 
@@ -1295,6 +1317,18 @@ struct PanelContentView: View {
     private func pasteSelected(plainOnly: Bool) {
         guard let item = selectedItem else { return }
         actions.paste(item, plainOnly)
+    }
+
+    /// Write (or rewrite) the selected clip's note.
+    ///
+    /// Gated on the same predicate as the card's context-menu item, so the
+    /// key and the menu agree about which clips can be noted. The menu hides
+    /// the item for the rest; a key has nothing to hide, so a colour swatch
+    /// or a screenshot Vision could not read simply does nothing — better
+    /// than starting an export that can only end in a failure alert.
+    private func saveSelectedNote() {
+        guard let item = selectedItem, ClipDisplay.canSaveNote(item) else { return }
+        actions.saveNote(item)
     }
 
     private func quickPaste(_ digit: Int) {

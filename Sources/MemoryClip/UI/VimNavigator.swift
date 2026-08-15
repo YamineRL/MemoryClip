@@ -16,6 +16,7 @@ enum VimCommand: Equatable {
     case queuePaste   // Q
     case enterSearch  // / — start a fresh search (clears the query)
     case enterInsert  // i — edit the existing query
+    case saveNote     // n
 }
 
 /// Modifier state relevant to vim keys.
@@ -86,6 +87,11 @@ struct VimNavigator {
         case "Q": return .queuePaste
         case "/": return .enterSearch
         case "i": return .enterInsert
+        // `n` in vim repeats the last search, and the panel has nothing to
+        // repeat: its search filters the list as it is typed, so there is no
+        // "next match" to jump to. That leaves the letter free, and it reads
+        // as the first letter of the thing it does.
+        case "n": return .saveNote
         default: return nil
         }
     }

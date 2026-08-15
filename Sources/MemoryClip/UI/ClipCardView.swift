@@ -460,27 +460,16 @@ struct ClipCardView: View {
     }
 
     /// The image clip's OCR text, or nil when there is none worth offering.
-    /// Whitespace-only Vision output counts as none.
-    ///
-    /// Screenshot clips qualify as well as pasteboard images: their kind is
-    /// `.file` (they reference the picture on disk) but they carry pixels and
-    /// go through the same recognition.
     private var extractedText: String? {
-        guard item.kind == .image || item.isScreenshot else { return nil }
-        let trimmed = item.ocrText?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        return trimmed.isEmpty ? nil : trimmed
+        ClipDisplay.extractedText(for: item)
     }
 
     /// Whether this clip has anything a note could be made of.
     ///
-    /// Text-bearing clips qualify on their own text; images and screenshots
-    /// qualify once recognition has found something. A colour swatch or an
-    /// unreadable screenshot has nothing to write down, so the action is not
-    /// offered rather than being offered and failing.
+    /// Shared with the panel's ⌘S / `n` keys, which have to offer the action
+    /// on exactly the clips this menu does.
     private var canSaveNote: Bool {
-        if extractedText != nil { return true }
-        guard isTextBearing else { return false }
-        return !(item.text ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        ClipDisplay.canSaveNote(item)
     }
 
     /// Kinds that carry plain text — the only ones offered transforms.
