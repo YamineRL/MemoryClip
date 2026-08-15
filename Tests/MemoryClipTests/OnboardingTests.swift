@@ -175,6 +175,10 @@ final class OnboardingTests: XCTestCase {
             "the page must name the panel action that writes a note, as ClipCardView spells it: \(text)"
         )
         XCTAssertTrue(
+            text.contains("⌘S"),
+            "the page must name the key as well: the panel has no menu bar to find it in: \(text)"
+        )
+        XCTAssertTrue(
             text.contains("Settings → Notes"),
             "the page must say where the same settings live afterwards: \(text)"
         )

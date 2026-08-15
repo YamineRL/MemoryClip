@@ -131,7 +131,7 @@ enum NoteComposer {
 
         let body = draft.body.trimmingCharacters(in: .whitespacesAndNewlines)
         if !body.isEmpty {
-            out += body + "\n"
+            out += tablesSeparated(body) + "\n"
         }
 
         if let translation = translationToEmit(for: draft) {
@@ -140,7 +140,7 @@ enum NoteComposer {
             // whereas the raw recognition is provenance.
             out += "\n## \(escapedHeadingText(translationHeading(for: draft)))\n\n"
             out += "*\(translationNote)*\n\n"
-            out += translation + "\n"
+            out += tablesSeparated(translation) + "\n"
         }
 
         if let raw = rawTextToEmit(for: draft) {
@@ -153,10 +153,46 @@ enum NoteComposer {
             out += draft.wasRefined
                 ? "*Exactly as recognised, before the on-device model cleaned it up.*\n\n"
                 : "*Exactly as recognised.*\n\n"
-            out += raw + "\n"
+            out += tablesSeparated(raw) + "\n"
         }
 
         return out
+    }
+
+    /// `text` with a blank line either side of every table in it.
+    ///
+    /// A table is a block, and a block needs the blank line: butted straight
+    /// against the paragraph above it, whether it still renders as a table
+    /// depends on whether the reader's parser lets one interrupt a paragraph.
+    /// Obsidian is the destination, GitHub and every other Markdown viewer are
+    /// where these notes end up afterwards, and the recognition is only worth
+    /// doing if the result survives all of them — so the separation is
+    /// guaranteed here rather than assumed of the parser.
+    ///
+    /// The blank lines are the only change: text with no table in it is
+    /// returned untouched, and a table already spaced correctly — which is how
+    /// `TableLayout` writes them — is left exactly as it was.
+    static func tablesSeparated(_ text: String) -> String {
+        let blocks = MarkdownTable.blocks(in: text)
+        guard blocks.contains(where: { if case .table = $0 { return true } else { return false } }) else {
+            return text
+        }
+
+        var lines: [String] = []
+        for block in blocks {
+            switch block {
+            case .text(let value):
+                let incoming = value.components(separatedBy: "\n")
+                if lines.last?.isEmpty == false, incoming.first?.isEmpty == false {
+                    lines.append("")
+                }
+                lines.append(contentsOf: incoming)
+            case .table(let table):
+                if lines.last?.isEmpty == false { lines.append("") }
+                lines.append(contentsOf: table.markdown.components(separatedBy: "\n"))
+            }
+        }
+        return lines.joined(separator: "\n")
     }
 
     /// How the screenshot appears in the Markdown body, if at all.
@@ -279,14 +315,44 @@ enum NoteComposer {
     }
 
     /// Blank-line-separated blocks become `<p>` elements; single newlines
-    /// inside a block become `<br>`.
+    /// inside a block become `<br>`; a recognized table becomes a `<table>`.
+    ///
+    /// The table branch is not cosmetic. Notes renders the body as HTML, so a
+    /// Markdown table left as text arrives as a paragraph of pipes — the one
+    /// destination where the structure recognition just recovered would be
+    /// thrown away again on the way in.
     private static func htmlParagraphs(_ text: String) -> String {
-        text
-            .components(separatedBy: "\n\n")
-            .map { $0.trimmingCharacters(in: .newlines) }
+        MarkdownTable.blocks(in: text)
+            .map { block in
+                switch block {
+                case .table(let table): return htmlTable(table)
+                case .text(let value):
+                    return value
+                        .components(separatedBy: "\n\n")
+                        .map { $0.trimmingCharacters(in: .newlines) }
+                        .filter { !$0.isEmpty }
+                        .map { "<p>\(htmlParagraphBody($0))</p>" }
+                        .joined(separator: "\n")
+                }
+            }
             .filter { !$0.isEmpty }
-            .map { "<p>\(htmlParagraphBody($0))</p>" }
             .joined(separator: "\n")
+    }
+
+    /// One table as HTML. Notes keeps `<table>`, `<tr>`, `<th>` and `<td>`;
+    /// anything finer (alignment, widths) it drops, so none is emitted.
+    private static func htmlTable(_ table: MarkdownTable) -> String {
+        var out = "<table>\n<thead>\n<tr>"
+        for cell in table.header { out += "<th>\(htmlEscaped(cell))</th>" }
+        out += "</tr>\n</thead>\n<tbody>\n"
+        for row in table.rows {
+            out += "<tr>"
+            for cell in MarkdownTable.fitted(row, to: table.columnCount) {
+                out += "<td>\(htmlEscaped(cell))</td>"
+            }
+            out += "</tr>\n"
+        }
+        return out + "</tbody>\n</table>"
     }
 
     // MARK: - Plain text

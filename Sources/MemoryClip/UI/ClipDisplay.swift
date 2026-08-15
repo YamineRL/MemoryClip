@@ -28,6 +28,38 @@ enum ClipDisplay {
         return formatted == trimmed ? nil : formatted
     }
 
+    // MARK: - Notes
+
+    /// The image clip's OCR text, or nil when there is none worth offering.
+    /// Whitespace-only Vision output counts as none.
+    ///
+    /// Screenshot clips qualify as well as pasteboard images: their kind is
+    /// `.file` (they reference the picture on disk) but they carry pixels and
+    /// go through the same recognition.
+    static func extractedText(for item: some ClipDisplayable) -> String? {
+        guard item.kind == .image || item.isScreenshot else { return nil }
+        let trimmed = item.ocrText?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return trimmed.isEmpty ? nil : trimmed
+    }
+
+    /// Whether this clip has anything a note could be made of.
+    ///
+    /// Text-bearing clips qualify on their own text; images and screenshots
+    /// qualify once recognition has found something. A colour swatch or an
+    /// unreadable screenshot has nothing to write down, so the action is not
+    /// offered rather than being offered and failing.
+    ///
+    /// It lives here rather than on the card because two paths now ask the
+    /// question and they answer it differently in the UI: the context menu
+    /// omits the item, while a key press has no menu to omit and can only
+    /// decline silently. A copy in each would eventually drift, and the
+    /// symptom would be a key that looks dead on clips the menu still offers.
+    static func canSaveNote(_ item: some ClipDisplayable) -> Bool {
+        if extractedText(for: item) != nil { return true }
+        guard isTextBearing(item.kind) else { return false }
+        return !(item.text ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
     // MARK: - File URLs
 
     /// A human-readable POSIX path for a stored file-URL string.

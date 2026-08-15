@@ -2,6 +2,19 @@ import XCTest
 
 @testable import MemoryClip
 
+/// A plain stand-in for `ClipItem`, so the shared predicates can be
+/// exercised without a SwiftData container.
+private struct FakeClip: ClipDisplayable {
+    var uuid = UUID()
+    var kind: ClipKind = .text
+    var text: String?
+    var ocrText: String?
+    var colorHex: String?
+    var fileURLStrings: [String] = []
+    var sourceAppName: String?
+    var isScreenshot = false
+}
+
 /// Covers the pure display logic shared by ClipRowView and PreviewView:
 /// the instant-calc gate, VoiceOver label composition, truncation and
 /// file-URL prettifying.
@@ -45,6 +58,52 @@ final class ClipDisplayTests: XCTestCase {
         XCTAssertFalse(ClipDisplay.isTextBearing(.image))
         XCTAssertFalse(ClipDisplay.isTextBearing(.file))
         XCTAssertFalse(ClipDisplay.isTextBearing(.color))
+    }
+
+    // MARK: - Note guard (must be identical in the card menu and the ⌘S / n keys)
+
+    func testAnyTextBearingClipCanSaveANote() {
+        for kind in [ClipKind.text, .richText, .link] {
+            XCTAssertTrue(
+                ClipDisplay.canSaveNote(FakeClip(kind: kind, text: "worth keeping")),
+                "expected a note for \(kind)"
+            )
+        }
+    }
+
+    /// The key press has no menu item to hide, so these are the clips where
+    /// it must do nothing at all rather than start an export that can only
+    /// fail: nothing was copied that a note could be made of.
+    func testClipWithNothingToWriteCannotSaveANote() {
+        XCTAssertFalse(ClipDisplay.canSaveNote(FakeClip(kind: .color, colorHex: "#FF00AA")))
+        XCTAssertFalse(ClipDisplay.canSaveNote(FakeClip(kind: .text, text: nil)))
+        XCTAssertFalse(ClipDisplay.canSaveNote(FakeClip(kind: .text, text: " \n ")))
+        XCTAssertFalse(
+            ClipDisplay.canSaveNote(FakeClip(kind: .file, fileURLStrings: ["/tmp/report.pdf"])),
+            "a copied file is a reference, not text"
+        )
+    }
+
+    func testImagesAndScreenshotsCanSaveANoteOnceVisionFindsText() {
+        XCTAssertTrue(ClipDisplay.canSaveNote(FakeClip(kind: .image, ocrText: "INVOICE 2024")))
+        XCTAssertTrue(
+            ClipDisplay.canSaveNote(FakeClip(kind: .file, ocrText: "TOTAL 42.00", isScreenshot: true)),
+            "a screenshot is a .file clip carrying pixels"
+        )
+        XCTAssertFalse(ClipDisplay.canSaveNote(FakeClip(kind: .image)))
+        XCTAssertFalse(
+            ClipDisplay.canSaveNote(FakeClip(kind: .file, ocrText: "  ", isScreenshot: true)),
+            "whitespace-only recognition is nothing recognised"
+        )
+    }
+
+    func testExtractedTextIsTrimmedAndOnlyForPictures() {
+        XCTAssertEqual(ClipDisplay.extractedText(for: FakeClip(kind: .image, ocrText: " hi \n")), "hi")
+        XCTAssertEqual(
+            ClipDisplay.extractedText(for: FakeClip(kind: .file, ocrText: "hi", isScreenshot: true)), "hi"
+        )
+        XCTAssertNil(ClipDisplay.extractedText(for: FakeClip(kind: .file, ocrText: "hi")))
+        XCTAssertNil(ClipDisplay.extractedText(for: FakeClip(kind: .text, ocrText: "hi")))
     }
 
     // MARK: - Spoken summary truncation

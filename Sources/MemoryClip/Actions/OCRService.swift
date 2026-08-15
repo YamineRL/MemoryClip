@@ -1,3 +1,4 @@
+import CoreGraphics
 import Foundation
 import Vision
 
@@ -46,6 +47,22 @@ enum OCRService {
     /// Arabic as well as in English.
     static let detectsLanguageAutomatically = true
 
+    /// Whether recognized text is checked for table layout before it is
+    /// stored.
+    ///
+    /// On, and with no setting behind it, because the two outcomes are not
+    /// symmetric: when no table is found the stored text is byte-identical to
+    /// what this file produced before `TableLayout` existed, so the feature
+    /// has no cost to opt out of. See `TableLayout` for why its thresholds
+    /// are set to reject.
+    ///
+    /// The pass is also nearly free: measured on an M1 Pro against the
+    /// benchmarks' 1512x982 terminal screenshot (25 lines, 126 words), asking
+    /// Vision for a box per word costs 2.3 ms and the geometry search 0.6 ms,
+    /// against ~670 ms of recognition — 0.4% of an image. See
+    /// `OCRPipelineBenchmarks.testTablePassOverhead`.
+    static let detectsTables = true
+
     /// Recognize text in encoded image data (PNG/TIFF/JPEG…).
     ///
     /// Returns nil when the data isn't a decodable image, when Vision
@@ -89,7 +106,7 @@ enum OCRService {
         request.automaticallyDetectsLanguage = detectsLanguageAutomatically
 
         do {
-            return joinedText(from: try await perform(request))
+            return text(from: try await perform(request))
         } catch {
             log.error("OCR failed: \(error.localizedDescription)")
             return nil
@@ -99,14 +116,123 @@ enum OCRService {
     /// Assemble the recognized lines into one searchable string, keeping
     /// Vision's reading order and dropping low-confidence candidates.
     static func joinedText(from observations: [RecognizedTextObservation]) -> String? {
-        var lines: [String] = []
+        let lines = recognizedLines(from: observations)
+        guard !lines.isEmpty else { return nil }
+        return lines.map(\.text).joined(separator: "\n")
+    }
+
+    /// The searchable text for an image: `joinedText`, except where the words
+    /// on the page turn out to be laid out as a table.
+    ///
+    /// The flat text is computed first and returned unless a table is
+    /// actually found, so a screenshot with no table in it produces exactly
+    /// the string it produced before tables existed — the table pass cannot
+    /// reorder or reword text it does not claim.
+    static func text(from observations: [RecognizedTextObservation]) -> String? {
+        let lines = recognizedLines(from: observations)
+        guard !lines.isEmpty else { return nil }
+        let flat = lines.map(\.text).joined(separator: "\n")
+        guard detectsTables else { return flat }
+        return TableLayout.textWithTables(
+            lines: lines.map(\.text),
+            fragments: fragments(in: lines)
+        ) ?? flat
+    }
+
+    /// One accepted line of recognition: its text, and the candidate it came
+    /// from so word boxes can be asked for later.
+    struct RecognizedLine {
+        var text: String
+        var candidate: RecognizedText
+        var boundingBox: NormalizedRect
+    }
+
+    /// The lines worth keeping, in Vision's reading order.
+    static func recognizedLines(from observations: [RecognizedTextObservation]) -> [RecognizedLine] {
+        var lines: [RecognizedLine] = []
         for observation in observations {
             guard let candidate = observation.topCandidates(1).first else { continue }
             guard candidate.confidence >= minimumConfidence else { continue }
-            let line = candidate.string.trimmingCharacters(in: .whitespacesAndNewlines)
-            if !line.isEmpty { lines.append(line) }
+            let text = candidate.string.trimmingCharacters(in: .whitespacesAndNewlines)
+            if text.isEmpty { continue }
+            lines.append(
+                RecognizedLine(text: text, candidate: candidate, boundingBox: observation.boundingBox)
+            )
         }
-        guard !lines.isEmpty else { return nil }
-        return lines.joined(separator: "\n")
+        return lines
+    }
+
+    /// The words of `lines`, each with the box it occupied.
+    ///
+    /// Word boxes rather than line boxes, because Vision's idea of a "line"
+    /// is not stable across the very thing being detected: handed a table it
+    /// sometimes returns one observation per cell and sometimes one for the
+    /// whole row, depending on how wide the column gaps are. Asking the
+    /// candidate where each word sits removes that variable — a row that came
+    /// back as one string is still a row of separately-placed words.
+    ///
+    /// When a word's box cannot be resolved the whole line falls back to its
+    /// own bounding box as a single fragment: a line at the wrong granularity
+    /// costs at most a missed table, whereas a guessed box would put a word
+    /// in the wrong column.
+    static func fragments(in lines: [RecognizedLine]) -> [TextFragment] {
+        var fragments: [TextFragment] = []
+        for (index, line) in lines.enumerated() {
+            let string = line.candidate.string
+            let ranges = wordRanges(in: string)
+            var words: [TextFragment] = []
+            var resolvedAll = !ranges.isEmpty
+            for range in ranges {
+                guard let box = line.candidate.boundingBox(for: range)?.boundingBox else {
+                    resolvedAll = false
+                    break
+                }
+                let text = String(string[range]).trimmingCharacters(in: .whitespacesAndNewlines)
+                if text.isEmpty { continue }
+                words.append(TextFragment(text: text, rect: readingOrderRect(box), lineIndex: index))
+            }
+            if resolvedAll, !words.isEmpty {
+                fragments.append(contentsOf: words)
+            } else {
+                fragments.append(
+                    TextFragment(
+                        text: line.text,
+                        rect: readingOrderRect(line.boundingBox),
+                        lineIndex: index
+                    )
+                )
+            }
+        }
+        return fragments
+    }
+
+    /// Vision's normalized rect flipped to a top-left origin.
+    ///
+    /// Vision measures y from the BOTTOM of the image; every reader of these
+    /// rects thinks in reading order, so the flip happens once, here, rather
+    /// than being remembered correctly at each use.
+    static func readingOrderRect(_ box: NormalizedRect) -> CGRect {
+        let rect = box.cgRect
+        return CGRect(x: rect.minX, y: 1 - rect.maxY, width: rect.width, height: rect.height)
+    }
+
+    /// The ranges of whitespace-separated runs in `string`.
+    static func wordRanges(in string: String) -> [Range<String.Index>] {
+        var ranges: [Range<String.Index>] = []
+        var start: String.Index?
+        var index = string.startIndex
+        while index < string.endIndex {
+            if string[index].isWhitespace {
+                if let begin = start {
+                    ranges.append(begin..<index)
+                    start = nil
+                }
+            } else if start == nil {
+                start = index
+            }
+            index = string.index(after: index)
+        }
+        if let begin = start { ranges.append(begin..<string.endIndex) }
+        return ranges
     }
 }

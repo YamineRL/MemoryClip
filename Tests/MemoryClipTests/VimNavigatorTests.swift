@@ -31,6 +31,18 @@ final class VimNavigatorTests: XCTestCase {
         XCTAssertEqual(vim.command(for: "i"), .enterInsert)
     }
 
+    /// `n` is free because the panel has no "next match" for vim's `n` to
+    /// repeat — the search filters the list as it is typed. It only counts in
+    /// NORMAL, where plain characters are commands; in INSERT the same key
+    /// has to type an `n` into the query, which is what ⌘S is for.
+    func testSaveNoteKeyIsBoundAndNormalModeOnly() {
+        var vim = VimNavigator()
+        XCTAssertEqual(vim.command(for: "n"), .saveNote)
+        XCTAssertFalse(vim.hasPending)
+        XCTAssertTrue(PanelInputMode.normal.readsVimKeys)
+        XCTAssertFalse(PanelInputMode.insert.readsVimKeys, "typing `n` must reach the search field")
+    }
+
     func testUnboundKeyReturnsNilAndLeavesNoPending() {
         var vim = VimNavigator()
         XCTAssertNil(vim.command(for: "z"))
@@ -102,6 +114,7 @@ final class VimNavigatorTests: XCTestCase {
     func testNonMovementCommandsLeaveIndexAlone() {
         XCTAssertEqual(VimNavigator.newIndex(for: .paste, index: 2, count: 5), 2)
         XCTAssertEqual(VimNavigator.newIndex(for: .queueToggle, index: 2, count: 5), 2)
+        XCTAssertEqual(VimNavigator.newIndex(for: .saveNote, index: 2, count: 5), 2)
     }
 
     func testEmptyListAlwaysResolvesToZero() {
