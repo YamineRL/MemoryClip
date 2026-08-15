@@ -306,6 +306,14 @@ enum TableLayout {
         // started one line too early — on a caption or a section title that
         // happens to sit above the table.
         guard grid[0].allSatisfy({ !$0.isEmpty }) else { return false }
+        // A first column of nothing but list markers is a list, not a table.
+        // A numbered or bulleted list whose items wrap clears every other rule
+        // here — the markers leave a channel down the left that runs the whole
+        // height, the wrapped lines fold into their item, and what comes out is
+        // a two-column table whose header is "1.". The list is the more
+        // faithful reading of the page, and it is what the flat text already
+        // gives, so this hands it back rather than inventing columns for it.
+        guard !grid.allSatisfy({ isListMarker($0[0]) }) else { return false }
 
         let filled = grid.reduce(0) { $0 + $1.count(where: { !$0.isEmpty }) }
         guard Double(filled) >= minimumFillRatio * Double(grid.count * columns) else { return false }
@@ -315,6 +323,36 @@ enum TableLayout {
             guard Double(present) >= minimumColumnCoverage * Double(grid.count) else { return false }
         }
         return true
+    }
+
+    /// Bullets a list item can begin with, the plain hyphen among them.
+    ///
+    /// The hyphen looks dangerous — a table cell of `-` meaning "none" is
+    /// ordinary — but it only matters when EVERY cell of the first column is
+    /// one, header included, and a table whose entire first column reads `-`
+    /// has no first column. Against that, `- item` is the commonest bullet
+    /// there is, so leaving it out would miss the lists most worth declining.
+    /// A rank column headed `#` is deliberately not in here.
+    static let listBullets: Set<Character> = ["-", "–", "—", "•", "·", "‣", "▪", "◦", "*"]
+
+    /// Whether a cell is a list marker rather than a value: `•`, `-`, `1.`,
+    /// `2)`, `(3`, `a.`, `iv.`.
+    ///
+    /// Length-capped because the point is a mark that introduces an item, and
+    /// anything longer is content.
+    static func isListMarker(_ cell: String) -> Bool {
+        guard !cell.isEmpty, cell.count <= 5 else { return false }
+        if cell.count == 1, let character = cell.first, listBullets.contains(character) { return true }
+
+        var body = Substring(cell)
+        if body.first == "(" { body = body.dropFirst() }
+        if let last = body.last, last == "." || last == ")" { body = body.dropLast() }
+        guard !body.isEmpty else { return false }
+        if body.allSatisfy(\.isNumber) { return true }
+        // `a.` and `iv.` — an enumerator, not a word. Two letters at most, so
+        // a first column of two-letter codes ("US", "FR") is not mistaken for
+        // one.
+        return body.count <= 2 && body.allSatisfy { $0.isLetter && $0.isLowercase }
     }
 
     // MARK: - Search

@@ -232,6 +232,51 @@ final class TableLayoutTests: XCTestCase {
         XCTAssertNil(TableLayout.textWithTables(lines: page.lines, fragments: page.fragments))
     }
 
+    /// A numbered list whose items wrap clears every other rule: the markers
+    /// leave a channel down the left, and the wrapped lines fold into their
+    /// item. It is still a list, and `| 1. | Install the package… |` is a
+    /// worse reading of the page than the lines themselves.
+    func testAWrappedNumberedListIsNotATable() {
+        let page = page(
+            """
+            1.   Install the package with brew and
+                 then open the app for the first
+                 time to grant permissions.
+            2.   Copy something anywhere in macOS
+                 and it appears in the panel
+                 immediately.
+            3.   Press shift command V to open it.
+            """
+        )
+        XCTAssertNil(TableLayout.textWithTables(lines: page.lines, fragments: page.fragments))
+    }
+
+    /// The same list wrapped to two lines an item, which passed the fill and
+    /// coverage rules on its own and became a table with empty first cells.
+    func testAListThatWrapsOnceIsNotATableEither() {
+        let page = page(
+            """
+            1.   Install the package with brew and
+                 open the app to grant permissions.
+            2.   Copy something anywhere in macOS
+                 and it appears in the panel.
+            3.   Press shift command V to open it.
+            """
+        )
+        XCTAssertNil(TableLayout.textWithTables(lines: page.lines, fragments: page.fragments))
+    }
+
+    func testListMarkersAreToldFromValues() {
+        for marker in ["1.", "2)", "(3", "a.", "iv.", "•", "-", "*", "10."] {
+            XCTAssertTrue(TableLayout.isListMarker(marker), "\(marker) should read as a list marker")
+        }
+        // A rank column headed `#`, two-letter country codes, and anything
+        // long enough to be content.
+        for value in ["#", "US", "FR", "Q3", "Region", "1,204", "", "N/A"] {
+            XCTAssertFalse(TableLayout.isListMarker(value), "\(value) should read as a value")
+        }
+    }
+
     func testEmptyInputIsNotATable() {
         XCTAssertNil(TableLayout.textWithTables(lines: [], fragments: []))
     }
