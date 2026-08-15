@@ -243,6 +243,58 @@ enum TableLayout {
         }
     }
 
+    /// `grid` with every band of words that continues the band above it folded
+    /// into it, cells joined with a space — the rows a reader would count.
+    ///
+    /// A cell too long for its column wraps, and each wrapped line is its own
+    /// band of words on the page — so one logical row of a documentation table
+    /// arrives here as six rows, five of them holding nothing but the tail of
+    /// the middle column. Judged as they arrive, those five are mostly empty
+    /// cells, which is precisely what the fill and coverage rules are built to
+    /// throw out, and the table is lost. Worse, the tails line up with each
+    /// other: the rows below the first one have a complete "header" and a
+    /// clear channel of their own, so the search settles on them and prints a
+    /// two-column table made entirely of sentence fragments. The rows have to
+    /// be put back together before anything judges them.
+    ///
+    /// The cue is an empty first column. A table is read left to right and the
+    /// first column is what names the row — the key, the label, the region —
+    /// so a band that does not open one did not start a row.
+    ///
+    /// Two other cues were considered:
+    ///
+    /// - Anchoring on whichever column carries text in the most rows. On the
+    ///   screenshot this was written for that is the wrapped column itself:
+    ///   the description is present on every band exactly because it is the
+    ///   one that overflows. Anchoring there merges nothing.
+    /// - Comparing vertical gaps, the step between logical rows against the
+    ///   step between wrapped lines inside a cell. In a bordered table with
+    ///   ordinary cell padding those two differ by a few points, which is
+    ///   inside the spread of Vision's box heights, and in a table whose rows
+    ///   are each one line tall there is no second population to measure
+    ///   against at all.
+    ///
+    /// What this leaves is the table whose *first* column wraps: the second
+    /// line of that cell opens a first column and so starts a logical row that
+    /// should not exist. That splits one row in two rather than joining two
+    /// into one, which pushes the fill ratio down, not up — the run is
+    /// rejected the way it is today. Failing back to the old behaviour is the
+    /// point: nothing here is allowed to buy a table by lowering a threshold.
+    static func logicalRows(_ grid: [[String]]) -> [[String]] {
+        var out: [[String]] = []
+        for row in grid {
+            guard row.first?.isEmpty == true, var last = out.last else {
+                out.append(row)
+                continue
+            }
+            for column in row.indices where !row[column].isEmpty {
+                last[column] = last[column].isEmpty ? row[column] : last[column] + " " + row[column]
+            }
+            out[out.count - 1] = last
+        }
+        return out
+    }
+
     /// Whether a grid is worth calling a table. See the thresholds above for
     /// why each of these is set where it is.
     static func isTable(_ grid: [[String]]) -> Bool {
@@ -254,6 +306,14 @@ enum TableLayout {
         // started one line too early — on a caption or a section title that
         // happens to sit above the table.
         guard grid[0].allSatisfy({ !$0.isEmpty }) else { return false }
+        // A first column of nothing but list markers is a list, not a table.
+        // A numbered or bulleted list whose items wrap clears every other rule
+        // here — the markers leave a channel down the left that runs the whole
+        // height, the wrapped lines fold into their item, and what comes out is
+        // a two-column table whose header is "1.". The list is the more
+        // faithful reading of the page, and it is what the flat text already
+        // gives, so this hands it back rather than inventing columns for it.
+        guard !grid.allSatisfy({ isListMarker($0[0]) }) else { return false }
 
         let filled = grid.reduce(0) { $0 + $1.count(where: { !$0.isEmpty }) }
         guard Double(filled) >= minimumFillRatio * Double(grid.count * columns) else { return false }
@@ -263,6 +323,36 @@ enum TableLayout {
             guard Double(present) >= minimumColumnCoverage * Double(grid.count) else { return false }
         }
         return true
+    }
+
+    /// Bullets a list item can begin with, the plain hyphen among them.
+    ///
+    /// The hyphen looks dangerous — a table cell of `-` meaning "none" is
+    /// ordinary — but it only matters when EVERY cell of the first column is
+    /// one, header included, and a table whose entire first column reads `-`
+    /// has no first column. Against that, `- item` is the commonest bullet
+    /// there is, so leaving it out would miss the lists most worth declining.
+    /// A rank column headed `#` is deliberately not in here.
+    static let listBullets: Set<Character> = ["-", "–", "—", "•", "·", "‣", "▪", "◦", "*"]
+
+    /// Whether a cell is a list marker rather than a value: `•`, `-`, `1.`,
+    /// `2)`, `(3`, `a.`, `iv.`.
+    ///
+    /// Length-capped because the point is a mark that introduces an item, and
+    /// anything longer is content.
+    static func isListMarker(_ cell: String) -> Bool {
+        guard !cell.isEmpty, cell.count <= 5 else { return false }
+        if cell.count == 1, let character = cell.first, listBullets.contains(character) { return true }
+
+        var body = Substring(cell)
+        if body.first == "(" { body = body.dropFirst() }
+        if let last = body.last, last == "." || last == ")" { body = body.dropLast() }
+        guard !body.isEmpty else { return false }
+        if body.allSatisfy(\.isNumber) { return true }
+        // `a.` and `iv.` — an enumerator, not a word. Two letters at most, so
+        // a first column of two-letter codes ("US", "FR") is not mistaken for
+        // one.
+        return body.count <= 2 && body.allSatisfy { $0.isLetter && $0.isLowercase }
     }
 
     // MARK: - Search
@@ -324,7 +414,10 @@ enum TableLayout {
             // Widest-and-tallest first, and on down: a candidate can still
             // fail the fill and whole-line rules, and the next one is a
             // genuinely different reading of the same rows rather than a
-            // consolation prize.
+            // consolation prize. Height here counts bands of words, which is
+            // only a lower bound on rows once wrapped cells are joined — the
+            // real row count is checked against `minimumRows` in `isTable`,
+            // after the join.
             let ranked = candidates
                 .filter { $0.end - start + 1 >= minimumRows }
                 .sorted { lhs, rhs in
@@ -355,6 +448,11 @@ enum TableLayout {
 
     /// Build and validate the table for one run of rows.
     ///
+    /// The bands of words are joined into logical rows first — see
+    /// `logicalRows` — because a wrapped cell arrives as several bands
+    /// and the fill and coverage rules are only meaningful against the rows a
+    /// reader would count.
+    ///
     /// Rejects a run that owns only part of a recognized line. The output
     /// keeps Vision's line order and swaps whole lines for the table, so a
     /// half-consumed line would either lose its remaining words or print them
@@ -365,7 +463,7 @@ enum TableLayout {
         boundaries: [CGFloat],
         lineTotals: [Int: Int]
     ) -> Found? {
-        let cells = grid(rows: rows, boundaries: boundaries)
+        let cells = logicalRows(grid(rows: rows, boundaries: boundaries))
         guard isTable(cells) else { return nil }
 
         var counts: [Int: Int] = [:]

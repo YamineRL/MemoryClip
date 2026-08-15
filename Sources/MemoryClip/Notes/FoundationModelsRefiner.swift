@@ -201,21 +201,28 @@ struct FoundationModelsRefiner: NoteRefiner {
                 options: Self.generationOptions
             )
             let generated = response.content
+            // Salvaged before it is judged: the echo carries the raw text
+            // inside it, so an unstripped answer passes the guard on
+            // retention alone and reaches the note with the prompt attached.
+            let cleaned = Self.promptEchoStripped(generated.cleanedText)
+            if cleaned != generated.cleanedText {
+                log.notice("Note refinement: stripped an echoed prompt from the model's answer")
+            }
 
             // Plausibility is checked against what was actually SENT, not
             // against the full raw text: measuring a 6000-character rewrite
             // against a 20000-character original would fail every long note
             // on retention alone, for a truncation we chose.
-            guard RefinementGuard.isPlausible(cleaned: generated.cleanedText, raw: sent) else {
+            guard RefinementGuard.isPlausible(cleaned: cleaned, raw: sent) else {
                 log.notice("""
                     Note refinement rejected: implausible rewrite \
-                    (retention \(RefinementGuard.retentionRatio(cleaned: generated.cleanedText, raw: sent), format: .fixed(precision: 2)), \
-                    invention \(RefinementGuard.inventionRatio(cleaned: generated.cleanedText, raw: sent), format: .fixed(precision: 2)))
+                    (retention \(RefinementGuard.retentionRatio(cleaned: cleaned, raw: sent), format: .fixed(precision: 2)), \
+                    invention \(RefinementGuard.inventionRatio(cleaned: cleaned, raw: sent), format: .fixed(precision: 2)))
                     """)
                 return await fallback.refine(input)
             }
 
-            return Self.refinedNote(from: generated, input: input, remainder: remainder)
+            return Self.refinedNote(from: generated, cleanedText: cleaned, input: input, remainder: remainder)
         } catch let error as LanguageModelSession.GenerationError {
             log.error("Note refinement failed: \(Self.reason(for: error), privacy: .public)")
             return await fallback.refine(input)
@@ -234,6 +241,82 @@ struct FoundationModelsRefiner: NoteRefiner {
     /// Split `text` into the part sent to the model and the untouched
     /// remainder, cutting on a line boundary where one is close enough.
     ///
+    // MARK: - Prompt echo
+
+    /// The fixed lines of `prompt(for:text:)`.
+    ///
+    /// Named rather than written inline at the one place that builds them,
+    /// because a second place now has to recognise them coming back. Two
+    /// copies of a delimiter string is exactly the pair that drifts, and the
+    /// symptom of drift here is the prompt landing in the user's note.
+    static let promptLead = "Clean up the OCR text below."
+    static let screenshotHint = "It came from a screenshot, so expect window and menu chrome."
+    static let capturedFromPrefix = "It was captured from: "
+    static let beginMarker = "--- BEGIN OCR TEXT ---"
+    static let endMarker = "--- END OCR TEXT ---"
+
+    /// `text` with any of our own prompt echoed back out of it removed.
+    ///
+    /// Small models echo their instructions. Observed in the wild: a note
+    /// whose body was the cleaned text, correct and complete, followed by
+    /// "It came from a screenshot, so expect window and menu chrome." and the
+    /// whole prompt including the delimiters and the OCR payload inside them.
+    ///
+    /// `RefinementGuard` cannot catch this and no threshold would fix it. The
+    /// echo CONTAINS the raw text, so retention scores 1.0, and the prompt's
+    /// dozen or so new words are measured against every distinct word of a
+    /// page-sized screenshot, so invention lands nowhere near its ceiling.
+    /// The check is proportional and the echo is a fixed size: the longer the
+    /// screenshot, the more harmless prompt echo looks to it.
+    ///
+    /// So this is a targeted cut rather than a heuristic, and it is allowed to
+    /// be, because these are OUR strings — not a guess about what a model's
+    /// output looks like. Two shapes are handled:
+    ///
+    /// - The echo appended to (or preceding) a real answer: the delimited
+    ///   block goes, along with any stray prompt line, and what is left is the
+    ///   answer. This is the case worth salvaging — rejecting it outright
+    ///   would throw away a correct cleanup over a suffix we can identify
+    ///   exactly.
+    /// - The model wrapping its ANSWER in the delimiters, so cutting the block
+    ///   removes everything. Then the block's interior is the answer, and it
+    ///   is unwrapped instead of discarded.
+    ///
+    /// Returns text that still has to pass `RefinementGuard`: salvaging says
+    /// what the model meant to write, not that it is worth keeping.
+    static func promptEchoStripped(_ text: String) -> String {
+        var lines = text.components(separatedBy: "\n")
+        var interior: [String] = []
+
+        if let begin = lines.firstIndex(where: { $0.trimmingCharacters(in: .whitespaces) == beginMarker }) {
+            let end = lines[lines.index(after: begin)...]
+                .firstIndex(where: { $0.trimmingCharacters(in: .whitespaces) == endMarker })
+            if let end {
+                interior = Array(lines[lines.index(after: begin)..<end])
+                lines.removeSubrange(begin...end)
+            } else {
+                interior = Array(lines[lines.index(after: begin)...])
+                lines.removeSubrange(begin...)
+            }
+        }
+
+        lines.removeAll(where: isPromptLine)
+        let kept = lines.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
+        if !kept.isEmpty { return kept }
+
+        // Nothing but the echo: the answer, if there was one, is what the
+        // model put between the delimiters.
+        return interior.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// Whether a line is one of the prompt's own, as written or trimmed.
+    private static func isPromptLine(_ line: String) -> Bool {
+        let trimmed = line.trimmingCharacters(in: .whitespaces)
+        if trimmed == promptLead || trimmed == screenshotHint { return true }
+        if trimmed == beginMarker || trimmed == endMarker { return true }
+        return trimmed.hasPrefix(capturedFromPrefix)
+    }
+
     /// Kept `static` and free of any model type so it is testable on a
     /// machine with no Apple Intelligence, and outside the `#if` so the
     /// truncation rule is not a thing that only exists in one build.
@@ -366,17 +449,17 @@ extension FoundationModelsRefiner {
     /// would be invention, and `RefinementGuard` would then reject a rewrite
     /// that was otherwise fine.
     static func prompt(for input: RefinementInput, text: String) -> String {
-        var lines = ["Clean up the OCR text below."]
+        var lines = [promptLead]
         if input.isScreenshot {
-            lines.append("It came from a screenshot, so expect window and menu chrome.")
+            lines.append(screenshotHint)
         }
         if let app = input.sourceAppName?.trimmingCharacters(in: .whitespacesAndNewlines), !app.isEmpty {
-            lines.append("It was captured from: \(app)")
+            lines.append(capturedFromPrefix + app)
         }
         lines.append("")
-        lines.append("--- BEGIN OCR TEXT ---")
+        lines.append(beginMarker)
         lines.append(text)
-        lines.append("--- END OCR TEXT ---")
+        lines.append(endMarker)
         return lines.joined(separator: "\n")
     }
 
@@ -406,11 +489,15 @@ extension FoundationModelsRefiner {
     /// a good `cleanedText` over.
     fileprivate static func refinedNote(
         from generated: GeneratedNote,
+        cleanedText: String,
         input: RefinementInput,
         remainder: String
     ) -> RefinedNote {
-        let title = RefinementGuard.clampedTitle(generated.title)
-        var cleaned = generated.cleanedText.trimmingCharacters(in: .whitespacesAndNewlines)
+        let title = RefinementGuard.clampedTitle(promptEchoStripped(generated.title))
+        // The caller's text, not `generated.cleanedText`: it is the answer
+        // after any echoed prompt has been cut out of it, and it is what the
+        // guard above just approved.
+        var cleaned = cleanedText.trimmingCharacters(in: .whitespacesAndNewlines)
         if !remainder.isEmpty {
             cleaned += "\n\n\(truncationMarker)\n\n\(remainder)"
         }

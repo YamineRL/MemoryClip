@@ -137,7 +137,59 @@ final class TableLayoutTests: XCTestCase {
         )
     }
 
+    /// A documentation table whose cells wrap: the row for `StreamSyncAgent`
+    /// occupies four bands of words, three of which hold only the tail of the
+    /// middle column. Read band by band this is mostly empty cells and fails
+    /// the fill rule; read as the two rows it is, it is a table.
+    func testJoinsWrappedCellsIntoOneRow() throws {
+        let page = page(
+            """
+            Layer             Role                                            Stack
+            StreamSyncAgent   Backend AI agent that automates stream          Python, SQLite,
+                              operations - chat management, overlay           Redis, OpenAI
+                              triggers, milestone tracking, sponsor           APIs
+                              enforcement, reminders, cron jobs.
+            Streamz           Public-facing metaprofile where creators        Next.js 15,
+                              curate social links, collections,               React 19,
+                              feeds, Web3 badges, and monetize through        TypeScript
+                              affiliate links and referrals.
+            """
+        )
+
+        let text = try XCTUnwrap(
+            TableLayout.textWithTables(lines: page.lines, fragments: page.fragments)
+        )
+        XCTAssertEqual(
+            text,
+            """
+            | Layer | Role | Stack |
+            | --- | --- | --- |
+            | StreamSyncAgent | Backend AI agent that automates stream operations - chat management, \
+            overlay triggers, milestone tracking, sponsor enforcement, reminders, cron jobs. \
+            | Python, SQLite, Redis, OpenAI APIs |
+            | Streamz | Public-facing metaprofile where creators curate social links, collections, \
+            feeds, Web3 badges, and monetize through affiliate links and referrals. \
+            | Next.js 15, React 19, TypeScript |
+            """
+        )
+    }
+
     // MARK: - Rejection
+
+    /// Joining wrapped cells cannot buy the row count: four bands that are
+    /// really two rows are two rows, and two rows is not a table.
+    func testWrappedBandsDoNotCountTowardTheRowMinimum() {
+        let page = page(
+            """
+            Region    Q3        Q4
+            North     1,204     1,881
+                      revised   final
+                      again     twice
+            """
+        )
+
+        XCTAssertNil(TableLayout.textWithTables(lines: page.lines, fragments: page.fragments))
+    }
 
     func testProseIsNotATable() {
         let page = page(
@@ -178,6 +230,51 @@ final class TableLayoutTests: XCTestCase {
         )
 
         XCTAssertNil(TableLayout.textWithTables(lines: page.lines, fragments: page.fragments))
+    }
+
+    /// A numbered list whose items wrap clears every other rule: the markers
+    /// leave a channel down the left, and the wrapped lines fold into their
+    /// item. It is still a list, and `| 1. | Install the package… |` is a
+    /// worse reading of the page than the lines themselves.
+    func testAWrappedNumberedListIsNotATable() {
+        let page = page(
+            """
+            1.   Install the package with brew and
+                 then open the app for the first
+                 time to grant permissions.
+            2.   Copy something anywhere in macOS
+                 and it appears in the panel
+                 immediately.
+            3.   Press shift command V to open it.
+            """
+        )
+        XCTAssertNil(TableLayout.textWithTables(lines: page.lines, fragments: page.fragments))
+    }
+
+    /// The same list wrapped to two lines an item, which passed the fill and
+    /// coverage rules on its own and became a table with empty first cells.
+    func testAListThatWrapsOnceIsNotATableEither() {
+        let page = page(
+            """
+            1.   Install the package with brew and
+                 open the app to grant permissions.
+            2.   Copy something anywhere in macOS
+                 and it appears in the panel.
+            3.   Press shift command V to open it.
+            """
+        )
+        XCTAssertNil(TableLayout.textWithTables(lines: page.lines, fragments: page.fragments))
+    }
+
+    func testListMarkersAreToldFromValues() {
+        for marker in ["1.", "2)", "(3", "a.", "iv.", "•", "-", "*", "10."] {
+            XCTAssertTrue(TableLayout.isListMarker(marker), "\(marker) should read as a list marker")
+        }
+        // A rank column headed `#`, two-letter country codes, and anything
+        // long enough to be content.
+        for value in ["#", "US", "FR", "Q3", "Region", "1,204", "", "N/A"] {
+            XCTAssertFalse(TableLayout.isListMarker(value), "\(value) should read as a value")
+        }
     }
 
     func testEmptyInputIsNotATable() {

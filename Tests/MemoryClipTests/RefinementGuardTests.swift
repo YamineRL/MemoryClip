@@ -616,3 +616,126 @@ final class RefinementGuardTests: XCTestCase {
         XCTAssertEqual(sent + remainder, text)
     }
 }
+
+/// Prompt echo: a small model handing its own instructions back as the answer.
+///
+/// `RefinementGuard` cannot see this — the echo carries the raw text inside it,
+/// so retention is perfect and the prompt's handful of new words is diluted by
+/// the length of the screenshot — so the cut is made against the prompt's own
+/// strings before the guard ever runs.
+final class PromptEchoTests: XCTestCase {
+    private let raw = "Deploy checklist\nRun the migration\nRestart the workers"
+
+    private func echoed(around answer: String?) -> String {
+        var lines: [String] = []
+        if let answer { lines.append(contentsOf: [answer, ""]) }
+        lines.append(FoundationModelsRefiner.promptLead)
+        lines.append(FoundationModelsRefiner.screenshotHint)
+        lines.append(FoundationModelsRefiner.capturedFromPrefix + "Screenshot")
+        lines.append("")
+        lines.append(FoundationModelsRefiner.beginMarker)
+        lines.append(raw)
+        lines.append(FoundationModelsRefiner.endMarker)
+        return lines.joined(separator: "\n")
+    }
+
+    /// The observed shape: a correct answer with the whole prompt stuck to it.
+    func testTheAnswerSurvivesAndTheEchoGoes() {
+        let stripped = FoundationModelsRefiner.promptEchoStripped(
+            echoed(around: "Deploy checklist\n\nRun the migration, then restart the workers.")
+        )
+        XCTAssertEqual(stripped, "Deploy checklist\n\nRun the migration, then restart the workers.")
+    }
+
+    /// Nothing but the echo: the payload between the delimiters is the closest
+    /// thing to an answer there is, so it is unwrapped rather than discarded.
+    func testAnEchoWithNoAnswerFallsBackToTheDelimitedText() {
+        XCTAssertEqual(FoundationModelsRefiner.promptEchoStripped(echoed(around: nil)), raw)
+    }
+
+    /// A model that wrapped its own answer in the delimiters.
+    func testAWrappedAnswerIsUnwrapped() {
+        let wrapped = [
+            FoundationModelsRefiner.beginMarker,
+            "Run the migration, then restart the workers.",
+            FoundationModelsRefiner.endMarker,
+        ].joined(separator: "\n")
+        XCTAssertEqual(
+            FoundationModelsRefiner.promptEchoStripped(wrapped),
+            "Run the migration, then restart the workers."
+        )
+    }
+
+    /// An unterminated echo — the model stopped mid-payload.
+    func testAnUnterminatedEchoIsStillCut() {
+        let text = "The answer.\n\n\(FoundationModelsRefiner.beginMarker)\nDeploy checklist"
+        XCTAssertEqual(FoundationModelsRefiner.promptEchoStripped(text), "The answer.")
+    }
+
+    /// The common case pays nothing: an answer with no echo in it is returned
+    /// as it came.
+    func testACleanAnswerIsUntouched() {
+        let answer = "Deploy checklist\n\nRun the migration, then restart the workers."
+        XCTAssertEqual(FoundationModelsRefiner.promptEchoStripped(answer), answer)
+    }
+
+    /// Why the cut happens before the guard rather than instead of it, and
+    /// where the guard's blind spot begins.
+    ///
+    /// The echo is a fixed size and `inventionRatio` is a proportion, so the
+    /// two diverge with the vocabulary of the screenshot. The prompt
+    /// contributes about 16 distinct tokens the raw text does not have, so it
+    /// clears `maximumInvention` (0.2) once the text has roughly 64 distinct
+    /// tokens of its own. Measured on the two pages below: 52 distinct tokens
+    /// gives invention 0.24 and the guard rejects the echo unaided, 102 gives
+    /// 0.13 and it does not. A page of documentation — the screenshot this was
+    /// found on — is far past that line, which is why no threshold fixes it.
+    func testTheGuardCannotSeeAnEchoOnAPageSizedScreenshot() {
+        let short = """
+            Quarterly planning notes for the platform team
+            Migrate the billing service onto the shared cluster
+            Retire the legacy queue once consumers have drained
+            Publish the revised onboarding guide for partners
+            Audit every webhook signature before the release
+            Rotate the staging credentials and record the change
+            Measure cold start latency across all three regions
+            Decide whether the mobile client ships this quarter
+            """
+        let page = short + """
+
+            Rewrite the ingestion pipeline so duplicate events collapse
+            Document how retries interact with idempotency keys
+            Replace the nightly export with an incremental snapshot
+            Investigate why dashboard charts lag behind the database
+            Draft a rollback plan covering schema and binaries
+            Interview two candidates for the reliability opening
+            Consolidate alerting rules into a single repository
+            Benchmark compression settings against archived payloads
+            """
+
+        func echo(of body: String) -> String {
+            [
+                "Migrate billing, retire the queue.",
+                "",
+                FoundationModelsRefiner.promptLead,
+                FoundationModelsRefiner.screenshotHint,
+                FoundationModelsRefiner.beginMarker,
+                body,
+                FoundationModelsRefiner.endMarker,
+            ].joined(separator: "\n")
+        }
+
+        // The short page: caught unaided, and the strip is not what saves it.
+        XCTAssertFalse(RefinementGuard.isPlausible(cleaned: echo(of: short), raw: short))
+
+        // The page-sized one: missed, which is how a prompt reached a note.
+        XCTAssertTrue(
+            RefinementGuard.isPlausible(cleaned: echo(of: page), raw: page),
+            "If the guard starts catching this on its own, the strip is no longer load-bearing"
+        )
+        XCTAssertEqual(
+            FoundationModelsRefiner.promptEchoStripped(echo(of: page)),
+            "Migrate billing, retire the queue."
+        )
+    }
+}
