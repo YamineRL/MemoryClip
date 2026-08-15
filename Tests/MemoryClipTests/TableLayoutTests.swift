@@ -137,7 +137,59 @@ final class TableLayoutTests: XCTestCase {
         )
     }
 
+    /// A documentation table whose cells wrap: the row for `StreamSyncAgent`
+    /// occupies four bands of words, three of which hold only the tail of the
+    /// middle column. Read band by band this is mostly empty cells and fails
+    /// the fill rule; read as the two rows it is, it is a table.
+    func testJoinsWrappedCellsIntoOneRow() throws {
+        let page = page(
+            """
+            Layer             Role                                            Stack
+            StreamSyncAgent   Backend AI agent that automates stream          Python, SQLite,
+                              operations - chat management, overlay           Redis, OpenAI
+                              triggers, milestone tracking, sponsor           APIs
+                              enforcement, reminders, cron jobs.
+            Streamz           Public-facing metaprofile where creators        Next.js 15,
+                              curate social links, collections,               React 19,
+                              feeds, Web3 badges, and monetize through        TypeScript
+                              affiliate links and referrals.
+            """
+        )
+
+        let text = try XCTUnwrap(
+            TableLayout.textWithTables(lines: page.lines, fragments: page.fragments)
+        )
+        XCTAssertEqual(
+            text,
+            """
+            | Layer | Role | Stack |
+            | --- | --- | --- |
+            | StreamSyncAgent | Backend AI agent that automates stream operations - chat management, \
+            overlay triggers, milestone tracking, sponsor enforcement, reminders, cron jobs. \
+            | Python, SQLite, Redis, OpenAI APIs |
+            | Streamz | Public-facing metaprofile where creators curate social links, collections, \
+            feeds, Web3 badges, and monetize through affiliate links and referrals. \
+            | Next.js 15, React 19, TypeScript |
+            """
+        )
+    }
+
     // MARK: - Rejection
+
+    /// Joining wrapped cells cannot buy the row count: four bands that are
+    /// really two rows are two rows, and two rows is not a table.
+    func testWrappedBandsDoNotCountTowardTheRowMinimum() {
+        let page = page(
+            """
+            Region    Q3        Q4
+            North     1,204     1,881
+                      revised   final
+                      again     twice
+            """
+        )
+
+        XCTAssertNil(TableLayout.textWithTables(lines: page.lines, fragments: page.fragments))
+    }
 
     func testProseIsNotATable() {
         let page = page(
