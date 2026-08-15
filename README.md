@@ -6,7 +6,10 @@
 
 <p align="center">Your clipboard, remembered. Locally.</p>
 
-<p align="center"><a href="https://github.com/YamineRL/MemoryClip/actions/workflows/ci.yml"><img src="https://github.com/YamineRL/MemoryClip/actions/workflows/ci.yml/badge.svg" alt="CI"></a></p>
+<p align="center">
+  <a href="https://github.com/YamineRL/MemoryClip/actions/workflows/ci.yml"><img src="https://github.com/YamineRL/MemoryClip/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="https://www.paypal.com/donate/?hosted_button_id=H8XWE3HUPKCME"><img src="https://img.shields.io/badge/Donate-PayPal-00457C?logo=paypal&amp;logoColor=white" alt="Donate with PayPal"></a>
+</p>
 
 A local-first menu-bar clipboard manager for macOS: keyboard-first history of everything
 you copy. It also notices your screenshots, reads the text out of them — 30 languages,
