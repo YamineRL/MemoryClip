@@ -159,7 +159,7 @@ Three destinations, in **Settings → Notes**:
 
 | Destination | What it does | Needs |
 | --- | --- | --- |
-| **Markdown folder** | Writes a `.md` file with YAML front matter — an Obsidian vault, or any folder of Markdown. The screenshot is copied in and embedded, so the note survives you clearing your Desktop. | A folder you pick |
+| **Markdown folder** | Writes a `.md` file with YAML front matter — an Obsidian vault, or any folder of Markdown — filed under the month and day it was captured. The screenshot is copied in and embedded, so the note survives you clearing your Desktop. | A folder you pick |
 | **Notes** | Creates a note in Apple Notes, in a folder you name. The screenshot goes in as a link — Notes does not accept an image through automation. | Automation permission |
 | **Shortcut** | Runs a Shortcut with the note as its input, so Bear, Things, DEVONthink or anything else Shortcuts reaches can be the destination. | A Shortcut name |
 
@@ -171,7 +171,24 @@ inside your vault.
 ### Where notes go
 
 Every note is a plain `.md` file named `2026-08-13 1422 Title.md` — timestamp first, so
-the folder sorts chronologically and two shots of the same window do not collide:
+two shots of the same window do not collide and a note that ends up somewhere else still
+says when it is from. Notes are filed by the day they were captured:
+
+```
+26-08 August/
+  13/
+    2026-08-13 1422 Deploy checklist.md
+```
+
+The month folder leads with the year so a vault you have kept for a few years walks in
+order instead of restarting each January, and the day folder keeps a heavy week down to
+something you can look at. Turn **Sort notes into folders by date** off in
+**Settings → Notes** and notes go straight into the folder you picked, as they always
+did. Either way nothing already written is moved: a note you saved last year keeps being
+updated where it sits, and the screenshot always goes to the single `attachments` folder,
+since an `![[embed]]` finds it anywhere in the vault.
+
+Inside, the note itself:
 
 ```markdown
 ---
@@ -208,13 +225,16 @@ matter, and wiki-style `![[embeds]]` — which is what the **Copy the screenshot
 folder** switch is for: on, the picture is copied in and embedded; off, the note links to
 it where it sits, in a form every editor renders.
 
-- **[Obsidian](https://obsidian.md)** — your vault, or any folder in it, copying **on**.
-  Front matter becomes note properties, so tags are tags and `lang`, `source` and
-  `created` are Dataview-queryable.
+- **[Obsidian](https://obsidian.md)** — your vault, or any folder in it, copying **on**
+  and dated folders **on**: it walks subfolders, and its own attachment setting is the
+  flat folder these notes already use. Front matter becomes note properties, so tags are
+  tags and `lang`, `source` and `created` are Dataview-queryable.
 - **[Logseq](https://logseq.com)** — the `pages` folder of your graph, attachments set to
-  `assets`.
+  `assets`, and dated folders **off**: Logseq wants its pages side by side.
 - **[iA Writer](https://ia.net/writer)**, **[Typora](https://typora.io)**,
   **[Zettlr](https://www.zettlr.com)**, VS Code — any folder they watch, copying **off**.
+  All four open a folder and show its subfolders, so leave the dated folders on unless
+  you would rather scroll one long list.
 - **[DEVONthink](https://www.devontechnologies.com/apps/devonthink)** — index the folder,
   so notes stay files MemoryClip can update in place.
 - **[Joplin](https://joplinapp.org)** — import, and re-import after later edits.
