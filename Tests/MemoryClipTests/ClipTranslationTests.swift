@@ -40,42 +40,81 @@ private let english = "The quick brown fox jumps over the lazy dog and keeps run
 private let englishTarget = Locale.Language(identifier: "en")
 private let germanTarget = Locale.Language(identifier: "de")
 
+/// Which of a clip's several texts is the one to translate.
+final class ClipTranslationSourceTextTests: XCTestCase {
+    private func sourceText(
+        kind: ClipKind = .text,
+        isScreenshot: Bool = false,
+        text: String? = nil,
+        ocrText: String? = nil,
+        refinedText: String? = nil
+    ) -> String? {
+        ClipTranslation.sourceText(
+            kind: kind,
+            isScreenshot: isScreenshot,
+            text: text,
+            ocrText: ocrText,
+            refinedText: refinedText
+        )
+    }
+
+    func testTextClipsCarryTheirOwnText() {
+        for kind in [ClipKind.text, .richText, .link] {
+            XCTAssertEqual(sourceText(kind: kind, text: french), french, "expected \(kind) to read its own text")
+        }
+        // The recognition fields belong to pictures; a text clip never has
+        // them, and would not read them if it did.
+        XCTAssertNil(sourceText(kind: .text, ocrText: french))
+    }
+
+    func testAPictureIsReadFromWhatWasRecognisedInIt() {
+        XCTAssertEqual(sourceText(kind: .image, ocrText: french), french)
+        // A screenshot is a `.file` clip that references its picture on disk,
+        // and is read exactly like a pasted one.
+        XCTAssertEqual(sourceText(kind: .file, isScreenshot: true, ocrText: french), french)
+    }
+
+    /// The model's cleanup is what the translator should see: rejoined lines
+    /// and corrected slips are the difference between a sentence and three
+    /// fragments of one.
+    func testTheCleanedUpRecognitionIsPreferred() {
+        let cleaned = "La réunion aura lieu mardi à quinze heures."
+        XCTAssertEqual(sourceText(kind: .image, ocrText: french, refinedText: cleaned), cleaned)
+        XCTAssertEqual(
+            sourceText(kind: .file, isScreenshot: true, ocrText: french, refinedText: cleaned),
+            cleaned
+        )
+        // Refinement that produced nothing is not a reason to ignore the
+        // recognition it was cleaning.
+        XCTAssertEqual(sourceText(kind: .image, ocrText: french, refinedText: "   "), french)
+    }
+
+    func testAClipWithNothingToReadHasNoSourceText() {
+        // Recognition has not run, or found nothing legible.
+        XCTAssertNil(sourceText(kind: .image))
+        XCTAssertNil(sourceText(kind: .image, ocrText: "  \n "))
+        XCTAssertNil(sourceText(kind: .file, isScreenshot: true))
+        // A colour swatch, and a file clip that is a list of paths.
+        XCTAssertNil(sourceText(kind: .color, text: french))
+        XCTAssertNil(sourceText(kind: .file, text: french, ocrText: french))
+    }
+}
+
 /// Everything `plan` refuses to do, and the one thing it does.
 final class ClipTranslationPlanTests: XCTestCase {
     private func plan(
-        kind: ClipKind = .text,
-        isScreenshot: Bool = false,
         text: String? = french,
         cached: ClipTranslationResult? = nil,
         isEnabled: Bool = true,
         target: Locale.Language = englishTarget
     ) -> ClipTranslationPlan {
-        ClipTranslation.plan(
-            kind: kind,
-            isScreenshot: isScreenshot,
-            text: text,
-            cached: cached,
-            isEnabled: isEnabled,
-            target: target
-        )
+        ClipTranslation.plan(text: text, cached: cached, isEnabled: isEnabled, target: target)
     }
 
-    // MARK: - The five reasons not to translate
+    // MARK: - The reasons not to translate
 
     func testSwitchedOffTranslatesNothing() {
         XCTAssertEqual(plan(isEnabled: false), .skip)
-    }
-
-    /// An image or a screenshot carries text of its own, and that text
-    /// belongs to the note pipeline.
-    func testOnlyTextBearingClipsAreTranslated() {
-        for kind in [ClipKind.image, .file, .color] {
-            XCTAssertEqual(plan(kind: kind), .skip, "expected \(kind) to be skipped")
-        }
-        XCTAssertEqual(plan(kind: .file, isScreenshot: true), .skip)
-        for kind in [ClipKind.text, .richText, .link] {
-            XCTAssertNotEqual(plan(kind: kind), .skip, "expected \(kind) to be translated")
-        }
     }
 
     func testTextTooShortToIdentifyIsSkipped() {
@@ -316,5 +355,20 @@ final class ClipTranslationSettingsTests: XCTestCase {
         let item = ClipItem(kind: .text, text: french, contentHash: "hash")
         item.clipTranslationText = "Hallo"
         XCTAssertNil(item.cachedClipTranslation)
+    }
+
+    /// A screenshot reads from its picture, and the model's cleanup of that
+    /// recognition wins once it exists.
+    func testAScreenshotIsReadFromItsRecognisedText() {
+        let item = ClipItem(kind: .file, contentHash: "hash", ocrText: french, isScreenshot: true)
+        XCTAssertEqual(item.clipTranslationSourceText, french)
+
+        item.refinedText = "La réunion aura lieu mardi."
+        XCTAssertEqual(item.clipTranslationSourceText, "La réunion aura lieu mardi.")
+    }
+
+    func testATextClipIsReadFromItsOwnText() {
+        let item = ClipItem(kind: .text, text: french, contentHash: "hash")
+        XCTAssertEqual(item.clipTranslationSourceText, french)
     }
 }

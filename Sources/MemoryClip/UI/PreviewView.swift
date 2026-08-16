@@ -137,8 +137,14 @@ struct PreviewView: View {
     /// Identity of the work: the clip, plus the two settings that decide what
     /// is done with it. Changing the target language in Settings re-runs this
     /// for the clip already on screen.
+    ///
+    /// Recognition and refinement are counted in as well, because a
+    /// screenshot is very often previewed before either has finished with it:
+    /// without them the pane would keep showing the nothing it had when the
+    /// clip was selected. Lengths rather than the text, so a body pass costs
+    /// no copies of it.
     private var translationKey: String {
-        "\(contentKey)-\(translateEnabled)-\(translationTarget)"
+        "\(contentKey)-\(item.ocrText?.count ?? 0)-\(item.refinedText?.count ?? 0)-\(translateEnabled)-\(translationTarget)"
     }
 
     /// The translation, over the clip and inside its own pane.
@@ -197,9 +203,7 @@ struct PreviewView: View {
         guard !item.isDeleted else { return }
 
         let plan = ClipTranslation.plan(
-            kind: item.kind,
-            isScreenshot: item.isScreenshot,
-            text: item.text,
+            text: item.clipTranslationSourceText,
             cached: item.cachedClipTranslation,
             isEnabled: translateEnabled,
             target: Locale.Language(identifier: translationTarget)

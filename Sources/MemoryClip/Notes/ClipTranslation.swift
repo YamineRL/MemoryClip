@@ -18,6 +18,16 @@ import Foundation
 /// English: changing the language a preview is shown in must not change what
 /// a note says.
 ///
+/// Every clip with text in it is in scope, a picture included: what is read
+/// from a screenshot is what was recognised in it, cleaned up by the model
+/// where that has happened. The English rendering a screenshot may already
+/// carry in `translatedText` is deliberately NOT reused, even when English is
+/// what the user asked for. That one is a translation of the raw recognition
+/// rather than of the cleaned text, so the two are not the same string, and
+/// reusing it would leave the pane taking its translation from one place for
+/// the screenshots the note pipeline had reached and another for everything
+/// else.
+///
 /// # Why it runs at preview time
 ///
 /// A clipboard fills up with things nobody looks at twice — a password, a
@@ -88,31 +98,59 @@ enum ClipTranslation {
         return "\(code)-\(script)"
     }
 
-    /// The clip kinds worth translating: the ones whose payload IS text.
+    /// The text a previewed clip is read from, or nil when it has none.
     ///
-    /// An image or a screenshot carries text too, but that text is the note
-    /// pipeline's — it is recognised at capture, translated into English and
-    /// stored on the clip — and a second rendering of it, into a second
-    /// language, on the same pane would be two answers to one question.
-    static let translatableKinds: Set<ClipKind> = [.text, .richText, .link]
-
-    /// What the preview should do about a clip, decided before any of it is
-    /// sent anywhere.
+    /// Text clips carry it directly. An image carries it in `ocrText`, and in
+    /// `refinedText` once the on-device model has been over that — the
+    /// cleaned version is preferred, because rejoined lines and corrected
+    /// recognition slips are the difference between handing a translator a
+    /// sentence and handing it three fragments of one.
     ///
-    /// Pure and free of SwiftData, so every reason not to translate — and
-    /// there are five of them — is testable without a model container or a
-    /// language asset on the machine running the suite. The same split as
-    /// `LanguageDetector` against `AppleTranslator`.
-    static func plan(
+    /// A screenshot is an image clip whose kind happens to be `.file`: it
+    /// references the picture on disk instead of holding its pixels. That is
+    /// a storage decision, invisible to whoever is reading the pane, so the
+    /// flag is read here — the same gate `ClipDisplay.extractedText` uses —
+    /// and nowhere else.
+    static func sourceText(
         kind: ClipKind,
         isScreenshot: Bool,
+        text: String?,
+        ocrText: String?,
+        refinedText: String?
+    ) -> String? {
+        let candidates: [String?]
+        if kind == .image || isScreenshot {
+            candidates = [refinedText, ocrText]
+        } else if ClipDisplay.isTextBearing(kind) {
+            candidates = [text]
+        } else {
+            // A colour swatch, or a file clip that is a list of paths.
+            candidates = []
+        }
+
+        return candidates
+            .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .first { !$0.isEmpty }
+    }
+
+    /// What the preview should do about a clip's text, decided before any of
+    /// it is sent anywhere.
+    ///
+    /// Pure and free of SwiftData, so every reason not to translate is
+    /// testable without a model container or a language asset on the machine
+    /// running the suite. The same split as `LanguageDetector` against
+    /// `AppleTranslator`.
+    ///
+    /// Which text a clip offers is `sourceText`'s question, not this one's:
+    /// a screenshot with nothing recognised in it and a colour swatch both
+    /// arrive here as nil and are skipped for the same reason.
+    static func plan(
         text: String?,
         cached: ClipTranslationResult?,
         isEnabled: Bool,
         target: Locale.Language
     ) -> ClipTranslationPlan {
         guard isEnabled else { return .skip }
-        guard translatableKinds.contains(kind), !isScreenshot else { return .skip }
 
         let trimmed = (text ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
         guard trimmed.count >= LanguageDetector.minimumCharacters else { return .skip }
@@ -139,9 +177,9 @@ enum ClipTranslation {
 
 /// What to show over a previewed clip.
 enum ClipTranslationPlan: Equatable, Sendable {
-    /// Nothing: the feature is off, the clip is not text, it is too short to
-    /// identify, its language could not be told, or it is already in the
-    /// target language.
+    /// Nothing: the feature is off, the clip has no text to read, what it has
+    /// is too short to identify, its language could not be told, or it is
+    /// already in the target language.
     case skip
     /// The translation already on the clip, made for the target in force now.
     case cached(ClipTranslationResult)
@@ -225,6 +263,18 @@ struct ClipTranslationService: Sendable {
 }
 
 extension ClipItem {
+    /// The text this clip is translated from: its own, or what was recognised
+    /// in its picture.
+    var clipTranslationSourceText: String? {
+        ClipTranslation.sourceText(
+            kind: kind,
+            isScreenshot: isScreenshot,
+            text: text,
+            ocrText: ocrText,
+            refinedText: refinedText
+        )
+    }
+
     /// The translation cached on this clip, as one value.
     ///
     /// Three columns rather than one, because the target has to be readable
