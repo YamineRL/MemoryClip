@@ -24,6 +24,9 @@ struct PreviewView: View {
     /// already — see `ClipTranslation`.
     @State private var translation: ClipTranslationResult?
     @State private var isTranslating = false
+    /// How tall the translated text actually is, so the block can shrink to
+    /// it — see `translationBodyHeight`. Zero means "not measured yet".
+    @State private var translationTextHeight: CGFloat = 0
 
     /// Read here rather than through `ClipTranslation` so that changing either
     /// in Settings re-runs the work for the clip on screen, instead of taking
@@ -147,6 +150,16 @@ struct PreviewView: View {
         "\(contentKey)-\(item.ocrText?.count ?? 0)-\(item.refinedText?.count ?? 0)-\(translateEnabled)-\(translationTarget)"
     }
 
+    /// How tall the translated text is allowed to be: its own height, or the
+    /// ceiling, whichever is smaller.
+    ///
+    /// The ceiling stands in until the first measurement arrives, so the
+    /// block settles down to the text rather than growing into it.
+    private var translationBodyHeight: CGFloat {
+        guard translationTextHeight > 0 else { return Design.Size.previewTranslationHeight }
+        return min(translationTextHeight.rounded(.up), Design.Size.previewTranslationHeight)
+    }
+
     /// The translation, over the clip and inside its own pane.
     ///
     /// Nothing at all for the ordinary case — a clip in the language the user
@@ -177,8 +190,21 @@ struct PreviewView: View {
                             .font(.system(size: bodyFontSize))
                             .textSelection(.enabled)
                             .frame(maxWidth: .infinity, alignment: .leading)
+                            // Measured from INSIDE the scroll view, which
+                            // proposes no height to its content, so this is
+                            // the text's own height rather than the one it
+                            // was given.
+                            .onGeometryChange(for: CGFloat.self) { proxy in
+                                proxy.size.height
+                            } action: { height in
+                                translationTextHeight = height
+                            }
                     }
-                    .frame(maxHeight: Design.Size.previewTranslationHeight)
+                    // An exact height, not a maximum: a scroll view takes
+                    // every point it is offered up to its cap, so a
+                    // two-line translation in a `maxHeight` frame sat in
+                    // 84 points of empty pane.
+                    .frame(height: translationBodyHeight)
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -200,6 +226,8 @@ struct PreviewView: View {
     private func refreshTranslation() async {
         translation = nil
         isTranslating = false
+        // The previous clip's measurement says nothing about this one's.
+        translationTextHeight = 0
         guard !item.isDeleted else { return }
 
         let plan = ClipTranslation.plan(
@@ -293,13 +321,29 @@ struct PreviewView: View {
                 Image(nsImage: nsImage)
                     .resizable()
                     .scaledToFit()
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    // A floor as well as a ceiling: the picture is the reason
+                    // this pane exists, and sharing 250 points with the text
+                    // blocks under it had shrunk it to a band nothing could
+                    // be read in.
+                    .frame(
+                        maxWidth: .infinity,
+                        minHeight: Design.Size.previewImageMinHeight,
+                        maxHeight: .infinity
+                    )
                     .clipShape(RoundedRectangle(cornerRadius: Design.Radius.small, style: .continuous))
             } else {
                 emptyPlaceholder
             }
 
-            if let extracted = extractedText {
+            // Hidden while a translation is on screen. Three blocks do not
+            // fit in this pane, and this is the one that earns its place
+            // least of the three: the translation above already carries this
+            // same recognised text in a language the reader can read, and the
+            // picture carries it as it actually appeared. Raw recognition in
+            // a script they do not read, wedged under a squeezed thumbnail,
+            // is the third copy. With translation off, or for a clip that had
+            // none to make, the block is exactly what it always was.
+            if let extracted = extractedText, translation == nil {
                 Divider()
                 VStack(alignment: .leading, spacing: Design.Space.snug) {
                     Text("Extracted Text")
