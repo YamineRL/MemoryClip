@@ -24,11 +24,28 @@ final class SettingsWindowController {
 
     /// Shows the Settings window, creating it on first use and bringing an
     /// existing one forward otherwise.
+    ///
+    /// The order is deliberate — window first, activation second, key last —
+    /// and so is the deprecated spelling of the activation.
+    ///
+    /// `NSApp.activate()` is the cooperative one: it asks, and an app that
+    /// was not handed activation by whoever currently holds it is free to be
+    /// refused. That is right for the panel, which the user summons with a
+    /// hotkey while MemoryClip is already being dealt with, and wrong here,
+    /// where the request arrives from an `.accessory` agent that has no menu
+    /// bar, no Dock tile and nothing else on screen to click. Refused, the
+    /// window still orders in and simply never takes focus, so Settings looks
+    /// open and swallows nothing the user types. `ignoringOtherApps` is
+    /// deprecated rather than gone, and it is the only spelling that says
+    /// what a Settings window opened by explicit user request means.
+    ///
+    /// `makeKey()` last because activation is asynchronous at the window
+    /// server: a `makeKeyAndOrderFront` issued while the app is still inactive
+    /// orders the window in and leaves the key part unhonoured.
     func show() {
         // An `NSApp.hide` from the panel dismissing leaves the app hidden, and
         // a hidden app will not order new windows in.
         NSApp.unhide(nil)
-        NSApp.activate()
 
         let window = window ?? makeWindow()
         self.window = window
@@ -36,8 +53,9 @@ final class SettingsWindowController {
         if !window.isVisible {
             window.center()
         }
-        window.makeKeyAndOrderFront(nil)
         window.orderFrontRegardless()
+        NSApp.activate(ignoringOtherApps: true)
+        window.makeKey()
     }
 
     private func makeWindow() -> NSWindow {
