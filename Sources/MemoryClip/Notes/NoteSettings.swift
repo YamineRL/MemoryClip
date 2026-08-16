@@ -45,6 +45,11 @@ enum NoteSettingsKeys {
     static let destination = "noteDestination"
     static let vaultBookmark = "noteVaultBookmark"
     static let vaultAttachmentFolder = "noteVaultAttachmentFolder"
+    /// Whether a note is filed into a month and day folder inside the vault
+    /// (`26-03 March/16/…`) rather than dropped in its root — see
+    /// `NoteComposer.dateFolderComponents`. Attachments are not affected: they
+    /// stay in the one folder at the vault root.
+    static let vaultDateFolders = "noteVaultDateFolders"
     static let copyAttachments = "noteCopyAttachments"
     static let notesAppFolder = "noteNotesAppFolder"
     static let shortcutName = "noteShortcutName"
@@ -60,6 +65,12 @@ enum NoteSettingsKeys {
     /// thing to be asked for rather than switched on for someone who has not
     /// heard of it. Its target still gets a default, so the first thing the
     /// toggle does is translate into the language this Mac is set to.
+    ///
+    /// Dated folders are ON, and for existing installs too rather than only
+    /// for new ones. That is safe because of the idempotency contract on
+    /// `MarkdownVaultSink`: a note that already exists keeps being updated
+    /// where it sits, so a vault that has been in use for a year gains folders
+    /// for what is captured from now on and loses nothing that is in it.
     static func registerDefaults() {
         UserDefaults.standard.register(defaults: [
             screenshotCaptureEnabled: false,
@@ -71,6 +82,7 @@ enum NoteSettingsKeys {
             autoNoteMinimumCharacters: 80,
             destination: NoteDestination.markdownVault.rawValue,
             vaultAttachmentFolder: "attachments",
+            vaultDateFolders: true,
             copyAttachments: true,
             notesAppFolder: "MemoryClip",
             shortcutName: "",
