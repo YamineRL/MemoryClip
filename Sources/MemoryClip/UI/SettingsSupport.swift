@@ -141,6 +141,17 @@ extension SettingsPane {
     /// - **General** — the app as an app: whether it starts with the Mac, how
     ///   it looks, and the keys that summon it. Nothing here is about a
     ///   particular clip.
+    ///   Translation sits here too, last in the group. It began as a section
+    ///   of the Notes pane, back when it did one thing: render a foreign
+    ///   screenshot's recognised text into English for the note being
+    ///   written. It has since grown a second job — translating what you
+    ///   copy, shown in the panel's preview — so it now spans the clipboard
+    ///   and the screenshot pipeline alike. Filing it under either one would
+    ///   state a loyalty it does not have, and a headerless row of its own
+    ///   says "uncategorised" when the truth is "applies to all of it" —
+    ///   which is what General already means for the rows beside it. It goes
+    ///   last because the two above it are about the app itself, and this one
+    ///   is about the clips.
     /// - **Clipboard** — the core loop: what gets captured and for how long
     ///   (History), how the panel behaves while you browse it (Panel), and
     ///   what MemoryClip refuses to capture or requires Touch ID for
@@ -150,16 +161,6 @@ extension SettingsPane {
     ///   feature with an input (the watched folder) and an output (where notes
     ///   are written). Split across the sidebar it reads as two unrelated
     ///   panes; together, the order is the order the data flows.
-    ///   Translation sits here too. It began as a section of the Notes pane,
-    ///   back when it did one thing: render a foreign screenshot's recognised
-    ///   text into English for the note being written. It has since grown a
-    ///   second job — translating what you copy, shown in the panel's preview
-    ///   — so it now spans the clipboard and the screenshot pipeline alike.
-    ///   Filing it under either one would state a loyalty it does not have,
-    ///   and a headerless row of its own says "uncategorised" when the truth
-    ///   is "applies to all of it" — which is what General already means for
-    ///   the rows beside it. It goes last in the group because the two above
-    ///   it are about the app itself, and this one is about the clips.
     /// - About stands alone at the bottom, headerless. It is the one row that
     ///   changes nothing, and inventing a category for a single identity pane
     ///   would add a word to read without adding a distinction.
