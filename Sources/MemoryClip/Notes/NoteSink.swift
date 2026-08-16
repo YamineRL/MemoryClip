@@ -114,6 +114,7 @@ enum NoteSinkFactory {
             return MarkdownVaultSink(
                 vaultURL: vault,
                 attachmentFolderName: attachmentFolder ?? MarkdownVaultSink.defaultAttachmentFolderName,
+                useDateFolders: defaults.bool(forKey: NoteSettingsKeys.vaultDateFolders),
                 copyAttachments: defaults.bool(forKey: NoteSettingsKeys.copyAttachments)
             )
 

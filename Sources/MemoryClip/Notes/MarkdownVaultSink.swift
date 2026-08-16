@@ -26,15 +26,21 @@ struct MarkdownVaultSink: NoteSink {
 
     let vaultURL: URL
     let attachmentFolderName: String
+    /// Whether notes are filed into `<month>/<day>` folders — see
+    /// `noteDirectoryURL`. Off reproduces exactly what this sink did before
+    /// dated folders existed: every note in the vault root.
+    let useDateFolders: Bool
     let copyAttachments: Bool
 
     init(
         vaultURL: URL,
         attachmentFolderName: String = defaultAttachmentFolderName,
+        useDateFolders: Bool = true,
         copyAttachments: Bool = true
     ) {
         self.vaultURL = vaultURL
         self.attachmentFolderName = attachmentFolderName
+        self.useDateFolders = useDateFolders
         self.copyAttachments = copyAttachments
     }
 
@@ -53,19 +59,33 @@ struct MarkdownVaultSink: NoteSink {
     ///    discover, and honouring it means a note the user renamed or moved
     ///    within their vault keeps being updated rather than being re-created
     ///    under its original name.
-    /// 2. Otherwise the deterministic name is tried: `fileNameStem` is a pure
-    ///    function of the draft, so a re-export lands on the same
-    ///    `<stem>.md`. If that file exists AND its front matter carries this
-    ///    clip's `memoryclip-uuid`, it is ours and gets overwritten.
-    /// 3. Otherwise a free name is allocated with ` 2`, ` 3`, … — the file at
-    ///    `<stem>.md` is somebody else's note that happens to collide, and
-    ///    silently overwriting a user's file is not a trade this makes.
+    /// 2. Otherwise the deterministic path is tried: both `fileNameStem` and
+    ///    `dateFolderComponents` are pure functions of the draft, so a
+    ///    re-export lands on the same `<month>/<day>/<stem>.md`. If that file
+    ///    exists AND its front matter carries this clip's `memoryclip-uuid`,
+    ///    it is ours and gets overwritten.
+    /// 3. Otherwise the same question is asked once at the vault ROOT, where
+    ///    `<stem>.md` is where this note would have gone before dated folders
+    ///    existed. That covers a clip whose note an older build wrote, and one
+    ///    whose `notePath` went with the history the user cleared. Without it,
+    ///    turning the folders on would quietly re-create every note the user
+    ///    already had. It is one extra `stat` against a path computed exactly
+    ///    — not the vault-wide scan refused below — and step 2 wins when both
+    ///    files exist, so a vault that has been through both layouts converges
+    ///    on the dated one.
+    /// 4. Otherwise a free name is allocated in the dated folder with ` 2`,
+    ///    ` 3`, … — the file at `<stem>.md` is somebody else's note that
+    ///    happens to collide, and silently overwriting a user's file is not a
+    ///    trade this makes.
     ///
     /// What it deliberately does NOT do is scan the vault for a note carrying
     /// the uuid. A real Obsidian vault is tens of thousands of files; finding
     /// the note would mean reading the head of every one of them on every
-    /// export, and the answer is already available for free in steps 1 and 2.
-    /// The cost of getting it wrong is one duplicate note, not data loss.
+    /// export, and the answer is already available for two `stat`s in steps 1
+    /// to 3. The cost of getting it wrong is one duplicate note, not data
+    /// loss. For the same reason nothing here moves a note that is already on
+    /// disk: a file the user may have linked to from elsewhere in their vault
+    /// is not something to relocate behind their back.
     func write(_ draft: NoteDraft, replacing existingLocation: String?) async throws -> NoteReceipt {
         guard draft.hasContent else { throw NoteError.nothingToWrite }
 
@@ -96,6 +116,20 @@ struct MarkdownVaultSink: NoteSink {
 
         let destination = destinationURL(for: draft, replacing: existingLocation)
         let markdown = NoteComposer.markdown(for: draft)
+
+        do {
+            // The dated folder does not exist the first time something is
+            // captured in that month or on that day, and an atomic write into
+            // a missing directory fails. Creating the destination's own parent
+            // covers every branch of `destinationURL` in one line, and is a
+            // no-op for the vault root and for a folder already there.
+            try fileManager.createDirectory(
+                at: destination.deletingLastPathComponent(),
+                withIntermediateDirectories: true
+            )
+        } catch {
+            throw NoteError.writeFailed(error.localizedDescription)
+        }
 
         do {
             // Atomic: the write goes to a temp file in the same directory and
@@ -130,15 +164,40 @@ struct MarkdownVaultSink: NoteSink {
         }
 
         let stem = NoteComposer.fileNameStem(for: draft)
-        let preferred = vaultURL.appending(path: "\(stem).md")
+        let directory = noteDirectoryURL(for: draft)
+
+        let preferred = directory.appending(path: "\(stem).md")
         if fileManager.fileExists(atPath: preferred.path(percentEncoded: false)),
            fileCarriesUUID(preferred, uuid: draft.clipUUID) {
             return preferred
         }
 
-        return NoteComposer.uniqueURL(directory: vaultURL, stem: stem, extension: "md") { url in
+        if useDateFolders {
+            // Where this note would be if it were written before the folders
+            // existed — checked second, so a clip that somehow has both keeps
+            // the dated one and the flat copy is left alone rather than
+            // orphaning the note the user has open.
+            let flat = vaultURL.appending(path: "\(stem).md")
+            if fileManager.fileExists(atPath: flat.path(percentEncoded: false)),
+               fileCarriesUUID(flat, uuid: draft.clipUUID) {
+                return flat
+            }
+        }
+
+        return NoteComposer.uniqueURL(directory: directory, stem: stem, extension: "md") { url in
             fileManager.fileExists(atPath: url.path(percentEncoded: false))
         }
+    }
+
+    /// The folder inside the vault a new note for `draft` belongs in.
+    ///
+    /// Driven by `createdAt` — the capture time, not the export time — so
+    /// re-exporting a clip months later still lands it under the day it was
+    /// taken, and so the folder agrees with the timestamp in the file name,
+    /// which comes from the same date through the same formatter discipline.
+    private func noteDirectoryURL(for draft: NoteDraft) -> URL {
+        guard useDateFolders else { return vaultURL }
+        return NoteComposer.dateFolderComponents(for: draft).reduce(vaultURL) { $0.appending(path: $1) }
     }
 
     /// Whether `url` sits under the vault.
@@ -241,6 +300,12 @@ struct MarkdownVaultSink: NoteSink {
     /// embed cannot resolve and the user is not expecting files to appear.
     /// Nested folders (`assets/screenshots`) are allowed, since Obsidian users
     /// really do organise that way.
+    ///
+    /// One folder at the vault root, deliberately not mirroring the dated
+    /// folders the notes go into: an `![[name.png]]` embed resolves by
+    /// searching the whole vault, so nesting the images buys nothing a reader
+    /// would notice, and a single flat attachments folder is what Obsidian's
+    /// own setting produces — the folder the user already has.
     private func attachmentFolderURL() -> URL {
         let components = attachmentFolderName
             .split(separator: "/")

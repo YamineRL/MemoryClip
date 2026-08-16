@@ -29,12 +29,27 @@ enum NoteSettingsKeys {
     /// Settings — which is the only place that can start the download.
     static let translationPending = "noteTranslationPending"
 
+    // Clip translation
+    /// Whether a previewed text clip is translated into the user's own
+    /// language. A different feature from the three keys above, which belong
+    /// to the screenshot → note pipeline and always translate into English —
+    /// see `ClipTranslation`.
+    static let clipTranslateEnabled = "clipTranslateEnabled"
+    /// The language a previewed clip is translated INTO, as a BCP-47
+    /// identifier. Defaulted to whatever this Mac is set to read.
+    static let clipTranslationTarget = "clipTranslationTarget"
+
     // Notes
     static let autoNoteEnabled = "autoNoteEnabled"
     static let autoNoteMinimumCharacters = "autoNoteMinimumCharacters"
     static let destination = "noteDestination"
     static let vaultBookmark = "noteVaultBookmark"
     static let vaultAttachmentFolder = "noteVaultAttachmentFolder"
+    /// Whether a note is filed into a month and day folder inside the vault
+    /// (`26-03 March/16/…`) rather than dropped in its root — see
+    /// `NoteComposer.dateFolderComponents`. Attachments are not affected: they
+    /// stay in the one folder at the vault root.
+    static let vaultDateFolders = "noteVaultDateFolders"
     static let copyAttachments = "noteCopyAttachments"
     static let notesAppFolder = "noteNotesAppFolder"
     static let shortcutName = "noteShortcutName"
@@ -45,15 +60,29 @@ enum NoteSettingsKeys {
     /// default way in). Refinement is ON but inert until something asks for
     /// a note or a screenshot is captured, and so is translation, which in
     /// addition only ever fires for text that is not already English.
+    ///
+    /// Clip translation is OFF: it reads what the user copies, which is a
+    /// thing to be asked for rather than switched on for someone who has not
+    /// heard of it. Its target still gets a default, so the first thing the
+    /// toggle does is translate into the language this Mac is set to.
+    ///
+    /// Dated folders are ON, and for existing installs too rather than only
+    /// for new ones. That is safe because of the idempotency contract on
+    /// `MarkdownVaultSink`: a note that already exists keeps being updated
+    /// where it sits, so a vault that has been in use for a year gains folders
+    /// for what is captured from now on and loses nothing that is in it.
     static func registerDefaults() {
         UserDefaults.standard.register(defaults: [
             screenshotCaptureEnabled: false,
             refineEnabled: true,
             translateEnabled: true,
+            clipTranslateEnabled: false,
+            clipTranslationTarget: ClipTranslation.defaultTargetIdentifier,
             autoNoteEnabled: false,
             autoNoteMinimumCharacters: 80,
             destination: NoteDestination.markdownVault.rawValue,
             vaultAttachmentFolder: "attachments",
+            vaultDateFolders: true,
             copyAttachments: true,
             notesAppFolder: "MemoryClip",
             shortcutName: "",

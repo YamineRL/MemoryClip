@@ -5,7 +5,8 @@ import XCTest
 /// The note document itself: front matter that survives a YAML parser, an
 /// image reference that resolves, and a file name a filesystem accepts.
 final class NoteComposerTests: XCTestCase {
-    private let created = Date(timeIntervalSince1970: 1_800_000_000)
+    /// 15 January 2027, 08:00 UTC.
+    private static let created = Date(timeIntervalSince1970: 1_800_000_000)
 
     private func draft(
         title: String = "Deploy checklist",
@@ -16,7 +17,8 @@ final class NoteComposerTests: XCTestCase {
         wasRefined: Bool = true,
         sourceAppName: String? = "Safari",
         sourceFileURL: URL? = nil,
-        attachmentFileName: String? = nil
+        attachmentFileName: String? = nil,
+        createdAt: Date = created
     ) -> NoteDraft {
         NoteDraft(
             clipUUID: UUID(uuidString: "8B7F0C1E-0000-4000-8000-00000000ABCD")!,
@@ -26,7 +28,7 @@ final class NoteComposerTests: XCTestCase {
             body: body,
             rawText: rawText,
             wasRefined: wasRefined,
-            createdAt: created,
+            createdAt: createdAt,
             sourceAppName: sourceAppName,
             sourceFileURL: sourceFileURL,
             attachmentFileName: attachmentFileName
@@ -181,6 +183,61 @@ final class NoteComposerTests: XCTestCase {
         let one = NoteComposer.fileNameStem(for: draft(), timeZone: TimeZone(identifier: "UTC")!)
         let two = NoteComposer.fileNameStem(for: draft(), timeZone: TimeZone(identifier: "UTC")!)
         XCTAssertEqual(one, two)
+    }
+
+    // MARK: - Dated folders
+
+    func testDateFoldersAreTheMonthThenTheDay() {
+        // 16 March 2026, 14:20 UTC.
+        let march = draft(createdAt: Date(timeIntervalSince1970: 1_773_670_800))
+        XCTAssertEqual(
+            NoteComposer.dateFolderComponents(for: march, timeZone: TimeZone(identifier: "UTC")!),
+            ["26-03 March", "16"]
+        )
+    }
+
+    func testDateFoldersZeroPadSoTheySortInFinder() {
+        // 1 January 2027, 08:00 UTC. `1` would sort after `10`; `01` does not,
+        // and the whole point of the layout is a folder that reads in order.
+        let january = draft(createdAt: Date(timeIntervalSince1970: 1_798_790_400))
+        XCTAssertEqual(
+            NoteComposer.dateFolderComponents(for: january, timeZone: TimeZone(identifier: "UTC")!),
+            ["27-01 January", "01"]
+        )
+    }
+
+    func testDateFoldersAreEnglishAndGregorianWhateverTheRegion() {
+        // The formatter inside is pinned to en_US_POSIX and an explicit
+        // Gregorian calendar, so this is really asserting that no ambient
+        // locale can reach it: a Japanese calendar renders `yy` as 08 for
+        // Reiwa 8 and `MMMM` as 3月, and the user's vault would end up with a
+        // second set of folders for the same months the first time they
+        // changed their Mac's region.
+        let march = draft(createdAt: Date(timeIntervalSince1970: 1_773_670_800))
+        let components = NoteComposer.dateFolderComponents(
+            for: march,
+            timeZone: TimeZone(identifier: "UTC")!
+        )
+        XCTAssertEqual(components, ["26-03 March", "16"])
+        XCTAssertTrue(components[0].allSatisfy(\.isASCII))
+    }
+
+    func testTheFolderAndTheFileNameAlwaysAgreeOnTheDay() {
+        // 15 January 2027, 15:10 UTC is 00:10 on the SIXTEENTH in Tokyo. Both
+        // halves of the path have to take the local reading: a folder computed
+        // in one zone and a name computed in another would disagree by a day,
+        // and the note would be filed under a date its own name denies.
+        let zone = TimeZone(identifier: "Asia/Tokyo")!
+        let midnight = draft(createdAt: Date(timeIntervalSince1970: 1_800_025_800))
+        let folders = NoteComposer.dateFolderComponents(for: midnight, timeZone: zone)
+        let stem = NoteComposer.fileNameStem(for: midnight, timeZone: zone)
+
+        XCTAssertEqual(folders, ["27-01 January", "16"])
+        XCTAssertTrue(stem.hasPrefix("2027-01-16 0010"), "stem was \(stem)")
+        // The day folder is the day in the file name, spelled the same way.
+        XCTAssertEqual(folders[1], String(stem.prefix(10).suffix(2)))
+        // …and the month folder carries the same month as the name does.
+        XCTAssertTrue(folders[0].hasPrefix("27-01"))
     }
 
     func testCollisionsGetASuffix() {

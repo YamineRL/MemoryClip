@@ -1,5 +1,6 @@
 import AppKit
 import Combine
+import QuickLookUI
 import SwiftUI
 
 /// Observable state shared between PanelController and the SwiftUI panel.
@@ -18,15 +19,46 @@ final class PanelUIState: ObservableObject {
 ///
 /// `cancelOperation` is overridden so Esc always dismisses the window, even
 /// when focus has left the SwiftUI key handlers (Full Keyboard Access, a
-/// footer menu, VoiceOver) — MemoryClip is an LSUIElement agent with no main menu,
-/// so there is no ⌘W/⌘Q to fall back on. `performClose` keeps the window
-/// delegate in the loop, which is what actually hides the window.
+/// footer menu, VoiceOver). The main menu does now carry ⌘W (Window → Close)
+/// and has carried ⌘Q all along, but MemoryClip is an LSUIElement agent that
+/// never shows a menu bar, so nothing on screen advertises either — Esc stays
+/// the way out that a hand already on the clip list will find. `performClose`
+/// keeps the window delegate in the loop, which is what actually hides the
+/// window.
 final class KeyablePanel: NSPanel {
+    /// The object that drives Quick Look while this panel is the key window.
+    ///
+    /// `QLPreviewPanel` is controller-based: opening it makes it walk the key
+    /// window's responder chain asking each responder whether it will control
+    /// the panel, and it closes again if nobody answers. The window is the one
+    /// link in that chain we own outright — everything below it is SwiftUI's
+    /// view hierarchy — so the three control methods live here and forward to
+    /// the controller. Weak: `PanelController` owns both.
+    weak var quickLookController: QuickLookController?
+
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { false }
 
     override func cancelOperation(_ sender: Any?) {
         performClose(sender)
+    }
+
+    // The three below are `MainActor.assumeIsolated` rather than `@MainActor`
+    // because QuickLookUI declares them on `NSResponder` without isolation and
+    // an override cannot add any. They are responder-chain callbacks, so
+    // AppKit only ever sends them on the main thread; assuming it turns the
+    // impossible case into a trap instead of a race.
+
+    override func acceptsPreviewPanelControl(_ panel: QLPreviewPanel!) -> Bool {
+        MainActor.assumeIsolated { quickLookController != nil }
+    }
+
+    override func beginPreviewPanelControl(_ panel: QLPreviewPanel!) {
+        MainActor.assumeIsolated { quickLookController?.begin(panel) }
+    }
+
+    override func endPreviewPanelControl(_ panel: QLPreviewPanel!) {
+        MainActor.assumeIsolated { quickLookController?.end(panel) }
     }
 }
 
@@ -52,6 +84,7 @@ final class PanelController: NSObject, NSWindowDelegate {
     private let qrController: QRWindowController
     private let queueService: QueueService
     private let noteCoordinator: NoteCoordinator
+    private let quickLookController = QuickLookController()
 
     private var panel: KeyablePanel?
     private var cancellables: Set<AnyCancellable> = []
@@ -110,6 +143,10 @@ final class PanelController: NSObject, NSWindowDelegate {
     /// the panel is hidden, so an unlocked history is never re-exposed.
     @objc private func appDidResignActive() {
         guard let panel, panel.isVisible else { return }
+        // Quick Look is a window of the app's, not of the panel's, so it would
+        // otherwise be left floating over the desktop after the history it
+        // came from has been put away.
+        quickLookController.close()
         panel.orderOut(nil)
         previousApp = nil
         uiState.focusToken = UUID()
@@ -161,6 +198,8 @@ final class PanelController: NSObject, NSWindowDelegate {
         // `appDidResignActive`.
         panel.hidesOnDeactivate = false
         panel.delegate = self
+        panel.quickLookController = quickLookController
+        quickLookController.host = panel
 
         let hostingView = NSHostingView(
             rootView: PanelView(uiState: uiState, queue: queueService, actions: makeActions())
@@ -265,6 +304,9 @@ final class PanelController: NSObject, NSWindowDelegate {
             revealInFinder: { item in
                 guard let url = item.screenshotURL else { return }
                 NSWorkspace.shared.activateFileViewerSelecting([url])
+            },
+            quickLook: { [weak self] items, index, onClose in
+                self?.quickLookController.show(items: items, startingAt: index, onClose: onClose)
             }
         )
     }
@@ -369,6 +411,7 @@ final class PanelController: NSObject, NSWindowDelegate {
     }
 
     func hide(restorePrevious: Bool) {
+        quickLookController.close()
         panel?.orderOut(nil)
         if restorePrevious {
             if let previousApp {

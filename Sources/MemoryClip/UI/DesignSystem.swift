@@ -100,6 +100,20 @@ enum Design {
         /// Ceiling on an image clip's extracted-text block, so a screenshot
         /// full of text cannot crowd the image out of the same pane.
         static let previewExtractedTextHeight: CGFloat = 110
+        /// Ceiling on the translation shown over a text clip. Lower than the
+        /// extracted-text block above, which shares its pane with a picture:
+        /// this one sits on top of the clip's own text, and the clip is what
+        /// the pane is for — a translation that pushed it under the fold would
+        /// have replaced the preview rather than added to it.
+        static let previewTranslationHeight: CGFloat = 84
+        /// Floor under an image clip's picture, so it cannot be squeezed into
+        /// a band by the text blocks sharing the pane with it.
+        ///
+        /// 60 is not a taste decision, it is what is left: pane padding and a
+        /// translation at its full ceiling account for the other 190 points,
+        /// and a floor above that would push the picture through the bottom
+        /// edge of the pane instead of shortening anything.
+        static let previewImageMinHeight: CGFloat = 60
 
         /// A clip card is a SQUARE. This is both its width and its height.
         static let card: CGFloat = 200

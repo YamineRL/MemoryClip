@@ -1,3 +1,4 @@
+import SwiftUI
 import XCTest
 
 @testable import MemoryClip
@@ -78,6 +79,25 @@ final class SettingsTests: XCTestCase {
         )
     }
 
+    /// Translation applies to notes *and* to the panel's preview, which is
+    /// the whole reason it stopped being a section of the Notes pane. Filing
+    /// it back under Clipboard or Screenshots would repeat the original
+    /// mistake in the other direction; General is where the rows that apply
+    /// to all of MemoryClip already live.
+    func testTranslationSitsUnderGeneral() throws {
+        let group = try XCTUnwrap(
+            SettingsPane.groups.first { $0.panes.contains(.translation) },
+            "Translation is not in the sidebar at all"
+        )
+        XCTAssertEqual(group.title, "General", "Translation belongs to the General category")
+        for other in SettingsPane.groups where other.title == "Clipboard" || other.title == "Screenshots" {
+            XCTAssertFalse(
+                other.panes.contains(.translation),
+                "Translation belongs to both feature groups, so it may live inside neither"
+            )
+        }
+    }
+
     /// Titles and symbols are what a row *is*: a blank one renders an
     /// unlabelled row, and a shared one makes two panes look like each other
     /// in a sidebar whose whole job is telling them apart.
@@ -108,8 +128,46 @@ final class SettingsTests: XCTestCase {
     func testPaneRawValuesAreStable() {
         XCTAssertEqual(
             SettingsPane.allCases.map(\.rawValue),
-            ["general", "shortcuts", "history", "panel", "privacy", "screenshots", "notes", "about"],
+            ["general", "shortcuts", "history", "panel", "privacy", "screenshots", "notes", "translation", "about"],
             "a persisted pane identifier changed — see SettingsKeys.settingsPane"
+        )
+    }
+
+    /// Adding `translation` is only safe if every raw value that could already
+    /// be on disk still resolves to the pane it named. Translation used to be
+    /// a section of the Notes pane, so the users most likely to have
+    /// `"notes"` stored are exactly the ones this move affects, and landing
+    /// them anywhere else would look like the setting had been lost rather
+    /// than relocated.
+    func testStoredRawValuesStillResolveToTheirPane() {
+        XCTAssertEqual(SettingsPane(rawValue: "notes"), .notes, "a stored Notes selection must still open Notes")
+        XCTAssertEqual(SettingsPane(rawValue: "translation"), .translation)
+        for pane in SettingsPane.allCases {
+            XCTAssertEqual(
+                SettingsPane(rawValue: pane.rawValue), pane,
+                "\(pane.rawValue) does not round-trip through its persisted form"
+            )
+        }
+    }
+
+    /// `@AppStorage` decodes an unrecognised raw value as `nil` and takes the
+    /// declared default, which is what makes a build that drops a pane — or
+    /// one read by an older build that has never heard of `translation` —
+    /// open on General instead of on nothing.
+    func testUnknownStoredPaneFallsBackToTheDefault() {
+        XCTAssertNil(SettingsPane(rawValue: "somePaneThisBuildNeverHad"))
+        XCTAssertEqual(SettingsPane.default, .general, "the fallback pane moved; check SettingsView's @AppStorage default")
+    }
+
+    /// The tint is the sidebar's fastest cue — you know the row by its colour
+    /// before you have read it — so two panes wearing one colour costs the
+    /// sidebar the distinction it is tinted for. Compared as rendered colours
+    /// rather than by case, since that is what the eye gets.
+    func testPaneTintsAreDistinct() {
+        let tints = SettingsPane.allCases.map(\.tint)
+        XCTAssertEqual(
+            Set(tints).count, tints.count,
+            "two panes share a sidebar tint: \(SettingsPane.allCases.map(\.rawValue))"
         )
     }
 
@@ -155,18 +213,58 @@ final class SettingsTests: XCTestCase {
     }
 
     /// The panel keys are handled inline in `PanelView`, so there is no state
-    /// machine to check them against — this is the one place the reference is
-    /// pinned to a literal list. The keys documented here must all be keys the
-    /// panel actually consumes.
-    func testPanelGroupListsTheKeysPanelViewHandles() {
-        let keys = ShortcutReference.panel.entries.map(\.keys)
-        XCTAssertEqual(
-            keys, ["↑ ↓", "Return", "⇧Return", "⌘1…⌘9", "Space", "Esc"],
-            "the panel key reference drifted from PanelView's key handling"
+    /// machine to check them against.
+    ///
+    /// The assertion is *coverage*, not an exact transcript. Pinning the row
+    /// list verbatim is what let this pane go stale in the first place: every
+    /// key the panel grew — the arrows along the strip, ⌘S, ⌘W, Quick Look —
+    /// was added to `PanelView` without the frozen list here noticing, because
+    /// a list only fails when someone edits the rows, and nobody was. Asking
+    /// instead that each key `PanelView` consumes appears *somewhere* in the
+    /// group fails on the omission itself, and leaves rewording, reordering
+    /// and merging rows free.
+    func testPanelGroupDocumentsTheKeysPanelViewHandles() throws {
+        let entries = ShortcutReference.panel.entries
+        let documented = entries.map(\.keys).joined(separator: "\u{1F}")
+        for key in ["↑", "↓", "←", "→", "Return", "⇧Return", "⌘1…⌘9", "⌘S", "Space", "Esc", "⌘W"] {
+            XCTAssertTrue(
+                documented.contains(key),
+                "\(key) is handled by PanelView but has no row in the panel key reference"
+            )
+        }
+
+        // Space is the one key whose row has to carry a branch: since Quick
+        // Look landed it escalates rather than toggling, and a row that still
+        // says "toggle" is wrong on exactly the screenshots and files people
+        // press it on. Esc is the same ladder coming back down.
+        let space = try XCTUnwrap(
+            entries.first { $0.keys == "Space" },
+            "no Space row to check for the Quick Look rung"
         )
+        XCTAssertTrue(
+            space.detail.contains("Quick Look"),
+            "Space escalates into Quick Look, and its row does not say so: \(space.detail)"
+        )
+        XCTAssertFalse(
+            space.detail.lowercased().contains("toggle"),
+            "Space stopped toggling the preview when Quick Look landed: \(space.detail)"
+        )
+        let escape = try XCTUnwrap(
+            entries.first { $0.keys == "Esc" },
+            "no Esc row to check for the Quick Look rung"
+        )
+        XCTAssertTrue(
+            escape.detail.contains("Quick Look"),
+            "Esc now closes Quick Look first, and its row does not say so: \(escape.detail)"
+        )
+
         XCTAssertNil(
             ShortcutReference.panel.note,
-            "the panel keys are unconditional; a note here implies a caveat that is not true"
+            """
+            the panel's caveats are per-key — the movement arrows and Space stand down while \
+            there is a query to edit, the rest never do — so they belong on their rows, not in \
+            a note the whole group would appear to inherit
+            """
         )
     }
 
@@ -195,7 +293,12 @@ final class SettingsTests: XCTestCase {
 
     /// Keys the panel or the mode switch — not the navigation state machine —
     /// handles, so no command is expected for them.
-    private static let nonNavigatorKeys: Set<String> = ["Esc", "Return", "Tab", "Space", "↑ ↓"]
+    ///
+    /// `h` and `l` are here for the same reason the arrows are: `PanelView`
+    /// answers them itself, so `VimNavigator` has no binding to unwrap.
+    private static let nonNavigatorKeys: Set<String> = [
+        "Esc", "Return", "Tab", "Space", "↑ ↓", "← →", "h", "l"
+    ]
 
     /// Splits a `ShortcutEntry.keys` string ("j / k", "/ or i", "dd") into its
     /// individual key tokens.

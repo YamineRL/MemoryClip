@@ -56,7 +56,9 @@ struct OnboardingStep: Identifiable, Equatable, Sendable {
 /// defaults, the Touch ID lock and screenshot watching each want a decision
 /// the user has not got the context for yet, and the translation language list
 /// is 38 rows that start multi-hundred-megabyte system downloads — it belongs
-/// beside the pipeline that reports which language it actually met.
+/// on its own Settings pane, next to the record of which languages MemoryClip
+/// has actually met, and not in front of someone who has not yet copied
+/// anything.
 enum OnboardingFlow {
     static let steps: [OnboardingStep] = [
         OnboardingStep(
@@ -91,7 +93,7 @@ enum OnboardingFlow {
                 "Type to search across text, OCR text, colors, file names and source app; filter chips narrow by type or by the app you copied from.",
                 "↑/↓ move the selection, Return pastes, ⇧Return pastes as plain text.",
                 "⌘1…⌘9 instantly paste the first nine results.",
-                "Space toggles the preview pane, which also offers text transforms (case, JSON, Base64, URL encode, sort/dedupe).",
+                "Space opens the preview pane, which also offers text transforms (case, JSON, Base64, URL encode, sort/dedupe); pressing it again on a picture or a file opens Quick Look full size.",
                 "Pin a clip from its row button or context menu — pinned clips are never removed automatically.",
             ]
         ),
@@ -115,7 +117,7 @@ enum OnboardingFlow {
                 "Zero network calls: no sync, no accounts, no analytics. History lives in a local database file.",
                 "No Accessibility, Screen Recording or Input Monitoring permission is required for capture, search or copy.",
                 "Sensitive content is skipped: Luhn-valid card numbers, copies made in password managers, and anything marked transient/concealed on the pasteboard.",
-                "Optional Touch ID lock before the panel opens (Settings → Security & Privacy, off by default).",
+                "Optional Touch ID lock before the panel opens (Settings → Privacy, off by default).",
             ]
         ),
         OnboardingStep(
@@ -147,7 +149,7 @@ enum OnboardingFlow {
             subtitle: "The one thing worth setting up now: where those notes land.",
             bullets: [
                 "Any clip carrying text — including the text read out of a screenshot — can be written out: select it in the panel and press ⌘S, or choose “Save as Note” from its context menu.",
-                "Where this Mac has Apple Intelligence, the on-device model gives the note a title, a summary and tags; text in another language is translated into English first. Both run here, and both are already on (Settings → Notes).",
+                "Where this Mac has Apple Intelligence, the on-device model gives the note a title, a summary and tags (Settings → Notes); text in another language is translated into English first (Settings → Translation). Both run here, and both are already on.",
                 "Choose a destination below. The Markdown folder is the default and starts out unset — until a folder is chosen, saving a note just tells you to choose one.",
                 "Screenshots can do this by themselves: Settings → Screenshots keeps new ones in your history, and Settings → Notes can write a note for every screenshot with enough text in it.",
             ],

@@ -61,6 +61,10 @@ final class NotePipelineTests: XCTestCase {
         )
         UserDefaults.standard.set(true, forKey: NoteSettingsKeys.copyAttachments)
         UserDefaults.standard.set("attachments", forKey: NoteSettingsKeys.vaultAttachmentFolder)
+        // Set rather than left to `registerDefaults`, which these tests never
+        // run: the pipeline should be exercised in the layout it actually
+        // ships in, which is notes filed by date.
+        UserDefaults.standard.set(true, forKey: NoteSettingsKeys.vaultDateFolders)
         FolderBookmark.store(vault, key: NoteSettingsKeys.vaultBookmark)
     }
 
@@ -101,8 +105,12 @@ final class NotePipelineTests: XCTestCase {
         return url
     }
 
+    /// Every note in the vault, wherever in it they landed — the dated folders
+    /// mean a note is no longer a direct child of the vault root.
     private func noteFiles() throws -> [String] {
-        try FileManager.default.contentsOfDirectory(atPath: vault.path)
+        let enumerator = FileManager.default.enumerator(atPath: vault.path)
+        return try XCTUnwrap(enumerator)
+            .compactMap { $0 as? String }
             .filter { $0.hasSuffix(".md") }
             .sorted()
     }

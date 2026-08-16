@@ -1,4 +1,5 @@
 import SwiftUI
+import SwiftData
 import AppKit
 
 /// Phase-2 preview pane: renders a clip's payload by kind, followed by the
@@ -19,6 +20,24 @@ struct PreviewView: View {
     /// (the row list deliberately never touches `imageData`). The thumbnail
     /// stands in until it arrives.
     @State private var fullImage: NSImage?
+    /// The clip read back in the user's own language, when it was not in it
+    /// already. The state and the work both live outside the view — see
+    /// `ClipTranslationPresenter` and `ClipTranslationRuns` — because a
+    /// SwiftUI task dies with the pane, and this pane is put away every time
+    /// the app stops being frontmost.
+    @State private var presenter = ClipTranslationPresenter()
+    /// How tall the translated text actually is, so the block can shrink to
+    /// it — see `translationBodyHeight`. Zero means "not measured yet".
+    @State private var translationTextHeight: CGFloat = 0
+
+    /// Read here rather than through `ClipTranslation` so that changing either
+    /// in Settings re-runs the work for the clip on screen, instead of taking
+    /// effect at the next selection.
+    @AppStorage(NoteSettingsKeys.clipTranslateEnabled) private var translateEnabled = false
+    @AppStorage(NoteSettingsKeys.clipTranslationTarget) private var translationTarget = ClipTranslation.defaultTargetIdentifier
+
+    /// Where the translation is cached, so re-opening a preview is free.
+    @Environment(\.modelContext) private var modelContext
 
     /// Design sizes that follow the system text-size setting instead of
     /// being frozen at their point value.
@@ -27,6 +46,11 @@ struct PreviewView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: Design.Space.roomy) {
+            // Above the clip, because a clip in a language you do not read is
+            // one you look away from: the translation is what makes the pane
+            // worth looking at, and the original is right underneath it.
+            translationBlock
+
             // The payload sits on its own pane, so the preview reads as a
             // surface holding content rather than text loose in a box.
             content
@@ -63,6 +87,7 @@ struct PreviewView: View {
         .padding(Design.Space.roomy)
         .task(id: contentKey) { await refreshAnalysis() }
         .task(id: contentKey) { await loadFullImage() }
+        .task(id: translationKey) { await refreshTranslation() }
     }
 
     // MARK: Cached analysis
@@ -108,6 +133,105 @@ struct PreviewView: View {
             guard !Task.isCancelled else { return }
             fullImage = loaded
         }
+    }
+
+    // MARK: Translation
+
+    /// Identity of the work: the clip, plus the two settings that decide what
+    /// is done with it. Changing the target language in Settings re-runs this
+    /// for the clip already on screen.
+    ///
+    /// Recognition and refinement are counted in as well, because a
+    /// screenshot is very often previewed before either has finished with it:
+    /// without them the pane would keep showing the nothing it had when the
+    /// clip was selected. Lengths rather than the text, so a body pass costs
+    /// no copies of it.
+    private var translationKey: String {
+        "\(contentKey)-\(item.ocrText?.count ?? 0)-\(item.refinedText?.count ?? 0)-\(translateEnabled)-\(translationTarget)"
+    }
+
+    /// How tall the translated text is allowed to be: its own height, or the
+    /// ceiling, whichever is smaller.
+    ///
+    /// The ceiling stands in until the first measurement arrives, so the
+    /// block settles down to the text rather than growing into it.
+    private var translationBodyHeight: CGFloat {
+        guard translationTextHeight > 0 else { return Design.Size.previewTranslationHeight }
+        return min(translationTextHeight.rounded(.up), Design.Size.previewTranslationHeight)
+    }
+
+    /// The translation, over the clip and inside its own pane.
+    ///
+    /// Nothing at all for the ordinary case — a clip in the language the user
+    /// reads — so the pane is unchanged for everyone who has not asked for
+    /// this. When there is something, it is bounded: the clip below is what
+    /// the preview is for.
+    @ViewBuilder
+    private var translationBlock: some View {
+        if presenter.isTranslating || presenter.translation != nil {
+            VStack(alignment: .leading, spacing: Design.Space.snug) {
+                HStack(spacing: Design.Space.snug) {
+                    Text(presenter.translation?.languagePair ?? "Translating…")
+                        .font(Design.Typography.meta)
+                        .foregroundStyle(Color(nsColor: .secondaryLabelColor))
+                    if presenter.isTranslating {
+                        // Small and unlabelled: the pane already says what is
+                        // happening, and the clip below is readable meanwhile.
+                        ProgressView()
+                            .progressViewStyle(.circular)
+                            .controlSize(.small)
+                            .accessibilityHidden(true)
+                    }
+                }
+
+                if let translation = presenter.translation {
+                    ScrollView {
+                        Text(translation.text)
+                            .font(.system(size: bodyFontSize))
+                            .textSelection(.enabled)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            // Measured from INSIDE the scroll view, which
+                            // proposes no height to its content, so this is
+                            // the text's own height rather than the one it
+                            // was given.
+                            .onGeometryChange(for: CGFloat.self) { proxy in
+                                proxy.size.height
+                            } action: { height in
+                                translationTextHeight = height
+                            }
+                    }
+                    // An exact height, not a maximum: a scroll view takes
+                    // every point it is offered up to its cap, so a
+                    // two-line translation in a `maxHeight` frame sat in
+                    // 84 points of empty pane.
+                    .frame(height: translationBodyHeight)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(Design.Space.roomy)
+            .designPane(radius: Design.Radius.pane, fill: Design.Palette.chrome)
+            // `.contain` rather than `.combine`: the translated text stays its
+            // own element, so it can be read, navigated and selected, and the
+            // group carries the label that says what it is.
+            .accessibilityElement(children: .contain)
+            .accessibilityLabel(presenter.translation?.accessibilityDescription ?? "Translating this clip")
+        }
+    }
+
+    /// Show the clip's translation, or start one.
+    ///
+    /// Thin on purpose: the state and the work are the presenter's and the
+    /// run store's, so neither dies when this pane does — which it does every
+    /// time MemoryClip stops being the frontmost app.
+    private func refreshTranslation() async {
+        // The previous clip's measurement says nothing about this one's.
+        translationTextHeight = 0
+        await presenter.refresh(
+            item: item,
+            context: modelContext,
+            isEnabled: translateEnabled,
+            target: Locale.Language(identifier: translationTarget)
+        )
     }
 
     // MARK: Content by kind
@@ -162,13 +286,29 @@ struct PreviewView: View {
                 Image(nsImage: nsImage)
                     .resizable()
                     .scaledToFit()
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    // A floor as well as a ceiling: the picture is the reason
+                    // this pane exists, and sharing 250 points with the text
+                    // blocks under it had shrunk it to a band nothing could
+                    // be read in.
+                    .frame(
+                        maxWidth: .infinity,
+                        minHeight: Design.Size.previewImageMinHeight,
+                        maxHeight: .infinity
+                    )
                     .clipShape(RoundedRectangle(cornerRadius: Design.Radius.small, style: .continuous))
             } else {
                 emptyPlaceholder
             }
 
-            if let extracted = extractedText {
+            // Hidden while a translation is on screen. Three blocks do not
+            // fit in this pane, and this is the one that earns its place
+            // least of the three: the translation above already carries this
+            // same recognised text in a language the reader can read, and the
+            // picture carries it as it actually appeared. Raw recognition in
+            // a script they do not read, wedged under a squeezed thumbnail,
+            // is the third copy. With translation off, or for a clip that had
+            // none to make, the block is exactly what it always was.
+            if let extracted = extractedText, presenter.translation == nil {
                 Divider()
                 VStack(alignment: .leading, spacing: Design.Space.snug) {
                     Text("Extracted Text")

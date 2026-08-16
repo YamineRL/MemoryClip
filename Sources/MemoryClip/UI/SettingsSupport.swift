@@ -19,6 +19,7 @@ enum SettingsPane: String, CaseIterable, Identifiable, Sendable {
     case privacy
     case screenshots
     case notes
+    case translation
     case about
 
     /// What opens when nothing has been chosen yet, and the fallback for a
@@ -36,6 +37,7 @@ enum SettingsPane: String, CaseIterable, Identifiable, Sendable {
         case .privacy: return "Privacy"
         case .screenshots: return "Screenshots"
         case .notes: return "Notes"
+        case .translation: return "Translation"
         case .about: return "About"
         }
     }
@@ -48,6 +50,11 @@ enum SettingsPane: String, CaseIterable, Identifiable, Sendable {
     /// icon set. The panes whose forms have no single defining row (General,
     /// Shortcuts, Panel, About) keep the symbol their old tab item used, which
     /// is the one users already associate with them.
+    ///
+    /// Translation is the Screenshots case again: its pane opens on the
+    /// "Translate other languages into English" switch, and that switch's own
+    /// glyph is what the sidebar row wears, so the row and the first thing
+    /// under it are visibly the same control.
     var symbol: String {
         switch self {
         case .general: return "gearshape.fill"
@@ -57,6 +64,7 @@ enum SettingsPane: String, CaseIterable, Identifiable, Sendable {
         case .privacy: return "lock.shield.fill"
         case .screenshots: return "camera.viewfinder"
         case .notes: return "note.text"
+        case .translation: return "character.bubble.fill"
         case .about: return "info.circle.fill"
         }
     }
@@ -69,6 +77,19 @@ enum SettingsPane: String, CaseIterable, Identifiable, Sendable {
     /// (History orange, Panel purple, Privacy pink, Screenshots green, Notes
     /// teal); the rest take what was left.
     ///
+    /// Translation is the one pane that could not have the tint of its own
+    /// signature control: that switch is pink and Privacy already owns pink,
+    /// and two pink tiles in one sidebar undo the whole reason for tinting
+    /// them. What was actually left is red, yellow, brown, mint and cyan, and
+    /// only brown survives the two tests that matter at 20 points. Mint and
+    /// cyan sit inside the green–teal–blue run that Screenshots, Notes and
+    /// Shortcuts already occupy, and Translation lands next to Screenshots and
+    /// Notes in the sidebar, which is the worst possible place to put a fourth
+    /// shade of the same family. Red is the colour `SettingsCallout` uses for
+    /// "something went wrong", and this pane shows two of those. Yellow is
+    /// distinct enough but it is the one system colour a white glyph does not
+    /// hold up against, and every tile here is a white glyph.
+    ///
     /// System colours rather than literals, so macOS retunes them for Dark
     /// Mode and Increase Contrast — the same rule the rest of `Design` follows.
     var tint: Color {
@@ -80,6 +101,7 @@ enum SettingsPane: String, CaseIterable, Identifiable, Sendable {
         case .privacy: return Color(nsColor: .systemPink)
         case .screenshots: return Color(nsColor: .systemGreen)
         case .notes: return Color(nsColor: .systemTeal)
+        case .translation: return Color(nsColor: .systemBrown)
         case .about: return Color(nsColor: .systemIndigo)
         }
     }
@@ -88,23 +110,48 @@ enum SettingsPane: String, CaseIterable, Identifiable, Sendable {
 /// A titled run of sidebar rows.
 struct SettingsPaneGroup: Identifiable, Sendable {
     /// `nil` renders as a plain separated run with no header — used for the
-    /// single trailing row, where a one-word category name would be noise.
+    /// two single trailing rows, where a one-word category name would be
+    /// noise.
     let title: String?
     let panes: [SettingsPane]
 
-    var id: String { title ?? "\u{1F}untitled" }
+    /// The title where there is one, and the rows themselves where there is
+    /// not.
+    ///
+    /// This used to be a fixed `"untitled"` string, which was correct only
+    /// while exactly one group had no header — as, today, is again the case.
+    /// It is derived anyway, because two headerless groups sharing an id is
+    /// not a cosmetic problem: the id is the `ForEach` identity the sidebar is
+    /// built from, so SwiftUI would treat the second run as the first one
+    /// moving and the rows would land in the wrong section. Deriving it means
+    /// adding a second headerless group is a layout decision rather than a
+    /// bug. The unit separator prefixes the derived form so that a headerless
+    /// group can never collide with a group actually titled after its own
+    /// pane.
+    var id: String { title ?? ("\u{1F}" + panes.map(\.rawValue).joined(separator: "\u{1F}")) }
 }
 
 extension SettingsPane {
     /// The sidebar, grouped.
     ///
-    /// Eight flat rows is a list you read top to bottom every time; grouped,
+    /// Nine flat rows is a list you read top to bottom every time; grouped,
     /// you only read the group you are in. The split is by *what the user came
     /// to change*, not by which subsystem implements it:
     ///
     /// - **General** — the app as an app: whether it starts with the Mac, how
     ///   it looks, and the keys that summon it. Nothing here is about a
     ///   particular clip.
+    ///   Translation sits here too, last in the group. It began as a section
+    ///   of the Notes pane, back when it did one thing: render a foreign
+    ///   screenshot's recognised text into English for the note being
+    ///   written. It has since grown a second job — translating what you
+    ///   copy, shown in the panel's preview — so it now spans the clipboard
+    ///   and the screenshot pipeline alike. Filing it under either one would
+    ///   state a loyalty it does not have, and a headerless row of its own
+    ///   says "uncategorised" when the truth is "applies to all of it" —
+    ///   which is what General already means for the rows beside it. It goes
+    ///   last because the two above it are about the app itself, and this one
+    ///   is about the clips.
     /// - **Clipboard** — the core loop: what gets captured and for how long
     ///   (History), how the panel behaves while you browse it (Panel), and
     ///   what MemoryClip refuses to capture or requires Touch ID for
@@ -118,7 +165,7 @@ extension SettingsPane {
     ///   changes nothing, and inventing a category for a single identity pane
     ///   would add a word to read without adding a distinction.
     static let groups: [SettingsPaneGroup] = [
-        SettingsPaneGroup(title: "General", panes: [.general, .shortcuts]),
+        SettingsPaneGroup(title: "General", panes: [.general, .shortcuts, .translation]),
         SettingsPaneGroup(title: "Clipboard", panes: [.history, .panel, .privacy]),
         SettingsPaneGroup(title: "Screenshots", panes: [.screenshots, .notes]),
         SettingsPaneGroup(title: nil, panes: [.about])
@@ -211,27 +258,61 @@ struct ShortcutGroup: Equatable, Identifiable {
 enum ShortcutReference {
     static let groups: [ShortcutGroup] = [panel, vim]
 
+    /// The keys `PanelView` handles itself, in the order a hand finds them:
+    /// move, paste, keep, look, leave.
+    ///
+    /// Two rows describe a key that does more than one thing, and both are
+    /// written as the ladder the code climbs rather than as a list of cases.
+    /// Space escalates: with the pane shut it opens the pane, and a second
+    /// press either hands a screenshot, image or file to Quick Look or — when
+    /// the clip is one Quick Look has nothing to show for — shuts the pane
+    /// again. Saying "toggle" would now be wrong on exactly the clips people
+    /// press it on most. Esc is the same ladder descended, one rung per press.
+    ///
+    /// The conditions live on the rows that have them rather than in a
+    /// group-wide note, because they are not the same condition: the movement
+    /// arrows and Space stand down while there is a query in the search field
+    /// to edit, and everything else here works regardless.
+    ///
+    /// Keys the panel merely refuses to swallow are not keys it handles, so
+    /// Tab and Delete are absent: they appear in `PanelView.reservedCharacters`
+    /// only to keep vim mode's catch-all from stealing them from the search
+    /// field and the focus ring.
     static let panel = ShortcutGroup(
         title: "Panel",
         entries: [
-            ShortcutEntry(keys: "↑ ↓", detail: "Move the selection"),
+            ShortcutEntry(keys: "↑ ↓", detail: "Move the selection; hold to keep moving"),
+            ShortcutEntry(keys: "← →", detail: "Move along the strip; hold to keep moving (search field empty)"),
             ShortcutEntry(keys: "Return", detail: "Paste the selected clip"),
             ShortcutEntry(keys: "⇧Return", detail: "Paste as plain text"),
             ShortcutEntry(keys: "⌘1…⌘9", detail: "Paste the first nine results"),
-            ShortcutEntry(keys: "Space", detail: "Toggle the preview pane (search field empty)"),
-            ShortcutEntry(keys: "Esc", detail: "Close the preview, then the panel")
+            ShortcutEntry(keys: "⌘S", detail: "Save the selected clip as a note"),
+            ShortcutEntry(
+                keys: "Space",
+                detail: "Open the preview; press again to Quick Look a screenshot, image or file, or to close the preview (search field empty)"
+            ),
+            ShortcutEntry(keys: "Esc", detail: "Close Quick Look, then the preview, then the panel"),
+            ShortcutEntry(keys: "⌘W", detail: "Close the panel")
         ]
     )
 
+    /// The vim bindings, which are `VimNavigator`'s with one exception: `h`
+    /// and `l` are answered by `PanelView` directly, because the strip runs
+    /// left to right and the horizontal pair had to move along it without the
+    /// shared, separately tested navigator growing a second name for a step it
+    /// already has. A reader of this pane cannot tell the difference, and
+    /// should not have to.
     static let vim = ShortcutGroup(
         title: "Vim navigation",
         note: "Only when vim mode is on. The panel opens in NORMAL mode (shown in the search bar) where these keys navigate; / or i switches to INSERT mode to type in the search field, and Esc switches back.",
         entries: [
-            ShortcutEntry(keys: "j / k", detail: "Move down / up"),
+            ShortcutEntry(keys: "j / k", detail: "Move down / up; hold to keep moving"),
+            ShortcutEntry(keys: "h / l", detail: "Move back / forward along the strip; hold to keep moving"),
             ShortcutEntry(keys: "gg / G", detail: "Jump to the top / bottom"),
             ShortcutEntry(keys: "⌃d / ⌃u", detail: "Half-page down / up"),
             ShortcutEntry(keys: "o / ⇧O", detail: "Paste / paste as plain text"),
             ShortcutEntry(keys: "p", detail: "Pin or unpin the selected clip"),
+            ShortcutEntry(keys: "n", detail: "Save the selected clip as a note"),
             ShortcutEntry(keys: "dd", detail: "Delete the selected clip (asks first)"),
             ShortcutEntry(keys: "q / ⇧Q", detail: "Add to the queue / paste the queue"),
             ShortcutEntry(keys: "/ or i", detail: "Search: / starts a fresh query, i edits the current one"),

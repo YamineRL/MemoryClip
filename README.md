@@ -37,14 +37,14 @@ Requires macOS 26 on Apple silicon.
     <td width="50%"><img src="docs/screenshots/menu-bar.svg" alt="The menu-bar dropdown listing recent clips and app commands"></td>
   </tr>
   <tr>
-    <td align="center"><em>Preview pane — <code>Space</code> to toggle.</em></td>
+    <td align="center"><em>Preview pane — <code>Space</code> to open, again for Quick Look.</em></td>
     <td align="center"><em>Menu-bar dropdown — the last five clips.</em></td>
   </tr>
   <tr>
     <td colspan="2" align="center"><img src="docs/screenshots/settings.svg" alt="The Settings window showing its sidebar of preference panes" width="620"></td>
   </tr>
   <tr>
-    <td colspan="2" align="center"><em>Settings — eight panes behind a sidebar, no Dock icon anywhere.</em></td>
+    <td colspan="2" align="center"><em>Settings — nine panes behind a sidebar, no Dock icon anywhere.</em></td>
   </tr>
 </table>
 
@@ -85,12 +85,22 @@ glyph gives the last five clips, Pause Capture, Clear All History, Settings and 
 | `⇧Return` | Paste it as **plain text**, dropping fonts and colours |
 | `⌘1`–`⌘9` | Paste any of the first nine results directly |
 | `⌘S` | Save the selected clip as a note, if it carries any text |
-| `Space` | Toggle the preview pane, while the search field is empty |
-| `Esc` | Close the preview, then the panel |
+| `Space` | Open the preview pane; press it again on a picture or a file for full-size **Quick Look** |
+| `Esc` | Close Quick Look, then the preview, then the panel |
 
 Pasting puts the clip on the clipboard, reactivates your previous app and sends a ⌘V. If
 macOS blocks that synthetic keystroke the clip is still on the clipboard — see
 [Permissions](#permissions).
+
+Hold `←` or `→` and the list walks at about eight clips a second — MemoryClip's own pace
+rather than the key-repeat rate in your Keyboard settings, which at its fastest is a blur
+that overshoots by a dozen clips before a finger comes off the key. The preview waits
+until you stop, so a run of forty clips loads one rather than forty. The keys that delete,
+paste or pin never repeat, whatever you do to them.
+
+Inside Quick Look the arrows keep working, walking full-size through the pictures and
+files of whatever you had filtered, and the one you stop on is the one selected when you
+come back out.
 
 **Search** matches clip text, text recognised inside images, the model's summary, colour
 values, file names and the source app, with chips for **All, Text, Images, Links, Files,
@@ -103,12 +113,21 @@ a copied `12*7`, and offers a QR code for links. Right-click to transform a clip
 way out — case, JSON, Base64, URL encoding, sort or dedupe lines — or **Add to Queue**,
 and **Paste N** sends the lot in order.
 
+**Translation** — off by default, **Settings → Translation → Clip preview**. Copy
+something in a language you do not read and the preview shows it in one you do, above the
+text as it was copied; a screenshot or an image is translated from the text recognised
+inside it. The target starts as whatever language this Mac is set to read. It happens when
+you open the preview rather than when you copy — a clipboard is mostly things nobody looks
+at twice — which costs a second or two the first time and nothing afterwards, since the
+answer is kept on the clip. The work outlives the panel, so clicking away mid-translation
+loses nothing.
+
 **Vim navigation** — off by default, **Settings → Panel**. Properly modal, the mode shown
 in the search bar. In NORMAL:
 
 | Key | Does |
 | --- | --- |
-| `j` `k` | Move down / up |
+| `j` `k` | Move down / up (`l` `h` too — the strip of cards runs left to right) |
 | `gg` `G` | Jump to top / bottom |
 | `⌃d` `⌃u` | Half-page down / up |
 | `o` | Paste (`⇧O` pastes as plain text) |
@@ -149,17 +168,17 @@ title, summary and tags. The raw recognition is kept alongside it, and is used o
 when the model is unavailable or when a rewrite drops or invents too much of the text.
 
 A screenshot that is not in English is **translated on this Mac** and the note carries
-both — the text as it was on screen, and an English translation under it. Title, summary
-and tags come from the English, so a note captured in Arabic is findable in a vault you
-search in English. Tick the languages you want in **Settings → Notes → Translation** (22
-on macOS 26) and macOS fetches what it needs; with none ticked it handles whatever this
-Mac already can.
+both — the text as it was on screen, and an English translation under it. Always English,
+whatever language the preview translates clips into: title, summary and tags come from it,
+so a note captured in Arabic is findable in a vault you search in English. Tick the
+languages you want in **Settings → Translation → Notes** (22 on macOS 26) and macOS
+fetches what it needs; with none ticked it handles whatever this Mac already can.
 
 Three destinations, in **Settings → Notes**:
 
 | Destination | What it does | Needs |
 | --- | --- | --- |
-| **Markdown folder** | Writes a `.md` file with YAML front matter — an Obsidian vault, or any folder of Markdown. The screenshot is copied in and embedded, so the note survives you clearing your Desktop. | A folder you pick |
+| **Markdown folder** | Writes a `.md` file with YAML front matter — an Obsidian vault, or any folder of Markdown — filed under the month and day it was captured. The screenshot is copied in and embedded, so the note survives you clearing your Desktop. | A folder you pick |
 | **Notes** | Creates a note in Apple Notes, in a folder you name. The screenshot goes in as a link — Notes does not accept an image through automation. | Automation permission |
 | **Shortcut** | Runs a Shortcut with the note as its input, so Bear, Things, DEVONthink or anything else Shortcuts reaches can be the destination. | A Shortcut name |
 
@@ -171,7 +190,24 @@ inside your vault.
 ### Where notes go
 
 Every note is a plain `.md` file named `2026-08-13 1422 Title.md` — timestamp first, so
-the folder sorts chronologically and two shots of the same window do not collide:
+two shots of the same window do not collide and a note that ends up somewhere else still
+says when it is from. Notes are filed by the day they were captured:
+
+```
+26-08 August/
+  13/
+    2026-08-13 1422 Deploy checklist.md
+```
+
+The month folder leads with the year so a vault you have kept for a few years walks in
+order instead of restarting each January, and the day folder keeps a heavy week down to
+something you can look at. Turn **Sort notes into folders by date** off in
+**Settings → Notes** and notes go straight into the folder you picked, as they always
+did. Either way nothing already written is moved: a note you saved last year keeps being
+updated where it sits, and the screenshot always goes to the single `attachments` folder,
+since an `![[embed]]` finds it anywhere in the vault.
+
+Inside, the note itself:
 
 ```markdown
 ---
@@ -208,21 +244,27 @@ matter, and wiki-style `![[embeds]]` — which is what the **Copy the screenshot
 folder** switch is for: on, the picture is copied in and embedded; off, the note links to
 it where it sits, in a form every editor renders.
 
-- **[Obsidian](https://obsidian.md)** — your vault, or any folder in it, copying **on**.
-  Front matter becomes note properties, so tags are tags and `lang`, `source` and
-  `created` are Dataview-queryable.
+- **[Obsidian](https://obsidian.md)** — your vault, or any folder in it, copying **on**
+  and dated folders **on**: it walks subfolders, and its own attachment setting is the
+  flat folder these notes already use. Front matter becomes note properties, so tags are
+  tags and `lang`, `source` and `created` are Dataview-queryable.
 - **[Logseq](https://logseq.com)** — the `pages` folder of your graph, attachments set to
-  `assets`.
+  `assets`, and dated folders **off**: a Logseq page is named by its file, and any
+  hierarchy is spelled into that name rather than into folders, so a dated tree buys
+  nothing the graph can use.
 - **[iA Writer](https://ia.net/writer)**, **[Typora](https://typora.io)**,
   **[Zettlr](https://www.zettlr.com)**, VS Code — any folder they watch, copying **off**.
+  All four open a folder and show its subfolders, so leave the dated folders on unless
+  you would rather scroll one long list.
 - **[DEVONthink](https://www.devontechnologies.com/apps/devonthink)** — index the folder,
   so notes stay files MemoryClip can update in place.
 - **[Joplin](https://joplinapp.org)** — import, and re-import after later edits.
 - **iCloud Drive, Dropbox, Syncthing** — notes are written whole, so a half-written file
   never syncs.
 
-Bear, Craft, Notion and Things keep no files: use the **Shortcut** destination. The same
-guidance is in **Settings → Notes → Which apps can open these notes?**
+Bear, Craft, Notion and Things keep no files: use the **Shortcut** destination. A shorter
+version of this list is in the app, under
+**Settings → Notes → Which apps can open these notes?**
 
 ## Privacy and security
 
@@ -261,19 +303,23 @@ Recording, no Input Monitoring, no network. Optional, and only with the matching
 
 ## Settings
 
-Eight panes in a sidebar; ↑/↓ move between them, and the window reopens where you left
-it.
+Nine panes in a sidebar; ↑/↓ move between them, ⌘W closes the window, and it reopens
+where you left it.
 
 | Group | Pane | Contains |
 | --- | --- | --- |
 | General | **General** | Launch at login, theme, auto-paste |
-| General | **Shortcuts** | The global hotkey recorder (⇧⌘V is only the default), plus a full key reference |
+| General | **Shortcuts** | The global hotkey recorder (⇧⌘V is only the default), plus a key reference |
+| General | **Translation** | Both translators — the languages notes are read in, and the preview's own switch and target |
 | Clipboard | **History** | History cap, retention window, export |
 | Clipboard | **Panel** | Image OCR, vim navigation |
 | Clipboard | **Privacy** | Touch ID lock, sensitive-content filtering, permission notes |
 | Screenshots | **Screenshots** | Screenshot capture, the folder to watch, image OCR |
-| Screenshots | **Notes** | The on-device model, translation, note destination, automatic notes |
+| Screenshots | **Notes** | The on-device model, note destination, automatic notes |
 | — | **About** | Version, privacy summary, replay the welcome tour |
+
+Translation sits under General rather than beside either feature because it governs both,
+which is why its two halves are headed **Notes** and **Clip preview**.
 
 ## Building from source
 
@@ -281,7 +327,7 @@ it.
 ./Scripts/make_app.sh    # release build + dist/MemoryClip.app (ad-hoc signed)
 ./Scripts/make_dmg.sh    # the above, plus dist/MemoryClip-<version>.dmg
 swift build && swift run # debug build, run from it
-swift test               # 553 unit tests (benchmarks skipped)
+swift test               # 725 unit tests (benchmarks skipped)
 ```
 
 `make_app.sh` regenerates `Resources/AppIcon.icns` if it is missing, so
@@ -319,10 +365,12 @@ Sources/MemoryClip/
 ├── Actions/    PasteService, TransformService, CalcEvaluator, QRService,
 │               ExportService, OCRService + OCRCoordinator
 ├── Notes/      NoteRefiner + FoundationModelsRefiner, NoteTranslator + AppleTranslator,
-│               NoteComposer, NoteSink (Markdown / Notes / Shortcut), NoteCoordinator
+│               ClipTranslation (the preview's own), NoteComposer,
+│               NoteSink (Markdown / Notes / Shortcut), NoteCoordinator
 ├── Security/   AppLockService (Touch ID gate)
 ├── UI/         PanelController + PanelView, ClipCardView, PreviewView, VimNavigator,
-│               StatusController, SettingsWindow, Onboarding, DesignSystem
+│               HeldKeyPacer, QuickLook, StatusController, SettingsWindow,
+│               Onboarding, DesignSystem
 └── Support/    NSColor+Hex, FolderBookmark (security-scoped bookmarks)
 ```
 

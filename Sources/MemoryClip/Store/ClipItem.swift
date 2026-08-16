@@ -115,6 +115,24 @@ final class ClipItem {
     /// text that was actually on screen is the record, and the translation is
     /// a second reading of it that the note carries underneath.
     var translatedText: String?
+    /// The clip's own text rendered into the language the user picked for the
+    /// preview pane, kept so re-opening a preview does not translate it again.
+    ///
+    /// Separate from `translatedText`, which is the note pipeline's English
+    /// rendering of `ocrText` and belongs to a different feature with a
+    /// different target — see `ClipTranslation`.
+    ///
+    /// All three of these are optional, so an existing store migrates in
+    /// place: SwiftData's lightweight migration adds a nullable column to
+    /// rows that predate it, which a mandatory attribute cannot.
+    var clipTranslationText: String?
+    /// What `clipTranslationText` was translated from, as a BCP-47
+    /// identifier, for the "French → German" label over it.
+    var clipTranslationSource: String?
+    /// What it was translated INTO. Stored beside the text because the target
+    /// is a setting the user can change, and a translation into the language
+    /// they no longer read is stale rather than merely old.
+    var clipTranslationTarget: String?
     /// Filesystem path (or, for non-file destinations, a human-readable
     /// locator) of the note written for this clip. Non-nil means "a note
     /// exists", which is what makes a second export update rather than
@@ -154,6 +172,9 @@ final class ClipItem {
         refineAttempted: Bool = false,
         sourceLanguage: String? = nil,
         translatedText: String? = nil,
+        clipTranslationText: String? = nil,
+        clipTranslationSource: String? = nil,
+        clipTranslationTarget: String? = nil,
         notePath: String? = nil,
         noteExportedAt: Date? = nil
     ) {
@@ -182,6 +203,9 @@ final class ClipItem {
         self.refineAttempted = refineAttempted
         self.sourceLanguage = sourceLanguage
         self.translatedText = translatedText
+        self.clipTranslationText = clipTranslationText
+        self.clipTranslationSource = clipTranslationSource
+        self.clipTranslationTarget = clipTranslationTarget
         self.notePath = notePath
         self.noteExportedAt = noteExportedAt
     }

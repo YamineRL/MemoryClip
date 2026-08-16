@@ -10,8 +10,9 @@ import Translation
 /// carry — the labels crowd until they are unreadable, and a tab strip offers
 /// no keyboard route between panes at all, so the only way to reach Notes was
 /// to aim at it. A `NavigationSplitView` fixes both at once: the sidebar has
-/// room to name and group all eight, and a `List` with a selection binding is
-/// arrow-key navigable and VoiceOver-navigable for free.
+/// room to name and group all of them, and a `List` with a selection binding
+/// is arrow-key navigable and VoiceOver-navigable for free. There are nine
+/// panes now, which is the argument making itself.
 ///
 /// The window, not this view, owns the frame (see `SettingsWindowController`).
 /// A settings window that resizes as you move between panes is the classic
@@ -168,6 +169,7 @@ extension SettingsPane {
         case .privacy: PrivacySettingsPane()
         case .screenshots: ScreenshotSettingsPane()
         case .notes: NotesSettingsPane()
+        case .translation: TranslationSettingsPane()
         case .about: AboutSettingsPane()
         }
     }
@@ -612,6 +614,63 @@ private struct ScreenshotSettingsPane: View {
     }
 }
 
+// MARK: - Translation
+
+/// The two places MemoryClip translates: notes it writes, and clips you copy.
+///
+/// This was a section of the Notes pane, which was right while translation
+/// did one thing — read a foreign screenshot and put English in the note. It
+/// then grew a second job, translating copied text for the panel's preview,
+/// and a clipboard feature filed under Screenshots → Notes is a feature the
+/// user has to already know about to find. Hence a pane of its own.
+///
+/// The two halves share nothing but the framework underneath them and the
+/// language packs macOS downloads, which is precisely why they are two
+/// sections rather than one run of four switches: they are different
+/// questions with opposite shapes. Notes translate *from* many languages
+/// *into* English, because a vault you search in English wants its titles and
+/// tags in English; the preview translates *from* whatever turned up *into*
+/// the one language you read. Naming the section after the place the result
+/// appears — the note, the preview — is what tells a user landing here which
+/// switch is theirs, since neither switch's own label can say it twice.
+private struct TranslationSettingsPane: View {
+    @AppStorage(NoteSettingsKeys.translateEnabled) private var translateEnabled = true
+    @AppStorage(NoteSettingsKeys.clipTranslateEnabled) private var clipTranslateEnabled = false
+
+    var body: some View {
+        Form {
+            Section("Notes") {
+                Toggle(isOn: $translateEnabled) {
+                    Label {
+                        Text("Translate other languages into English")
+                    } icon: {
+                        SettingsIcon(symbol: "character.bubble.fill", tint: Color(nsColor: .systemPink))
+                    }
+                }
+                if translateEnabled {
+                    TranslationLanguagePicker()
+                }
+                SettingsHint("When MemoryClip writes a note, a screenshot in Arabic, Japanese or Russian is read in its own language and the note carries both: the text exactly as it was on screen, and an English translation underneath it. Translation runs on this Mac. The title, summary and tags are written from the English, so the note is findable in a vault you search in English.\n\nTick as many languages as you like — those are the ones MemoryClip will translate, and ticking one downloads its assets if macOS does not have them yet. With none ticked it translates any language this Mac can already handle. The packs go into the store the whole system shares, so a language you fetch here is the one Translate and Safari use.")
+            }
+
+            Section("Clip preview") {
+                Toggle(isOn: $clipTranslateEnabled) {
+                    Label {
+                        Text("Translate copied text in the preview")
+                    } icon: {
+                        SettingsIcon(symbol: "text.bubble.fill", tint: Color(nsColor: .systemTeal))
+                    }
+                }
+                if clipTranslateEnabled {
+                    ClipTranslationTargetPicker()
+                }
+                SettingsHint("Nothing to do with notes: copy something in a language you do not read and the panel's preview shows it in yours, above the text as it was copied. It happens when you open the preview, not when you copy — a clipboard is mostly things nobody reads twice — and each clip is translated once and remembered.")
+            }
+        }
+        .formStyle(.grouped)
+    }
+}
+
 // MARK: - Translation downloads
 
 /// The language list and its per-language readiness, held outside any view.
@@ -633,6 +692,10 @@ final class TranslationLanguageStore {
     static let shared = TranslationLanguageStore()
 
     private(set) var menu: [TranslationLanguage] = []
+    /// The same list with nothing dropped, for the preview pane's target
+    /// picker: English is not a source the note pipeline can be asked about,
+    /// but it is a perfectly good language to read a clip in.
+    private(set) var targets: [TranslationLanguage] = []
     private(set) var readiness: [String: TranslationReadiness] = [:]
     /// The in-flight load, so several pickers appearing at once (or a pane
     /// rebuilt mid-load) share one pass instead of racing.
@@ -646,11 +709,12 @@ final class TranslationLanguageStore {
         if !menu.isEmpty { return }
         if let loading { return await loading.value }
         let task = Task { @MainActor [weak self] in
-            let rows = TranslationCatalog.menu(
-                from: await translator.supportedLanguages(),
-                excluding: NoteTranslation.target
-            )
+            // One trip to the framework, two menus: the sources the note
+            // pipeline can translate, and every language a clip can be read in.
+            let languages = await translator.supportedLanguages()
+            let rows = TranslationCatalog.menu(from: languages, excluding: NoteTranslation.target)
             self?.menu = rows
+            self?.targets = TranslationCatalog.menu(from: languages)
             self?.readiness = await Self.readinessMap(for: rows, using: translator)
         }
         loading = task
@@ -875,6 +939,66 @@ private struct TranslationLanguagePicker: View {
     }
 }
 
+/// The language a copied clip is translated into for the preview pane.
+///
+/// A single choice, not the note picker's checklist, and for a reason: the
+/// note pipeline picks which languages it will *read*, of which there are
+/// many, while this picks the one language the user reads *in*. No readiness
+/// column either — the pair is not known until a clip turns up in some
+/// language, and a missing pack is recorded then, in
+/// `NoteTranslation.pendingDownloads`, exactly as the note pipeline records
+/// it.
+private struct ClipTranslationTargetPicker: View {
+    /// The catalog lives outside the view — see `TranslationLanguageStore`.
+    private var store: TranslationLanguageStore { .shared }
+
+    @AppStorage(NoteSettingsKeys.clipTranslationTarget) private var target = ClipTranslation.defaultTargetIdentifier
+
+    private let translator = AppleTranslator()
+
+    var body: some View {
+        Picker(selection: selection) {
+            ForEach(rows) { language in
+                Text(language.name).tag(language.id)
+            }
+        } label: {
+            Label {
+                Text("Into")
+            } icon: {
+                SettingsIcon(symbol: "globe", tint: Color(nsColor: .systemTeal))
+            }
+        }
+        .task { await store.loadIfNeeded(using: translator) }
+    }
+
+    /// The menu, with the language currently chosen guaranteed to be in it.
+    ///
+    /// Until the framework's list arrives — and on a Mac that cannot
+    /// translate at all — a picker whose selection matches no row renders
+    /// blank, which is the one row that must never be blank.
+    private var rows: [TranslationLanguage] {
+        let known = store.targets
+        if TranslationCatalog.row(matching: target, in: known) != nil { return known }
+        let chosen = TranslationLanguage(
+            id: target,
+            name: LanguageDetector.displayName(forIdentifier: target),
+            language: Locale.Language(identifier: target)
+        )
+        return [chosen] + known
+    }
+
+    /// The framework spells a language one way and the setting may have been
+    /// written another ("fr" against the list's "fr-Latn"), so the selection
+    /// is resolved to the row that means the same language rather than
+    /// compared as a string.
+    private var selection: Binding<String> {
+        Binding(
+            get: { TranslationCatalog.row(matching: target, in: rows)?.id ?? target },
+            set: { target = $0 }
+        )
+    }
+}
+
 /// The `.translationTask` attachment, behind a modifier so the view above
 /// compiles unchanged on an SDK without the framework.
 ///
@@ -912,9 +1036,13 @@ private struct TranslationDownloadTask: ViewModifier {
 // MARK: - Notes
 
 /// The local model and where its output is written.
+///
+/// Refinement stays here where translation left: the on-device model writes
+/// the title, the summary and the tags, so it only ever runs while a note is
+/// being made. Translation had stopped being that kind of setting — see
+/// `TranslationSettingsPane`.
 private struct NotesSettingsPane: View {
     @AppStorage(NoteSettingsKeys.refineEnabled) private var refineEnabled = true
-    @AppStorage(NoteSettingsKeys.translateEnabled) private var translateEnabled = true
     @AppStorage(NoteSettingsKeys.autoNoteEnabled) private var autoNoteEnabled = false
     @AppStorage(NoteSettingsKeys.autoNoteMinimumCharacters) private var minimumCharacters = 80
 
@@ -932,20 +1060,6 @@ private struct NotesSettingsPane: View {
                     SettingsCallout(text: unavailable, symbol: "info.circle.fill", tint: Color(nsColor: .systemOrange))
                 }
                 SettingsHint("Apple's on-device model fixes OCR slips, rejoins wrapped lines and gives each note a title and summary. It runs on this Mac — nothing is uploaded. The raw extracted text is always kept alongside it, so nothing the model writes replaces what was actually on screen.")
-            }
-
-            Section("Translation") {
-                Toggle(isOn: $translateEnabled) {
-                    Label {
-                        Text("Translate other languages into English")
-                    } icon: {
-                        SettingsIcon(symbol: "character.bubble.fill", tint: Color(nsColor: .systemPink))
-                    }
-                }
-                if translateEnabled {
-                    TranslationLanguagePicker()
-                }
-                SettingsHint("A screenshot in Arabic, Japanese or Russian is read in its own language and the note carries both: the text exactly as it was on screen, and an English translation underneath it. Translation runs on this Mac. The title, summary and tags are written from the English, so the note is findable in a vault you search in English.\n\nTick as many languages as you like — those are the ones MemoryClip will translate, and ticking one downloads its assets if macOS does not have them yet. With none ticked it translates any language this Mac can already handle. The packs go into the store the whole system shares, so a language you fetch here is the one Translate and Safari use.")
             }
 
             // The same view the first-run tour renders, so the folder a user

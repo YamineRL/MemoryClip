@@ -181,8 +181,11 @@ final class StatusController: NSObject, NSMenuDelegate {
         case .image:
             return "Image"
         case .file:
-            let names = item.fileURLStrings.map { ($0 as NSString).lastPathComponent }
-            let title = names.joined(separator: ", ")
+            // Through `ClipDisplay`, which decodes first: the dropdown is
+            // where a screenshot's stored name is most visible, and taking
+            // the last component off the raw `absoluteString` put
+            // "Screenshot%202026-08-16%20at%2019.16.06.png" in the menu.
+            let title = ClipDisplay.displayNames(item.fileURLStrings)
             return title.isEmpty ? "File" : title
         case .color:
             return "Color \(item.colorHex ?? "")"
