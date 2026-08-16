@@ -21,9 +21,11 @@ struct PreviewView: View {
     /// stands in until it arrives.
     @State private var fullImage: NSImage?
     /// The clip read back in the user's own language, when it was not in it
-    /// already — see `ClipTranslation`.
-    @State private var translation: ClipTranslationResult?
-    @State private var isTranslating = false
+    /// already. The state and the work both live outside the view — see
+    /// `ClipTranslationPresenter` and `ClipTranslationRuns` — because a
+    /// SwiftUI task dies with the pane, and this pane is put away every time
+    /// the app stops being frontmost.
+    @State private var presenter = ClipTranslationPresenter()
     /// How tall the translated text actually is, so the block can shrink to
     /// it — see `translationBodyHeight`. Zero means "not measured yet".
     @State private var translationTextHeight: CGFloat = 0
@@ -36,8 +38,6 @@ struct PreviewView: View {
 
     /// Where the translation is cached, so re-opening a preview is free.
     @Environment(\.modelContext) private var modelContext
-
-    private let translationService = ClipTranslationService()
 
     /// Design sizes that follow the system text-size setting instead of
     /// being frozen at their point value.
@@ -168,13 +168,13 @@ struct PreviewView: View {
     /// the preview is for.
     @ViewBuilder
     private var translationBlock: some View {
-        if isTranslating || translation != nil {
+        if presenter.isTranslating || presenter.translation != nil {
             VStack(alignment: .leading, spacing: Design.Space.snug) {
                 HStack(spacing: Design.Space.snug) {
-                    Text(translation?.languagePair ?? "Translating…")
+                    Text(presenter.translation?.languagePair ?? "Translating…")
                         .font(Design.Typography.meta)
                         .foregroundStyle(Color(nsColor: .secondaryLabelColor))
-                    if isTranslating {
+                    if presenter.isTranslating {
                         // Small and unlabelled: the pane already says what is
                         // happening, and the clip below is readable meanwhile.
                         ProgressView()
@@ -184,7 +184,7 @@ struct PreviewView: View {
                     }
                 }
 
-                if let translation {
+                if let translation = presenter.translation {
                     ScrollView {
                         Text(translation.text)
                             .font(.system(size: bodyFontSize))
@@ -214,59 +214,24 @@ struct PreviewView: View {
             // own element, so it can be read, navigated and selected, and the
             // group carries the label that says what it is.
             .accessibilityElement(children: .contain)
-            .accessibilityLabel(translation?.accessibilityDescription ?? "Translating this clip")
+            .accessibilityLabel(presenter.translation?.accessibilityDescription ?? "Translating this clip")
         }
     }
 
-    /// Translate the clip on screen, or show what was translated before.
+    /// Show the clip's translation, or start one.
     ///
-    /// Runs when the previewed clip changes and when either translation
-    /// setting does. Every early return leaves the block hidden, which is the
-    /// same thing the pane did before this existed.
+    /// Thin on purpose: the state and the work are the presenter's and the
+    /// run store's, so neither dies when this pane does — which it does every
+    /// time MemoryClip stops being the frontmost app.
     private func refreshTranslation() async {
-        translation = nil
-        isTranslating = false
         // The previous clip's measurement says nothing about this one's.
         translationTextHeight = 0
-        guard !item.isDeleted else { return }
-
-        let plan = ClipTranslation.plan(
-            text: item.clipTranslationSourceText,
-            cached: item.cachedClipTranslation,
+        await presenter.refresh(
+            item: item,
+            context: modelContext,
             isEnabled: translateEnabled,
             target: Locale.Language(identifier: translationTarget)
         )
-
-        switch plan {
-        case .skip:
-            return
-        case .cached(let cached):
-            translation = cached
-        case .translate(let request):
-            isTranslating = true
-            let result = await translationService.translation(for: request)
-            // A new selection cancels this task, and the state it would write
-            // belongs to the clip that is no longer on screen.
-            guard !Task.isCancelled else { return }
-            isTranslating = false
-            guard let result else { return }
-            translation = result
-            cache(result)
-        }
-    }
-
-    /// Keep the translation on the clip, so opening this preview again costs
-    /// nothing.
-    private func cache(_ result: ClipTranslationResult) {
-        guard !item.isDeleted else { return }
-        item.cachedClipTranslation = result
-        do {
-            try modelContext.save()
-        } catch {
-            // The translation is on screen either way; all that is lost is
-            // the saving of it, which costs one re-translation next time.
-            log.error("Caching a clip translation failed: \(error.localizedDescription)")
-        }
     }
 
     // MARK: Content by kind
@@ -343,7 +308,7 @@ struct PreviewView: View {
             // a script they do not read, wedged under a squeezed thumbnail,
             // is the third copy. With translation off, or for a clip that had
             // none to make, the block is exactly what it always was.
-            if let extracted = extractedText, translation == nil {
+            if let extracted = extractedText, presenter.translation == nil {
                 Divider()
                 VStack(alignment: .leading, spacing: Design.Space.snug) {
                     Text("Extracted Text")
