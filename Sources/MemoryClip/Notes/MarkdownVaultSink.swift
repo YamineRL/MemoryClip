@@ -229,7 +229,7 @@ struct MarkdownVaultSink: NoteSink {
 
     // MARK: - Attachments
 
-    /// Copy the screenshot into the vault, returning the file name to embed.
+    /// Copy the clip's picture into the vault, returning the file name to embed.
     ///
     /// Copying is the default (`NoteSettingsKeys.copyAttachments`) for two
     /// reasons a link cannot cover:
@@ -242,17 +242,13 @@ struct MarkdownVaultSink: NoteSink {
     ///   note that breaks the first time the user tidies up, and they will not
     ///   find out until months later when they open it.
     ///
-    /// Returns nil — degrading to the `file://` link in `NoteComposer` — rather
-    /// than throwing on failure. Losing the embed is a worse note; losing the
-    /// note because its picture could not be copied is a lost capture.
+    /// Returns nil — degrading to the `file://` link in `NoteComposer`, or to
+    /// no picture at all for a clip that has no file to link to — rather than
+    /// throwing on failure. Losing the embed is a worse note; losing the note
+    /// because its picture could not be copied is a lost capture.
     private func copiedAttachmentName(for draft: NoteDraft) -> String? {
-        guard let source = draft.sourceFileURL, source.isFileURL else { return nil }
+        guard let source = AttachmentSource(draft) else { return nil }
         let fileManager = FileManager.default
-        let sourcePath = source.path(percentEncoded: false)
-        guard fileManager.fileExists(atPath: sourcePath) else {
-            log.notice("Note attachment missing at \(sourcePath, privacy: .private)")
-            return nil
-        }
 
         let folder = attachmentFolderURL()
         do {
@@ -262,18 +258,15 @@ struct MarkdownVaultSink: NoteSink {
             return nil
         }
 
-        // Extension carried over from the source so Obsidian (and Quick Look,
-        // and everything else) still knows what the bytes are. A screenshot
-        // with no extension is possible if the user renamed it.
-        let ext = source.pathExtension.isEmpty ? "png" : source.pathExtension
         let stem = NoteComposer.fileNameStem(for: draft)
+        let ext = source.fileExtension
 
         // Re-exporting the same clip must not pile up `… 2.png`, `… 3.png`
         // beside the one copy that is already there. Same name and same byte
-        // count is a good enough identity test for an immutable screenshot, and
+        // count is a good enough identity test for an immutable picture, and
         // it costs one `stat` — hashing 12 MB on every export would not.
         let preferred = folder.appending(path: "\(stem).\(ext)")
-        if let existing = fileSize(of: preferred), existing == fileSize(of: source) {
+        if let existing = fileSize(of: preferred), existing == source.byteCount {
             return preferred.lastPathComponent
         }
 
@@ -281,7 +274,7 @@ struct MarkdownVaultSink: NoteSink {
             fileManager.fileExists(atPath: url.path(percentEncoded: false))
         }
         do {
-            try fileManager.copyItem(at: source, to: target)
+            try source.write(to: target)
         } catch {
             log.error("Could not copy note attachment: \(error.localizedDescription)")
             return nil
@@ -290,6 +283,80 @@ struct MarkdownVaultSink: NoteSink {
         // the whole vault, so this keeps working if the user reorganises their
         // attachments folder later.
         return target.lastPathComponent
+    }
+
+    /// The two places a clip's picture can live, behind one interface.
+    ///
+    /// A screenshot is a path on disk; an image copied to the pasteboard is
+    /// bytes in the row. Which one a clip has is an accident of how it was
+    /// captured — ⇧⌘4 versus ⌘C in Preview — and the note should not be able
+    /// to tell: before this existed, only the first kind was ever copied into
+    /// the vault, so a note made from a pasted picture silently arrived
+    /// without it.
+    private enum AttachmentSource {
+        case file(URL)
+        case bytes(Data)
+
+        /// nil when the draft has no picture, or names one that is gone.
+        init?(_ draft: NoteDraft) {
+            // The file wins when there is one: it is the original the user can
+            // still open at full resolution, and a screenshot clip keeps its
+            // pixels on disk rather than in `imageData`.
+            if let source = draft.sourceFileURL, source.isFileURL {
+                let path = source.path(percentEncoded: false)
+                guard FileManager.default.fileExists(atPath: path) else {
+                    log.notice("Note attachment missing at \(path, privacy: .private)")
+                    return nil
+                }
+                self = .file(source)
+                return
+            }
+            if let data = draft.imageData, !data.isEmpty {
+                self = .bytes(data)
+                return
+            }
+            return nil
+        }
+
+        /// What the copy should be called, so Obsidian (and Quick Look, and
+        /// everything else) knows what the bytes are.
+        ///
+        /// Carried over from the source file where there is one — a screenshot
+        /// with no extension is possible if the user renamed it. Pasteboard
+        /// bytes are PNG unless `ContentParser.imageData(for:)` had to fall
+        /// back to TIFF, which is worth one look at the magic number: a TIFF
+        /// named `.png` opens as a broken image everywhere it is embedded.
+        var fileExtension: String {
+            switch self {
+            case .file(let url):
+                return url.pathExtension.isEmpty ? "png" : url.pathExtension
+            case .bytes(let data):
+                let tiff: [[UInt8]] = [[0x49, 0x49, 0x2A, 0x00], [0x4D, 0x4D, 0x00, 0x2A]]
+                return tiff.contains(Array(data.prefix(4))) ? "tiff" : "png"
+            }
+        }
+
+        /// The size the copy will have on disk, for the identity check above.
+        var byteCount: Int? {
+            switch self {
+            case .file(let url):
+                return (try? url.resourceValues(forKeys: [.fileSizeKey]))?.fileSize
+            case .bytes(let data):
+                return data.count
+            }
+        }
+
+        func write(to target: URL) throws {
+            switch self {
+            case .file(let url):
+                try FileManager.default.copyItem(at: url, to: target)
+            case .bytes(let data):
+                // Atomic for the same reason the note itself is: a half-copied
+                // picture under the name the note embeds is worse than none,
+                // because the note looks complete and the image does not load.
+                try data.write(to: target, options: .atomic)
+            }
+        }
     }
 
     /// The attachment folder inside the vault.

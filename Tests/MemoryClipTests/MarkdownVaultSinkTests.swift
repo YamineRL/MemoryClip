@@ -31,15 +31,22 @@ final class MarkdownVaultSinkTests: XCTestCase {
     private func draft(
         title: String = "Deploy checklist",
         uuid: UUID? = nil,
-        sourceFileURL: URL? = nil
+        sourceFileURL: URL? = nil,
+        imageData: Data? = nil
     ) -> NoteDraft {
         NoteDraft(
             clipUUID: uuid ?? clipUUID,
             title: title,
             body: "1. Tag the release",
             createdAt: created,
-            sourceFileURL: sourceFileURL
+            sourceFileURL: sourceFileURL,
+            imageData: imageData
         )
+    }
+
+    /// Bytes that begin the way a PNG does, which is all the sink looks at.
+    private func pngBytes(padding: Int = 0) -> Data {
+        Data([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]) + Data(repeating: 0, count: padding)
     }
 
     private func sink(useDateFolders: Bool = true, copyAttachments: Bool = false) -> MarkdownVaultSink {
@@ -250,5 +257,63 @@ final class MarkdownVaultSinkTests: XCTestCase {
         XCTAssertTrue(FileManager.default.fileExists(atPath: copied.path(percentEncoded: false)))
         // …while the note itself is still filed by date.
         XCTAssertEqual(receipt.location, datedURL(for: draft).path(percentEncoded: false))
+    }
+
+    /// An image copied to the pasteboard has no file on disk — its pixels are
+    /// in the row. Before it was handled here, such a clip's note arrived with
+    /// no picture in it and nothing in the attachments folder, and the only
+    /// difference from a screenshot was how the user had captured it.
+    func testPastedImageBytesAreCopiedInAndEmbedded() async throws {
+        let draft = draft(imageData: pngBytes(padding: 32))
+        let receipt = try await sink(copyAttachments: true).write(draft)
+
+        let name = "\(NoteComposer.fileNameStem(for: draft)).png"
+        let copied = vault
+            .appending(path: MarkdownVaultSink.defaultAttachmentFolderName)
+            .appending(path: name)
+        XCTAssertEqual(try Data(contentsOf: copied), pngBytes(padding: 32))
+
+        let note = try String(contentsOf: URL(filePath: receipt.location), encoding: .utf8)
+        XCTAssertTrue(note.contains("![[\(name)]]"), "the note should embed the copy, not omit the picture")
+    }
+
+    /// Re-exporting must not pile up `… 2.png` beside the copy already there.
+    func testReExportingPastedImageBytesDoesNotCopyThemTwice() async throws {
+        let draft = draft(imageData: pngBytes(padding: 32))
+        let sink = sink(copyAttachments: true)
+        _ = try await sink.write(draft)
+        _ = try await sink.write(draft)
+
+        let folder = vault.appending(path: MarkdownVaultSink.defaultAttachmentFolderName)
+        let contents = try FileManager.default.contentsOfDirectory(atPath: folder.path(percentEncoded: false))
+        XCTAssertEqual(contents.count, 1, "got \(contents)")
+    }
+
+    /// `ContentParser` falls back to TIFF when it cannot make a PNG, and a
+    /// TIFF named `.png` renders as a broken image everywhere it is embedded.
+    func testTIFFBytesKeepTheirOwnExtension() async throws {
+        let draft = draft(imageData: Data([0x4D, 0x4D, 0x00, 0x2A, 0x00, 0x00]))
+        _ = try await sink(copyAttachments: true).write(draft)
+
+        let copied = vault
+            .appending(path: MarkdownVaultSink.defaultAttachmentFolderName)
+            .appending(path: "\(NoteComposer.fileNameStem(for: draft)).tiff")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: copied.path(percentEncoded: false)))
+    }
+
+    /// A screenshot clip keeps its pixels on disk rather than in the row, but
+    /// if both ever arrive the file is the one to copy: it is the original the
+    /// user can still open at full resolution.
+    func testTheFileOnDiskWinsOverBytesInTheRow() async throws {
+        let screenshot = root.appending(path: "Screenshot.png")
+        try Data("the file on disk".utf8).write(to: screenshot)
+
+        let draft = draft(sourceFileURL: screenshot, imageData: pngBytes(padding: 32))
+        _ = try await sink(copyAttachments: true).write(draft)
+
+        let copied = vault
+            .appending(path: MarkdownVaultSink.defaultAttachmentFolderName)
+            .appending(path: "\(NoteComposer.fileNameStem(for: draft)).png")
+        XCTAssertEqual(try Data(contentsOf: copied), Data("the file on disk".utf8))
     }
 }

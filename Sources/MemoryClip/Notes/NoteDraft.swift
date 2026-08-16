@@ -59,8 +59,22 @@ struct NoteDraft: Sendable, Equatable {
     var sourceAppName: String?
     /// The screenshot on disk (`ClipItem.screenshotURL`), when there is one.
     /// Pasteboard image clips hold their bytes in the row and have no file, so
-    /// this is nil for them.
+    /// this is nil for them — they carry `imageData` instead.
     var sourceFileURL: URL?
+    /// The clip's own pixels (`ClipItem.imageData`), for an image copied to the
+    /// pasteboard rather than screenshotted to disk.
+    ///
+    /// The other half of `sourceFileURL`: between them every picture a clip can
+    /// hold has somewhere for a sink to read it from, so an image clip's note
+    /// gets the same embedded picture a screenshot's does. Which of the two a
+    /// clip has is an accident of how it was captured — ⌘C in Preview rather
+    /// than ⇧⌘4 — and is not something the reader of the note should be able to
+    /// tell from what ends up in it.
+    ///
+    /// PNG, as `ContentParser.imageData(for:)` encodes it (TIFF only when that
+    /// fails), which is what lets the sink name the copy `.png` without
+    /// sniffing the bytes.
+    var imageData: Data?
     /// The file name the image ended up with inside the destination, set by a
     /// sink after it copied the image in. nil means "the image was not copied",
     /// which is what makes `NoteComposer` fall back to a plain `file://` link.
@@ -79,6 +93,7 @@ struct NoteDraft: Sendable, Equatable {
         createdAt: Date = .now,
         sourceAppName: String? = nil,
         sourceFileURL: URL? = nil,
+        imageData: Data? = nil,
         attachmentFileName: String? = nil
     ) {
         self.clipUUID = clipUUID
@@ -93,6 +108,7 @@ struct NoteDraft: Sendable, Equatable {
         self.createdAt = createdAt
         self.sourceAppName = sourceAppName
         self.sourceFileURL = sourceFileURL
+        self.imageData = imageData
         self.attachmentFileName = attachmentFileName
     }
 
@@ -104,10 +120,11 @@ struct NoteDraft: Sendable, Equatable {
     /// sentence the user can act on — rather than a file full of front matter
     /// and no note, or a blank entry in Notes.
     ///
-    /// A screenshot on its own counts: a note that is just the image is still
+    /// A picture on its own counts: a note that is just the image is still
     /// a note the user asked for.
     var hasContent: Bool {
         if sourceFileURL != nil { return true }
+        if let imageData, !imageData.isEmpty { return true }
         let filled = [title, summary, body, translation ?? ""].contains {
             !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         }
