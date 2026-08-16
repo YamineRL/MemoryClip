@@ -25,6 +25,7 @@ enum MainMenu {
         let mainMenu = NSMenu()
         mainMenu.addItem(appMenuItem())
         mainMenu.addItem(editMenuItem())
+        mainMenu.addItem(windowMenuItem())
         return mainMenu
     }
 
@@ -50,6 +51,30 @@ enum MainMenu {
             NSMenuItem(title: "Quit MemoryClip", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         )
 
+        item.submenu = menu
+        return item
+    }
+
+    /// The Window menu, which exists for exactly one key equivalent: ⌘W.
+    ///
+    /// Settings and the onboarding tour are ordinary titled windows, and a
+    /// titled window that will not close on ⌘W reads as broken — it is the
+    /// shortcut people reach for before they look for the red button. The
+    /// panel gets it too, which is right: it already overrides `performClose`
+    /// so its delegate stays in the loop, and Escape remains the faster way
+    /// out for anyone whose hands are on the clip list.
+    ///
+    /// `target` stays nil deliberately. A nil target sends the action down the
+    /// responder chain to whichever window is key, which is the whole point:
+    /// one menu item closes whatever the user is actually looking at, and no
+    /// window has to be known about here.
+    @MainActor
+    private static func windowMenuItem() -> NSMenuItem {
+        let item = NSMenuItem()
+        let menu = NSMenu(title: "Window")
+        menu.addItem(
+            NSMenuItem(title: "Close", action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w")
+        )
         item.submenu = menu
         return item
     }
