@@ -54,6 +54,71 @@ private let arabic = """
 الاجتماع يوم الثلاثاء الساعة الثالثة
 """
 
+/// The bug this suite's script rules were written for: a photographed jar of
+/// Laoganma chilli crisp, as Vision reads it.
+///
+/// The line order is the order the text boxes came back in, not reading
+/// order — on a curved jar the two are not the same, and the front label,
+/// the back label and the recycling marks interleave. A quarter of the
+/// letters are Han; the rest are a barcode, two net weights and a brand
+/// name shouted in capitals. Handed the whole string, `NLLanguageRecognizer`
+/// calls it **Portuguese at 0.76** — comfortably past `minimumConfidence`,
+/// which is how MemoryClip came to translate a Chinese label out of
+/// Portuguese.
+private let laoganmaLabel = """
+开盖后请冷藏
+NET WT
+净含量 670 克
+670 g
+BPA
+PVC
+Net wt. 23.63 oz (670 g)
+LAOGANMA
+菜籽油 辣椒 豆豉 大豆油 食用盐 味精 白砂糖
+6923555200041
+23.63 OZ
+Calories
+LAO GAN MA
+PRODUCT OF CHINA
+SPICY CHILI CRISP
+Nutrition Facts
+"""
+
+/// The same jar with the boxes in reading order, which the old detector got
+/// wrong the other way: the Latin fragments split the probability four ways,
+/// nothing cleared the floor, and a Chinese label was left untranslated.
+private let laoganmaLabelInReadingOrder = """
+LAOGANMA
+LAO GAN MA
+SPICY CHILI CRISP
+老干妈
+风味豆豉油制辣椒
+NET WT 23.63 OZ
+Net wt. 23.63 oz (670 g)
+净含量 670 克
+菜籽油 辣椒 豆豉 大豆油 食用盐 味精 白砂糖
+开盖后请冷藏
+Nutrition Facts
+Calories 80
+GB/T 20293
+PVC
+BPA
+6923555200041
+"""
+
+private let portuguese = """
+A reunião de terça-feira foi adiada para a próxima semana porque o
+diretor precisa viajar para o Porto e ainda não temos o relatório.
+"""
+
+private let japanese = """
+こんにちは世界
+これは光学文字認識のテストです
+会議は火曜日の午後三時からです
+"""
+
+private let chinese = "今天的会议改到下星期二下午三点开始，请大家提前准备好相关的材料。"
+
 // MARK: - Detection
 
 final class LanguageDetectorTests: XCTestCase {
@@ -87,6 +152,173 @@ final class LanguageDetectorTests: XCTestCase {
     func testDisplayNameFallsBackToTheIdentifier() {
         XCTAssertEqual(LanguageDetector.displayName(forIdentifier: "ar"), "Arabic")
         XCTAssertEqual(LanguageDetector.displayName(forIdentifier: "zzz"), "zzz")
+    }
+}
+
+// MARK: - Mixed-script detection
+
+/// The Laoganma bug and the guards written for it.
+final class LanguageScriptGuardTests: XCTestCase {
+    /// The report itself: a Chinese label read as Portuguese and translated
+    /// out of it. Both halves are asserted, because "not Portuguese" would
+    /// also be satisfied by giving up, and giving up leaves a jar the user
+    /// cannot read sitting untranslated in their vault.
+    func testLaoganmaLabelIsChineseAndNotPortuguese() {
+        let language = LanguageDetector.dominantLanguage(of: laoganmaLabel)
+        XCTAssertNotEqual(language?.languageCode?.identifier, "pt")
+        XCTAssertEqual(language?.languageCode?.identifier, "zh")
+    }
+
+    /// The same label with the boxes in reading order, where the failure was
+    /// a shrug rather than a wrong answer.
+    func testLaoganmaLabelInReadingOrderIsAlsoChinese() {
+        let language = LanguageDetector.dominantLanguage(of: laoganmaLabelInReadingOrder)
+        XCTAssertEqual(language?.languageCode?.identifier, "zh")
+    }
+
+    /// The guard has to survive the user's own settings being applied to it:
+    /// hinting the languages someone picked must bias detection, not close
+    /// the ballot to everything else.
+    func testLaoganmaLabelIsChineseWhateverTheUserPicked() {
+        XCTAssertEqual(
+            LanguageDetector.dominantLanguage(of: laoganmaLabel, preferring: ["zh-Hans", "ar-Arab"])?
+                .languageCode?.identifier,
+            "zh"
+        )
+        XCTAssertEqual(
+            LanguageDetector.dominantLanguage(of: laoganmaLabel, preferring: ["pt-Latn", "es-Latn"])?
+                .languageCode?.identifier,
+            "zh"
+        )
+    }
+
+    /// Text that really is Portuguese still is, which is the half of this
+    /// that a script rule could easily have broken.
+    func testPortugueseIsStillPortuguese() {
+        XCTAssertEqual(LanguageDetector.dominantLanguage(of: portuguese)?.languageCode?.identifier, "pt")
+    }
+
+    /// And still is when the user's picked languages do not include it.
+    /// Hints are a prior, not a filter — a language left out of the
+    /// dictionary would otherwise be driven to zero and the sentence would
+    /// come back as English.
+    func testPortugueseSurvivesLanguagePreferencesItIsNotIn() {
+        XCTAssertEqual(
+            LanguageDetector.dominantLanguage(of: portuguese, preferring: ["zh-Hans", "ar-Arab"])?
+                .languageCode?.identifier,
+            "pt"
+        )
+    }
+
+    /// Han alone does not tell Chinese from Japanese. Kana does, and it is
+    /// the reason the script prior can override rather than only reject.
+    func testJapaneseIsNotCalledChinese() {
+        XCTAssertEqual(LanguageDetector.dominantLanguage(of: japanese)?.languageCode?.identifier, "ja")
+    }
+
+    /// A Japanese headline written entirely in Han — no kana to settle it —
+    /// falls to the recognizer, which is shown only the ideographs and
+    /// weighs their vocabulary.
+    func testKanaFreeJapaneseIsNotCalledChinese() {
+        let headline = "東京株式市場今日午後株価急落経済産業省発表新型半導体輸出規制強化方針"
+        XCTAssertEqual(LanguageDetector.dominantLanguage(of: headline)?.languageCode?.identifier, "ja")
+    }
+
+    func testChineseIsStillChinese() {
+        XCTAssertEqual(LanguageDetector.dominantLanguage(of: chinese)?.languageCode?.identifier, "zh")
+    }
+
+    /// A paragraph of English quoting a Chinese name is English. The share
+    /// threshold is set where the two scripts contribute the same number of
+    /// words, and three ideographs in a paragraph are nowhere near it.
+    func testEnglishQuotingChineseIsStillEnglish() {
+        let text = "The jar is labelled 老干妈, which the importer translates as Old Godmother chilli crisp."
+        XCTAssertEqual(LanguageDetector.dominantLanguage(of: text)?.languageCode?.identifier, "en")
+    }
+
+    func testArabicSurvivesTheScriptGuard() {
+        XCTAssertEqual(LanguageDetector.dominantLanguage(of: arabic)?.languageCode?.identifier, "ar")
+    }
+}
+
+// MARK: - The rules the guards are built from
+
+final class LanguageDetectorRuleTests: XCTestCase {
+    /// The margin rule, exercised directly: real text almost never lands in
+    /// the narrow band where it bites, so the thresholds are tested on the
+    /// numbers rather than hunted for in a corpus.
+    func testANearTieIsNotADecision() {
+        XCTAssertNil(LanguageDetector.decisiveLanguage(in: ["pt": 0.66, "es": 0.64]))
+        XCTAssertNil(LanguageDetector.decisiveLanguage(in: ["pt": 0.70, "es": 0.40]))
+    }
+
+    func testAClearWinnerIsADecision() {
+        XCTAssertEqual(LanguageDetector.decisiveLanguage(in: ["pt": 0.90, "es": 0.05]), "pt")
+        // The tightest pair the two thresholds together let through.
+        XCTAssertEqual(LanguageDetector.decisiveLanguage(in: ["pt": 0.65, "es": 0.30]), "pt")
+    }
+
+    /// A confident single hypothesis has no runner-up to beat.
+    func testASoleHypothesisIsJudgedOnConfidenceAlone() {
+        XCTAssertEqual(LanguageDetector.decisiveLanguage(in: ["ar": 0.99]), "ar")
+        XCTAssertNil(LanguageDetector.decisiveLanguage(in: ["ar": 0.40]))
+        XCTAssertNil(LanguageDetector.decisiveLanguage(in: [:]))
+    }
+
+    func testPrefilterDropsWhatCarriesNoLanguage() {
+        let filtered = LanguageDetector.signalBearingText(in: "LAOGANMA Net wt. 23.63 oz (670 g) PVC 6923555200041")
+        XCTAssertFalse(filtered.contains("LAOGANMA"))
+        XCTAssertFalse(filtered.contains("PVC"))
+        XCTAssertFalse(filtered.contains("6923555200041"))
+        XCTAssertFalse(filtered.contains("23.63"))
+        // What is left is the prose: lower-case words the model can read.
+        XCTAssertTrue(filtered.contains("Net"))
+        XCTAssertTrue(filtered.contains("wt."))
+    }
+
+    /// The filter must never touch a script that is not written with spaces.
+    /// A Chinese sentence is one whitespace-delimited token, and
+    /// `Character.isNumber` is true of 三 and 千 — so the obvious rule would
+    /// delete the paragraph the guard exists to protect.
+    func testPrefilterKeepsUnspacedScriptsWhole() {
+        XCTAssertEqual(LanguageDetector.signalBearingText(in: chinese), chinese)
+        XCTAssertTrue(LanguageDetector.signalBearingText(in: laoganmaLabel).contains("菜籽油"))
+    }
+
+    /// Filtering must not be allowed to starve a short capture. An all-caps
+    /// interface is nothing but tokens the filter would drop, and judging
+    /// the remnant is worse than judging the original.
+    func testPrefilterFallsBackWhenItStripsTooMuch() {
+        let shouted = "FILE EDIT VIEW WINDOW HELP EXPORT SETTINGS"
+        XCTAssertTrue(LanguageDetector.signalBearingText(in: shouted).isEmpty)
+        // Whatever the recognizer makes of it, it is not read as a language
+        // of another script, and it does not crash on an empty sample.
+        let language = LanguageDetector.dominantLanguage(of: shouted)
+        XCTAssertNotEqual(language?.languageCode?.identifier, "zh")
+    }
+
+    func testDominantScriptReadsWordsRatherThanCharacters() {
+        XCTAssertEqual(LanguageDetector.dominantScript(of: laoganmaLabel), .cjk)
+        XCTAssertEqual(LanguageDetector.dominantScript(of: portuguese), .latin)
+        XCTAssertEqual(LanguageDetector.dominantScript(of: arabic), .arabic)
+        XCTAssertEqual(LanguageDetector.dominantScript(of: japanese), .cjk)
+        XCTAssertNil(LanguageDetector.dominantScript(of: "670 23.63 (%) 6923555200041"))
+    }
+
+    /// A handful of ideographs in a caption clears the share threshold on a
+    /// ratio alone; the character floor is what stops a logo being read as a
+    /// language.
+    func testAFewIdeographsAreNotEnoughToOverruleTheRecognizer() {
+        XCTAssertEqual(LanguageDetector.dominantScript(of: "Buy 老干妈 crisp"), .latin)
+    }
+
+    func testLanguageScriptsComeFromTheSystemNotATableOfOurOwn() {
+        XCTAssertEqual(LanguageDetector.script(of: Locale.Language(identifier: "pt")), .latin)
+        XCTAssertEqual(LanguageDetector.script(of: Locale.Language(identifier: "ja")), .cjk)
+        XCTAssertEqual(LanguageDetector.script(of: Locale.Language(identifier: "zh-Hant")), .cjk)
+        XCTAssertEqual(LanguageDetector.script(of: Locale.Language(identifier: "ko")), .hangul)
+        XCTAssertEqual(LanguageDetector.script(of: Locale.Language(identifier: "ar")), .arabic)
+        XCTAssertEqual(LanguageDetector.script(of: Locale.Language(identifier: "ru")), .cyrillic)
     }
 }
 

@@ -228,7 +228,13 @@ final class NoteCoordinator {
                 sourceAppName: item.sourceAppName,
                 capturedAt: item.createdAt,
                 isScreenshot: item.isScreenshot,
-                language: LanguageDetector.dominantLanguage(of: raw)
+                // The user's own language list is handed to detection, not
+                // only used to filter its result afterwards: it is a prior
+                // on what this Mac's screenshots contain, and it is what
+                // keeps a mixed-script label from being read as a language
+                // its owner has never met. `LanguageDetector` stays free of
+                // settings; this is the layer that has them.
+                language: LanguageDetector.dominantLanguage(of: raw, preferring: NoteTranslation.enabledLanguages)
             ),
             isScreenshot: item.isScreenshot
         )
