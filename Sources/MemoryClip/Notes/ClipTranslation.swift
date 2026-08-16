@@ -64,4 +64,184 @@ enum ClipTranslation {
         else { return "en" }
         return code
     }()
+
+    /// What a target is called on the clip, and what two targets are compared
+    /// on: the language, plus its script only where the script says something.
+    ///
+    /// Regions are dropped, because the engine does not translate differently
+    /// for Austria and a target of "de-AT" would otherwise make every German
+    /// translation already on a clip look stale. A script that is merely the
+    /// language's own goes too — `Locale.Language.script` fills one in whether
+    /// or not the identifier named one, and "German (Latin)" is not how a
+    /// language is written over a translation. What survives is the script
+    /// that distinguishes: zh-Hant stays zh-Hant, the same rule
+    /// `TranslationCatalog` names its rows by.
+    ///
+    /// Spelled out rather than left to `minimalIdentifier`, which minimizes
+    /// by canonicalization and answers "zh-TW" for Traditional Chinese — a
+    /// region where the whole point of keeping the subtag was the script.
+    static func identity(of target: Locale.Language) -> String {
+        guard let code = target.languageCode?.identifier else { return target.minimalIdentifier }
+        guard let script = target.script?.identifier,
+              script != Locale.Language(identifier: code).script?.identifier
+        else { return code }
+        return "\(code)-\(script)"
+    }
+
+    /// The clip kinds worth translating: the ones whose payload IS text.
+    ///
+    /// An image or a screenshot carries text too, but that text is the note
+    /// pipeline's — it is recognised at capture, translated into English and
+    /// stored on the clip — and a second rendering of it, into a second
+    /// language, on the same pane would be two answers to one question.
+    static let translatableKinds: Set<ClipKind> = [.text, .richText, .link]
+
+    /// What the preview should do about a clip, decided before any of it is
+    /// sent anywhere.
+    ///
+    /// Pure and free of SwiftData, so every reason not to translate — and
+    /// there are five of them — is testable without a model container or a
+    /// language asset on the machine running the suite. The same split as
+    /// `LanguageDetector` against `AppleTranslator`.
+    static func plan(
+        kind: ClipKind,
+        isScreenshot: Bool,
+        text: String?,
+        cached: ClipTranslationResult?,
+        isEnabled: Bool,
+        target: Locale.Language
+    ) -> ClipTranslationPlan {
+        guard isEnabled else { return .skip }
+        guard translatableKinds.contains(kind), !isScreenshot else { return .skip }
+
+        let trimmed = (text ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.count >= LanguageDetector.minimumCharacters else { return .skip }
+
+        // Checked before the recognizer runs: a clip already translated for
+        // this target costs nothing to show again, which is the point of
+        // caching it.
+        if let cached, cached.targetLanguage == identity(of: target) { return .cached(cached) }
+
+        // Bounded first, so the recognizer reads at most a budget's worth of
+        // a very long clip as well.
+        let (sent, remainder) = NoteTranslation.bounded(trimmed)
+        guard let source = LanguageDetector.dominantLanguage(of: sent) else { return .skip }
+        guard LanguageDetector.needsTranslation(source, into: target) else { return .skip }
+
+        return .translate(ClipTranslationRequest(
+            text: sent,
+            isTruncated: !remainder.isEmpty,
+            source: source,
+            target: target
+        ))
+    }
+}
+
+/// What to show over a previewed clip.
+enum ClipTranslationPlan: Equatable, Sendable {
+    /// Nothing: the feature is off, the clip is not text, it is too short to
+    /// identify, its language could not be told, or it is already in the
+    /// target language.
+    case skip
+    /// The translation already on the clip, made for the target in force now.
+    case cached(ClipTranslationResult)
+    /// Work to do.
+    case translate(ClipTranslationRequest)
+}
+
+/// A translation to make.
+struct ClipTranslationRequest: Equatable, Sendable {
+    /// The text to send, already inside `NoteTranslation.characterBudget`.
+    var text: String
+    /// Whether `text` is the head of a longer clip.
+    var isTruncated: Bool
+    var source: Locale.Language
+    var target: Locale.Language
+}
+
+/// A translation to show, and everything the pane needs to label it.
+struct ClipTranslationResult: Equatable, Sendable {
+    var text: String
+    /// BCP-47 identifiers, both of them, so the pair survives being cached on
+    /// the clip and read back after a relaunch.
+    var sourceLanguage: String
+    var targetLanguage: String
+
+    /// "French → English", for the line over the translation.
+    var languagePair: String {
+        let source = LanguageDetector.displayName(forIdentifier: sourceLanguage)
+        let target = LanguageDetector.displayName(forIdentifier: targetLanguage)
+        return "\(source) → \(target)"
+    }
+
+    /// The same thing said in words, because an arrow is read aloud as
+    /// nothing at all.
+    var accessibilityDescription: String {
+        let source = LanguageDetector.displayName(forIdentifier: sourceLanguage)
+        let target = LanguageDetector.displayName(forIdentifier: targetLanguage)
+        return "Translated from \(source) into \(target)"
+    }
+}
+
+/// Running a `ClipTranslationRequest` through a translator.
+///
+/// Thin on purpose: the decisions are in `ClipTranslation.plan`, the engine is
+/// behind `NoteTranslator`, and what is left here is the one thing neither of
+/// them can do — say that the translation stops short of the end of the clip.
+struct ClipTranslationService: Sendable {
+    private let translator: any NoteTranslator
+
+    /// - Parameter translator: injectable so tests never depend on which
+    ///   language assets happen to be on the machine running them.
+    init(translator: any NoteTranslator = AppleTranslator()) {
+        self.translator = translator
+    }
+
+    /// The translation, or nil for every failure there is — the pane then
+    /// shows the clip as it was, which is what it was showing anyway.
+    ///
+    /// A clip past the budget is marked rather than continued. The note
+    /// pipeline carries the untranslated remainder because a note is a file
+    /// nobody reads next to its original; here the original is on screen
+    /// directly underneath, so repeating it would fill the pane with the text
+    /// the translation was supposed to save the reader from.
+    func translation(for request: ClipTranslationRequest) async -> ClipTranslationResult? {
+        guard let translated = await translator.translate(
+            request.text,
+            from: request.source,
+            to: request.target
+        ) else { return nil }
+
+        var text = translated.text
+        if request.isTruncated {
+            text += "\n\n\(NoteTranslation.truncationMarker)"
+        }
+        return ClipTranslationResult(
+            text: text,
+            sourceLanguage: translated.sourceLanguage,
+            targetLanguage: ClipTranslation.identity(of: request.target)
+        )
+    }
+}
+
+extension ClipItem {
+    /// The translation cached on this clip, as one value.
+    ///
+    /// Three columns rather than one, because the target has to be readable
+    /// on its own for `ClipTranslation.plan` to tell a usable cache from a
+    /// stale one; this is where they are put back together.
+    var cachedClipTranslation: ClipTranslationResult? {
+        get {
+            guard let text = clipTranslationText,
+                  let source = clipTranslationSource,
+                  let target = clipTranslationTarget
+            else { return nil }
+            return ClipTranslationResult(text: text, sourceLanguage: source, targetLanguage: target)
+        }
+        set {
+            clipTranslationText = newValue?.text
+            clipTranslationSource = newValue?.sourceLanguage
+            clipTranslationTarget = newValue?.targetLanguage
+        }
+    }
 }
