@@ -136,6 +136,26 @@ final class PasteServiceTests: XCTestCase {
         XCTAssertEqual(urls?.map(\.path), ["/tmp/a.txt", "/tmp/b.txt"])
     }
 
+    /// The inverse of the display-side decoding: what goes on the pasteboard
+    /// is parsed as a URL, so the stored form must stay percent-ENCODED here.
+    /// Decoding it — or treating the entry as a bare path — hands Finder a
+    /// URL that truncates at the first space.
+    func testWritesFileURLsWithSpacesAndNonASCIIIntact() throws {
+        let service = try makeService()
+        let pasteboard = makePasteboard()
+        let paths = ["/tmp/my file.txt", "/tmp/تقرير سنوي.pdf"]
+
+        XCTAssertTrue(
+            service.write(
+                makeItem(kind: .file, fileURLStrings: paths.map { URL(fileURLWithPath: $0).absoluteString }),
+                plainOnly: false,
+                to: pasteboard
+            )
+        )
+        let urls = pasteboard.readObjects(forClasses: [NSURL.self], options: nil) as? [URL]
+        XCTAssertEqual(urls?.map(\.path), paths)
+    }
+
     func testWritesColorHex() throws {
         let service = try makeService()
         let pasteboard = makePasteboard()

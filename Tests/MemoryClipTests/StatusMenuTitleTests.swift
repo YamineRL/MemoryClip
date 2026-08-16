@@ -52,6 +52,33 @@ final class StatusMenuTitleTests: XCTestCase {
         XCTAssertEqual(StatusController.menuTitle(for: makeItem(kind: .file)), "File")
     }
 
+    /// `fileURLStrings` holds `URL.absoluteString`, so a screenshot — whose
+    /// name is nothing but spaces and digits — is where the encoding used to
+    /// surface first: the dropdown read "Screenshot%202026-08-16%20at…".
+    func testFileTitleShowsNamesWithoutPercentEncoding() {
+        let item = makeItem(
+            kind: .file,
+            fileURLStrings: ["file:///Users/me/Desktop/Screenshot%202026-08-16%20at%2019.16.06.png"]
+        )
+        let title = StatusController.menuTitle(for: item)
+        XCTAssertEqual(title, "Screenshot 2026-08-16 at 19.16.06.png")
+        XCTAssertFalse(title.contains("%"))
+    }
+
+    func testFileTitleShowsANonASCIINameInItsOwnScript() {
+        let url = URL(fileURLWithPath: "/Users/me/تقرير سنوي.pdf")
+        let item = makeItem(kind: .file, fileURLStrings: [url.absoluteString])
+        XCTAssertEqual(StatusController.menuTitle(for: item), "تقرير سنوي.pdf")
+    }
+
+    /// A link is shown exactly as it was copied. `%20` in a query string is
+    /// data, not decoration, so decoding here would misreport where the link
+    /// actually goes.
+    func testLinkTitleKeepsItsEncodingVerbatim() {
+        let link = "https://x.example/s?q=my%20q&n=%2Fhome"
+        XCTAssertEqual(StatusController.menuTitle(for: makeItem(kind: .link, text: link)), link)
+    }
+
     func testImageAndColorTitles() {
         XCTAssertEqual(StatusController.menuTitle(for: makeItem(kind: .image)), "Image")
         XCTAssertEqual(
