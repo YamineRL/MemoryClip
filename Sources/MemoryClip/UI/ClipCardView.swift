@@ -423,9 +423,7 @@ struct ClipCardView: View {
     private var summaryText: String {
         switch item.kind {
         case .file:
-            return item.fileURLStrings
-                .map(ClipDisplay.displayName)
-                .joined(separator: ", ")
+            return ClipDisplay.displayNames(item.fileURLStrings)
         case .color:
             return item.colorHex ?? ""
         default:

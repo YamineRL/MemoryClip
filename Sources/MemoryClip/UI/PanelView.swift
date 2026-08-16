@@ -114,7 +114,10 @@ extension ClipDisplayable {
         }
         switch kind {
         case .file:
-            raw = fileURLStrings.map { ($0 as NSString).lastPathComponent }.joined(separator: ", ")
+            // Through `ClipDisplay`, which decodes: VoiceOver reading
+            // "my%20file.txt" out loud as "my percent twenty file dot t x t"
+            // is the same bug as showing it, only louder.
+            raw = ClipDisplay.displayNames(fileURLStrings)
         case .color:
             raw = colorHex ?? "colour"
         case .image:
@@ -168,7 +171,7 @@ struct ClipFilter: Equatable {
         if item.refinedText?.localizedStandardContains(search) == true { return true }
         if item.refinedTitle?.localizedStandardContains(search) == true { return true }
         if item.colorHex?.localizedStandardContains(search) == true { return true }
-        if item.fileURLStrings.contains(where: { $0.localizedStandardContains(search) }) { return true }
+        if ClipDisplay.fileURLsMatch(item.fileURLStrings, search: search) { return true }
         if item.sourceAppName?.localizedStandardContains(search) == true { return true }
         return false
     }

@@ -179,6 +179,59 @@ final class ClipDisplayTests: XCTestCase {
         )
     }
 
+    /// The name from the bug report, spelled exactly as `insertScreenshot`
+    /// stores it. Every space is three characters on disk and one on screen.
+    func testScreenshotNameLosesItsPercentEncoding() {
+        let stored = "file:///Users/me/Desktop/Screenshot%202026-08-16%20at%2019.16.06.png"
+        XCTAssertEqual(ClipDisplay.displayName(stored), "Screenshot 2026-08-16 at 19.16.06.png")
+    }
+
+    /// Non-ASCII is where the encoding stops being merely ugly: an Arabic
+    /// name is stored as a run of `%D8%…` bytes with not one readable
+    /// character left in it.
+    func testNonASCIINameIsDecodedBackToItsOwnScript() {
+        let url = URL(fileURLWithPath: "/Users/me/Documents/تقرير سنوي.pdf")
+        XCTAssertTrue(url.absoluteString.contains("%D8"), "precondition: the stored form is encoded")
+        XCTAssertEqual(ClipDisplay.displayName(url.absoluteString), "تقرير سنوي.pdf")
+        XCTAssertEqual(ClipDisplay.displayPath(url.absoluteString), "/Users/me/Documents/تقرير سنوي.pdf")
+    }
+
+    func testAccentedNameIsDecoded() {
+        let url = URL(fileURLWithPath: "/Users/me/Café/Menü été.txt")
+        XCTAssertEqual(ClipDisplay.displayName(url.absoluteString), "Menü été.txt")
+    }
+
+    /// A literal `%` in a name survives the round trip: it is stored as `%25`
+    /// and must come back as one sign, not vanish or break the decode.
+    func testPercentSignInNameSurvives() {
+        let url = URL(fileURLWithPath: "/tmp/100% done.txt")
+        XCTAssertEqual(url.absoluteString, "file:///tmp/100%25%20done.txt")
+        XCTAssertEqual(ClipDisplay.displayName(url.absoluteString), "100% done.txt")
+    }
+
+    func testDisplayNamesJoinsEveryFileDecoded() {
+        XCTAssertEqual(
+            ClipDisplay.displayNames(["file:///tmp/my%20file.txt", "file:///Users/me/b.png"]),
+            "my file.txt, b.png"
+        )
+        XCTAssertEqual(ClipDisplay.displayNames([]), "")
+    }
+
+    // MARK: - File URL search
+
+    func testSearchMatchesTheDecodedName() {
+        let stored = ["file:///Users/me/Documents/my%20file.txt"]
+        XCTAssertTrue(ClipDisplay.fileURLsMatch(stored, search: "my file"))
+        XCTAssertTrue(ClipDisplay.fileURLsMatch(stored, search: "MY FILE"), "search is case-insensitive")
+        XCTAssertFalse(ClipDisplay.fileURLsMatch(stored, search: "my%20file"), "nobody types the encoding")
+        XCTAssertFalse(ClipDisplay.fileURLsMatch(stored, search: "absent"))
+    }
+
+    func testSearchMatchesANonASCIIName() {
+        let stored = [URL(fileURLWithPath: "/Users/me/تقرير سنوي.pdf").absoluteString]
+        XCTAssertTrue(ClipDisplay.fileURLsMatch(stored, search: "تقرير"))
+    }
+
     // MARK: - Row accessibility label
 
     func testFullRowLabelOrder() {

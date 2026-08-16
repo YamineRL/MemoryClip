@@ -54,6 +54,23 @@ final class ClipFilterTests: XCTestCase {
         XCTAssertTrue(ClipFilter(search: "safari").matchesSearch(FakeClip(sourceAppName: "Safari")))
     }
 
+    /// `fileURLStrings` holds `URL.absoluteString`, so a search for the name
+    /// the user can see has to look past the encoding to find it.
+    func testSearchMatchesFileNamesWithSpacesAndNonASCII() {
+        let screenshot = FakeClip(
+            kind: .file,
+            fileURLStrings: ["file:///Users/me/Desktop/Screenshot%202026-08-16%20at%2019.16.06.png"]
+        )
+        XCTAssertTrue(ClipFilter(search: "screenshot 2026").matchesSearch(screenshot))
+        XCTAssertFalse(ClipFilter(search: "%20").matchesSearch(screenshot))
+
+        let arabic = FakeClip(
+            kind: .file,
+            fileURLStrings: [URL(fileURLWithPath: "/Users/me/تقرير سنوي.pdf").absoluteString]
+        )
+        XCTAssertTrue(ClipFilter(search: "تقرير").matchesSearch(arabic))
+    }
+
     func testEmptySearchMatchesEverything() {
         XCTAssertTrue(ClipFilter(search: "").matchesSearch(FakeClip()))
         XCTAssertTrue(ClipFilter(search: "").matchesSearch(FakeClip(text: nil)))
@@ -95,6 +112,11 @@ final class ClipFilterTests: XCTestCase {
         XCTAssertEqual(
             FakeClip(kind: .file, fileURLStrings: ["/tmp/a.txt", "/tmp/b.txt"]).announcementSummary,
             "a.txt, b.txt"
+        )
+        XCTAssertEqual(
+            FakeClip(kind: .file, fileURLStrings: ["file:///tmp/my%20file.txt"]).announcementSummary,
+            "my file.txt",
+            "VoiceOver must not read the percent-encoding out loud"
         )
         XCTAssertEqual(FakeClip(kind: .image).announcementSummary, "image")
         XCTAssertEqual(FakeClip(kind: .image, ocrText: "receipt").announcementSummary, "image, receipt")

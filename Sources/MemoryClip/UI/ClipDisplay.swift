@@ -73,9 +73,45 @@ enum ClipDisplay {
     }
 
     /// The last path component of `displayPath(_:)` — "my file.txt".
+    ///
+    /// Note that this decodes FIRST and takes the component after: doing it
+    /// the other way round — `(urlString as NSString).lastPathComponent` —
+    /// hands back "my%20file.txt", which is the percent-encoding leaking into
+    /// the UI that this helper exists to prevent.
     static func displayName(_ urlString: String) -> String {
         (displayPath(urlString) as NSString).lastPathComponent
     }
+
+    /// Every stored file URL as a comma-separated list of names — the one
+    /// line a card, a dropdown row and a VoiceOver announcement all use to
+    /// say what a file clip holds.
+    ///
+    /// Shared rather than repeated at those three call sites because the
+    /// repetition is exactly how two of them came to be spelled
+    /// `($0 as NSString).lastPathComponent` and show encoded names while the
+    /// third does not.
+    static func displayNames(_ urlStrings: [String]) -> String {
+        urlStrings.map(displayName).joined(separator: ", ")
+    }
+
+    /// Whether a search term matches this clip's file URLs.
+    ///
+    /// Matched against the decoded path, so that what the user types is what
+    /// they see in the row: searching "my file" has to find `my%20file.txt`,
+    /// and a search in Arabic has to find a file named in Arabic, whose
+    /// stored form is a run of `%D8%…` containing not one typed character.
+    static func fileURLsMatch(_ urlStrings: [String], search: String) -> Bool {
+        urlStrings.contains { displayPath($0).localizedStandardContains(search) }
+    }
+
+    // Everything above is for `.file` clips only. A `.link` clip is shown
+    // verbatim, and deliberately so: it holds the text the user copied,
+    // MemoryClip never encoded it, and there is therefore no encoding of its
+    // own to undo. Decoding one anyway would change its meaning rather than
+    // tidy it — `%26` and `%2F` inside a query parameter are data, and turning
+    // them into `&` and `/` yields a different URL that no longer opens what
+    // was copied. It is also how a hostile link disguises where it goes, so
+    // the honest thing to show is the address that would actually be visited.
 
     // MARK: - Truncation
 
