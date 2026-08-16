@@ -121,11 +121,23 @@ final class NoteSinkConfigurationTests: XCTestCase {
         XCTAssertTrue(FolderBookmark.store(vault, key: NoteSettingsKeys.vaultBookmark))
         defaults.set("images", forKey: NoteSettingsKeys.vaultAttachmentFolder)
         defaults.set(true, forKey: NoteSettingsKeys.copyAttachments)
+        defaults.set(true, forKey: NoteSettingsKeys.vaultDateFolders)
 
         let sink = try XCTUnwrap(try makeSink(for: .markdownVault) as? MarkdownVaultSink)
         XCTAssertEqual(sink.vaultURL.standardizedFileURL.path, vault.standardizedFileURL.path)
         XCTAssertEqual(sink.attachmentFolderName, "images")
         XCTAssertTrue(sink.copyAttachments)
+        XCTAssertTrue(sink.useDateFolders)
+    }
+
+    func testTurningDatedFoldersOffReachesTheSink() throws {
+        // The one setting whose off state has to be honoured exactly: it is
+        // what a user picks when their tool cannot walk subfolders.
+        XCTAssertTrue(FolderBookmark.store(vault, key: NoteSettingsKeys.vaultBookmark))
+        defaults.set(false, forKey: NoteSettingsKeys.vaultDateFolders)
+
+        let sink = try XCTUnwrap(try makeSink(for: .markdownVault) as? MarkdownVaultSink)
+        XCTAssertFalse(sink.useDateFolders)
     }
 
     func testAVaultWithNoAttachmentFolderStoredFallsBackToTheDefaultName() throws {
