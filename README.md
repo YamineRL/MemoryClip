@@ -44,7 +44,7 @@ Requires macOS 26 on Apple silicon.
     <td colspan="2" align="center"><img src="docs/screenshots/settings.svg" alt="The Settings window showing its sidebar of preference panes" width="620"></td>
   </tr>
   <tr>
-    <td colspan="2" align="center"><em>Settings — eight panes behind a sidebar, no Dock icon anywhere.</em></td>
+    <td colspan="2" align="center"><em>Settings — nine panes behind a sidebar, no Dock icon anywhere.</em></td>
   </tr>
 </table>
 

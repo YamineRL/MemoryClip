@@ -22,7 +22,8 @@
     <text x="44" y="233">Privacy</text>
     <text x="44" y="289">Screenshots</text>
     <text x="44" y="317">Notes</text>
-    <text x="44" y="369">About</text>
+    <text x="44" y="369">Translation</text>
+    <text x="44" y="421">About</text>
   </g>
   <!-- sidebar glyph tiles -->
   <g>
@@ -33,7 +34,8 @@
     <rect x="18" y="220" width="18" height="18" rx="5" fill="#ff375f"/>
     <rect x="18" y="276" width="18" height="18" rx="5" fill="#30d158"/>
     <rect x="18" y="304" width="18" height="18" rx="5" fill="#40c8e0"/>
-    <rect x="18" y="356" width="18" height="18" rx="5" fill="#5e5ce6"/>
+    <rect x="18" y="356" width="18" height="18" rx="5" fill="#ac8e68"/>
+    <rect x="18" y="408" width="18" height="18" rx="5" fill="#5e5ce6"/>
   </g>
   <g fill="none" stroke="#ffffff" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round">
     <!-- gearshape -->
@@ -51,8 +53,11 @@
     <circle cx="27" cy="285" r="1.9"/>
     <!-- note.text -->
     <rect x="22.8" y="308.2" width="8.4" height="9.6" rx="1.5"/><path d="M25 311.4 H29"/><path d="M25 314.2 H29"/>
+    <!-- character.bubble -->
+    <rect x="21.4" y="359.6" width="11.2" height="7.6" rx="2.2"/><path d="M24.4 367.2 V370 L27.2 367.2"/>
+    <path d="M24.8 365.4 L27 360.9 L29.2 365.4"/><path d="M25.6 363.9 H28.4"/>
     <!-- info.circle -->
-    <circle cx="27" cy="365" r="4.2"/><path d="M27 362.7 v0.3"/><path d="M27 364.3 v3"/>
+    <circle cx="27" cy="417" r="4.2"/><path d="M27 414.7 v0.3"/><path d="M27 416.3 v3"/>
   </g>
   <line x1="164" y1="40" x2="164" y2="500" stroke="#333335"/>
 

@@ -1,3 +1,4 @@
+import SwiftUI
 import XCTest
 
 @testable import MemoryClip
@@ -78,6 +79,25 @@ final class SettingsTests: XCTestCase {
         )
     }
 
+    /// Translation applies to notes *and* to the panel's preview, which is
+    /// the whole reason it stopped being a section of the Notes pane. Filing
+    /// it back under Clipboard or Screenshots would repeat the original
+    /// mistake in the other direction, so the sidebar keeps it top-level.
+    func testTranslationIsATopLevelSidebarRow() throws {
+        let group = try XCTUnwrap(
+            SettingsPane.groups.first { $0.panes.contains(.translation) },
+            "Translation is not in the sidebar at all"
+        )
+        XCTAssertNil(group.title, "Translation sits in a headerless run of its own, not under a category")
+        XCTAssertEqual(group.panes, [.translation], "Translation shares its run with another pane")
+        for other in SettingsPane.groups where other.title == "Clipboard" || other.title == "Screenshots" {
+            XCTAssertFalse(
+                other.panes.contains(.translation),
+                "Translation belongs to both feature groups, so it may live inside neither"
+            )
+        }
+    }
+
     /// Titles and symbols are what a row *is*: a blank one renders an
     /// unlabelled row, and a shared one makes two panes look like each other
     /// in a sidebar whose whole job is telling them apart.
@@ -108,8 +128,46 @@ final class SettingsTests: XCTestCase {
     func testPaneRawValuesAreStable() {
         XCTAssertEqual(
             SettingsPane.allCases.map(\.rawValue),
-            ["general", "shortcuts", "history", "panel", "privacy", "screenshots", "notes", "about"],
+            ["general", "shortcuts", "history", "panel", "privacy", "screenshots", "notes", "translation", "about"],
             "a persisted pane identifier changed — see SettingsKeys.settingsPane"
+        )
+    }
+
+    /// Adding `translation` is only safe if every raw value that could already
+    /// be on disk still resolves to the pane it named. Translation used to be
+    /// a section of the Notes pane, so the users most likely to have
+    /// `"notes"` stored are exactly the ones this move affects, and landing
+    /// them anywhere else would look like the setting had been lost rather
+    /// than relocated.
+    func testStoredRawValuesStillResolveToTheirPane() {
+        XCTAssertEqual(SettingsPane(rawValue: "notes"), .notes, "a stored Notes selection must still open Notes")
+        XCTAssertEqual(SettingsPane(rawValue: "translation"), .translation)
+        for pane in SettingsPane.allCases {
+            XCTAssertEqual(
+                SettingsPane(rawValue: pane.rawValue), pane,
+                "\(pane.rawValue) does not round-trip through its persisted form"
+            )
+        }
+    }
+
+    /// `@AppStorage` decodes an unrecognised raw value as `nil` and takes the
+    /// declared default, which is what makes a build that drops a pane — or
+    /// one read by an older build that has never heard of `translation` —
+    /// open on General instead of on nothing.
+    func testUnknownStoredPaneFallsBackToTheDefault() {
+        XCTAssertNil(SettingsPane(rawValue: "somePaneThisBuildNeverHad"))
+        XCTAssertEqual(SettingsPane.default, .general, "the fallback pane moved; check SettingsView's @AppStorage default")
+    }
+
+    /// The tint is the sidebar's fastest cue — you know the row by its colour
+    /// before you have read it — so two panes wearing one colour costs the
+    /// sidebar the distinction it is tinted for. Compared as rendered colours
+    /// rather than by case, since that is what the eye gets.
+    func testPaneTintsAreDistinct() {
+        let tints = SettingsPane.allCases.map(\.tint)
+        XCTAssertEqual(
+            Set(tints).count, tints.count,
+            "two panes share a sidebar tint: \(SettingsPane.allCases.map(\.rawValue))"
         )
     }
 

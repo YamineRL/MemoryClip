@@ -182,6 +182,10 @@ final class OnboardingTests: XCTestCase {
             text.contains("Settings → Notes"),
             "the page must say where the same settings live afterwards: \(text)"
         )
+        XCTAssertTrue(
+            text.contains("Settings → Translation"),
+            "translation left the Notes pane; the page that mentions it must send the reader to the right one: \(text)"
+        )
     }
 
     /// Nothing the tour offers may become a gate. The flow is what `Next` and

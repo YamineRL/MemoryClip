@@ -19,6 +19,7 @@ enum SettingsPane: String, CaseIterable, Identifiable, Sendable {
     case privacy
     case screenshots
     case notes
+    case translation
     case about
 
     /// What opens when nothing has been chosen yet, and the fallback for a
@@ -36,6 +37,7 @@ enum SettingsPane: String, CaseIterable, Identifiable, Sendable {
         case .privacy: return "Privacy"
         case .screenshots: return "Screenshots"
         case .notes: return "Notes"
+        case .translation: return "Translation"
         case .about: return "About"
         }
     }
@@ -48,6 +50,11 @@ enum SettingsPane: String, CaseIterable, Identifiable, Sendable {
     /// icon set. The panes whose forms have no single defining row (General,
     /// Shortcuts, Panel, About) keep the symbol their old tab item used, which
     /// is the one users already associate with them.
+    ///
+    /// Translation is the Screenshots case again: its pane opens on the
+    /// "Translate other languages into English" switch, and that switch's own
+    /// glyph is what the sidebar row wears, so the row and the first thing
+    /// under it are visibly the same control.
     var symbol: String {
         switch self {
         case .general: return "gearshape.fill"
@@ -57,6 +64,7 @@ enum SettingsPane: String, CaseIterable, Identifiable, Sendable {
         case .privacy: return "lock.shield.fill"
         case .screenshots: return "camera.viewfinder"
         case .notes: return "note.text"
+        case .translation: return "character.bubble.fill"
         case .about: return "info.circle.fill"
         }
     }
@@ -69,6 +77,19 @@ enum SettingsPane: String, CaseIterable, Identifiable, Sendable {
     /// (History orange, Panel purple, Privacy pink, Screenshots green, Notes
     /// teal); the rest take what was left.
     ///
+    /// Translation is the one pane that could not have the tint of its own
+    /// signature control: that switch is pink and Privacy already owns pink,
+    /// and two pink tiles in one sidebar undo the whole reason for tinting
+    /// them. What was actually left is red, yellow, brown, mint and cyan, and
+    /// only brown survives the two tests that matter at 20 points. Mint and
+    /// cyan sit inside the green–teal–blue run that Screenshots, Notes and
+    /// Shortcuts already occupy, and Translation lands next to Screenshots and
+    /// Notes in the sidebar, which is the worst possible place to put a fourth
+    /// shade of the same family. Red is the colour `SettingsCallout` uses for
+    /// "something went wrong", and this pane shows two of those. Yellow is
+    /// distinct enough but it is the one system colour a white glyph does not
+    /// hold up against, and every tile here is a white glyph.
+    ///
     /// System colours rather than literals, so macOS retunes them for Dark
     /// Mode and Increase Contrast — the same rule the rest of `Design` follows.
     var tint: Color {
@@ -80,6 +101,7 @@ enum SettingsPane: String, CaseIterable, Identifiable, Sendable {
         case .privacy: return Color(nsColor: .systemPink)
         case .screenshots: return Color(nsColor: .systemGreen)
         case .notes: return Color(nsColor: .systemTeal)
+        case .translation: return Color(nsColor: .systemBrown)
         case .about: return Color(nsColor: .systemIndigo)
         }
     }
@@ -88,17 +110,29 @@ enum SettingsPane: String, CaseIterable, Identifiable, Sendable {
 /// A titled run of sidebar rows.
 struct SettingsPaneGroup: Identifiable, Sendable {
     /// `nil` renders as a plain separated run with no header — used for the
-    /// single trailing row, where a one-word category name would be noise.
+    /// two single trailing rows, where a one-word category name would be
+    /// noise.
     let title: String?
     let panes: [SettingsPane]
 
-    var id: String { title ?? "\u{1F}untitled" }
+    /// The title where there is one, and the rows themselves where there is
+    /// not.
+    ///
+    /// This used to be a fixed `"untitled"` string, which was correct while
+    /// exactly one group had no header. There are two now, and two groups
+    /// sharing an id is not a cosmetic problem: the id is the `ForEach`
+    /// identity the sidebar is built from, so SwiftUI would treat the second
+    /// run as the first one moving and the rows would land in the wrong
+    /// section. The unit separator still prefixes the derived form so that a
+    /// headerless group can never collide with a group actually titled after
+    /// its own pane.
+    var id: String { title ?? ("\u{1F}" + panes.map(\.rawValue).joined(separator: "\u{1F}")) }
 }
 
 extension SettingsPane {
     /// The sidebar, grouped.
     ///
-    /// Eight flat rows is a list you read top to bottom every time; grouped,
+    /// Nine flat rows is a list you read top to bottom every time; grouped,
     /// you only read the group you are in. The split is by *what the user came
     /// to change*, not by which subsystem implements it:
     ///
@@ -114,13 +148,30 @@ extension SettingsPane {
     ///   feature with an input (the watched folder) and an output (where notes
     ///   are written). Split across the sidebar it reads as two unrelated
     ///   panes; together, the order is the order the data flows.
+    /// - **Translation** stands alone, headerless, below both feature groups.
+    ///   It began as a section of the Notes pane, back when it did one thing:
+    ///   render a foreign screenshot's recognised text into English for the
+    ///   note being written. It has since grown a second job — translating
+    ///   what you copy, shown in the panel's preview — which is a clipboard
+    ///   feature and has nothing to do with notes, so the section had come to
+    ///   span two unrelated halves of the app while filed under
+    ///   Screenshots → Notes. Filing it under Clipboard instead would only
+    ///   move the lie; it belongs to both, which is exactly what a top-level
+    ///   row says. It sits *after* Screenshots rather than before Clipboard
+    ///   because a row placed above the two groups it serves reads as a
+    ///   preamble to them, while one placed below reads as the thing they
+    ///   have in common.
     /// - About stands alone at the bottom, headerless. It is the one row that
     ///   changes nothing, and inventing a category for a single identity pane
-    ///   would add a word to read without adding a distinction.
+    ///   would add a word to read without adding a distinction — the same
+    ///   argument that keeps Translation's own row headerless, since a group
+    ///   called "Translation" holding a row called "Translation" is a word
+    ///   spent twice.
     static let groups: [SettingsPaneGroup] = [
         SettingsPaneGroup(title: "General", panes: [.general, .shortcuts]),
         SettingsPaneGroup(title: "Clipboard", panes: [.history, .panel, .privacy]),
         SettingsPaneGroup(title: "Screenshots", panes: [.screenshots, .notes]),
+        SettingsPaneGroup(title: nil, panes: [.translation]),
         SettingsPaneGroup(title: nil, panes: [.about])
     ]
 }
