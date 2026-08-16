@@ -471,6 +471,47 @@ enum NoteComposer {
         return clampedToUTF8Bytes(joined, limit: maxFileNameComponentBytes)
     }
 
+    /// The folders a note is filed into, as the path components that sit
+    /// between the vault and the file — `["26-03 March", "16"]` for a clip
+    /// captured on 16 March 2026.
+    ///
+    /// The month component is two-digit year, month number, then the month's
+    /// English name. The numbers are what make the folders sort chronologically
+    /// in a Finder window — within a year and, because the year leads, across
+    /// them too, so a vault kept for five years still walks in order instead of
+    /// restarting every January. The name is what makes the row readable once
+    /// they do. The day is the zero-padded day of the month, which sorts for
+    /// the same reason `01` has to sort above `10`.
+    ///
+    /// - Parameter timeZone: the SAME zone `fileNameStem` is given, and the
+    ///   reason this takes one at all. A clip captured at 00:10 whose folder
+    ///   said one day and whose file name said the next would be a note the
+    ///   user cannot find by either.
+    ///
+    /// English and Gregorian whatever the Mac's region is set to, for the
+    /// reason `fileNameStem` gives — a Japanese or Buddhist calendar renders
+    /// `yy` as 69 — and for one more: a vault outlives a trip abroad, and
+    /// folder names that changed with the region would leave the user with two
+    /// sets of folders for the same month.
+    ///
+    /// A pure function of the draft, like everything else here, so the sink
+    /// can ask where a note goes without touching disk and a test can check
+    /// the answer without a vault.
+    static func dateFolderComponents(for draft: NoteDraft, timeZone: TimeZone = .current) -> [String] {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.timeZone = timeZone
+        // Two passes over one formatter rather than two formatters: the
+        // components have to come from the same configuration, and building
+        // a `DateFormatter` is the expensive half of this function.
+        formatter.dateFormat = "yy-MM MMMM"
+        let month = formatter.string(from: draft.createdAt)
+        formatter.dateFormat = "dd"
+        let day = formatter.string(from: draft.createdAt)
+        return [month, day]
+    }
+
     /// What a name becomes when nothing usable survives sanitising.
     static let fallbackFileNameComponent = "Note"
 

@@ -216,6 +216,7 @@ struct NoteDestinationSetup: View {
     @AppStorage(NoteSettingsKeys.destination) private var destinationRaw = NoteDestination.markdownVault.rawValue
     @AppStorage(NoteSettingsKeys.copyAttachments) private var copyAttachments = true
     @AppStorage(NoteSettingsKeys.vaultAttachmentFolder) private var attachmentFolder = "attachments"
+    @AppStorage(NoteSettingsKeys.vaultDateFolders) private var dateFolders = true
     @AppStorage(NoteSettingsKeys.notesAppFolder) private var notesAppFolder = "MemoryClip"
     @AppStorage(NoteSettingsKeys.shortcutName) private var shortcutName = ""
 
@@ -290,6 +291,7 @@ struct NoteDestinationSetup: View {
             Button("Choose…") { chooseVault() }
         }
         if showsDetail {
+            Toggle("Sort notes into folders by date", isOn: $dateFolders)
             Toggle("Copy the screenshot into the folder", isOn: $copyAttachments)
             if copyAttachments {
                 HStack(spacing: Design.Space.normal) {
@@ -302,7 +304,7 @@ struct NoteDestinationSetup: View {
                 }
             }
             MarkdownCompatibilityGuide(copiesAttachments: copyAttachments)
-            SettingsHint("Plain Markdown files with YAML front matter — an Obsidian vault, or anything else that reads .md off disk. Copying the screenshot in is what lets the note embed it, and means the note survives you clearing out your Desktop.")
+            SettingsHint("Plain Markdown files with YAML front matter — an Obsidian vault, or anything else that reads .md off disk. Copying the screenshot in is what lets the note embed it, and means the note survives you clearing out your Desktop.\n\nSorting by date files each note under a folder like 26-03 March/16, so a folder you have kept for years is still something you can walk through. The file name keeps its own timestamp either way, and notes you have already saved stay where they are — turning this on or off never moves anything. Screenshots always go to the one attachments folder, since an embed finds them anywhere in the vault.")
         } else {
             SettingsHint("Plain Markdown files with YAML front matter — an Obsidian vault, or anything else that reads .md off disk. Choosing the folder here is also what grants MemoryClip access to it.")
         }
