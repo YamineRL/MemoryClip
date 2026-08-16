@@ -118,14 +118,16 @@ struct SettingsPaneGroup: Identifiable, Sendable {
     /// The title where there is one, and the rows themselves where there is
     /// not.
     ///
-    /// This used to be a fixed `"untitled"` string, which was correct while
-    /// exactly one group had no header. There are two now, and two groups
-    /// sharing an id is not a cosmetic problem: the id is the `ForEach`
-    /// identity the sidebar is built from, so SwiftUI would treat the second
-    /// run as the first one moving and the rows would land in the wrong
-    /// section. The unit separator still prefixes the derived form so that a
-    /// headerless group can never collide with a group actually titled after
-    /// its own pane.
+    /// This used to be a fixed `"untitled"` string, which was correct only
+    /// while exactly one group had no header — as, today, is again the case.
+    /// It is derived anyway, because two headerless groups sharing an id is
+    /// not a cosmetic problem: the id is the `ForEach` identity the sidebar is
+    /// built from, so SwiftUI would treat the second run as the first one
+    /// moving and the rows would land in the wrong section. Deriving it means
+    /// adding a second headerless group is a layout decision rather than a
+    /// bug. The unit separator prefixes the derived form so that a headerless
+    /// group can never collide with a group actually titled after its own
+    /// pane.
     var id: String { title ?? ("\u{1F}" + panes.map(\.rawValue).joined(separator: "\u{1F}")) }
 }
 
@@ -148,30 +150,23 @@ extension SettingsPane {
     ///   feature with an input (the watched folder) and an output (where notes
     ///   are written). Split across the sidebar it reads as two unrelated
     ///   panes; together, the order is the order the data flows.
-    /// - **Translation** stands alone, headerless, below both feature groups.
-    ///   It began as a section of the Notes pane, back when it did one thing:
-    ///   render a foreign screenshot's recognised text into English for the
-    ///   note being written. It has since grown a second job — translating
-    ///   what you copy, shown in the panel's preview — which is a clipboard
-    ///   feature and has nothing to do with notes, so the section had come to
-    ///   span two unrelated halves of the app while filed under
-    ///   Screenshots → Notes. Filing it under Clipboard instead would only
-    ///   move the lie; it belongs to both, which is exactly what a top-level
-    ///   row says. It sits *after* Screenshots rather than before Clipboard
-    ///   because a row placed above the two groups it serves reads as a
-    ///   preamble to them, while one placed below reads as the thing they
-    ///   have in common.
+    ///   Translation sits here too. It began as a section of the Notes pane,
+    ///   back when it did one thing: render a foreign screenshot's recognised
+    ///   text into English for the note being written. It has since grown a
+    ///   second job — translating what you copy, shown in the panel's preview
+    ///   — so it now spans the clipboard and the screenshot pipeline alike.
+    ///   Filing it under either one would state a loyalty it does not have,
+    ///   and a headerless row of its own says "uncategorised" when the truth
+    ///   is "applies to all of it" — which is what General already means for
+    ///   the rows beside it. It goes last in the group because the two above
+    ///   it are about the app itself, and this one is about the clips.
     /// - About stands alone at the bottom, headerless. It is the one row that
     ///   changes nothing, and inventing a category for a single identity pane
-    ///   would add a word to read without adding a distinction — the same
-    ///   argument that keeps Translation's own row headerless, since a group
-    ///   called "Translation" holding a row called "Translation" is a word
-    ///   spent twice.
+    ///   would add a word to read without adding a distinction.
     static let groups: [SettingsPaneGroup] = [
-        SettingsPaneGroup(title: "General", panes: [.general, .shortcuts]),
+        SettingsPaneGroup(title: "General", panes: [.general, .shortcuts, .translation]),
         SettingsPaneGroup(title: "Clipboard", panes: [.history, .panel, .privacy]),
         SettingsPaneGroup(title: "Screenshots", panes: [.screenshots, .notes]),
-        SettingsPaneGroup(title: nil, panes: [.translation]),
         SettingsPaneGroup(title: nil, panes: [.about])
     ]
 }

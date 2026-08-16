@@ -82,14 +82,14 @@ final class SettingsTests: XCTestCase {
     /// Translation applies to notes *and* to the panel's preview, which is
     /// the whole reason it stopped being a section of the Notes pane. Filing
     /// it back under Clipboard or Screenshots would repeat the original
-    /// mistake in the other direction, so the sidebar keeps it top-level.
-    func testTranslationIsATopLevelSidebarRow() throws {
+    /// mistake in the other direction; General is where the rows that apply
+    /// to all of MemoryClip already live.
+    func testTranslationSitsUnderGeneral() throws {
         let group = try XCTUnwrap(
             SettingsPane.groups.first { $0.panes.contains(.translation) },
             "Translation is not in the sidebar at all"
         )
-        XCTAssertNil(group.title, "Translation sits in a headerless run of its own, not under a category")
-        XCTAssertEqual(group.panes, [.translation], "Translation shares its run with another pane")
+        XCTAssertEqual(group.title, "General", "Translation belongs to the General category")
         for other in SettingsPane.groups where other.title == "Clipboard" || other.title == "Screenshots" {
             XCTAssertFalse(
                 other.panes.contains(.translation),
