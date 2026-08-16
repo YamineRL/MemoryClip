@@ -549,6 +549,13 @@ struct PanelContentView: View {
     @State private var previewVisible = false
     @State private var previewItem: ClipItem?
     @State private var vim = VimNavigator()
+    /// Paces the movement keys while one is held down, and says when the
+    /// preview pane is allowed to follow — see `HeldKeyPacer`.
+    @State private var pacer = HeldKeyPacer()
+    /// Bumped by every accepted movement step. The settle task in `body` is
+    /// keyed on it, so each step cancels the previous wait and only the clip
+    /// the movement ends on reaches the preview pane.
+    @State private var previewSettleToken = 0
     /// Cached choices for the source-app menu. Derived from the whole store,
     /// so it is refreshed when the panel opens rather than per render.
     @State private var sourceAppNames: [String] = []
@@ -699,6 +706,17 @@ struct PanelContentView: View {
         // The panel window grows upward from its anchored bottom edge to make
         // room for the preview; the controller does the resizing.
         .onChange(of: previewVisible) { uiState.isExpanded = previewVisible }
+        // The settle timer behind `refreshPreview(settling:)`. Keying the task
+        // on the token is what makes this a debounce rather than a queue of
+        // delayed updates: a further step cancels this wait before it can
+        // load anything, so only the clip the movement comes to rest on is
+        // ever handed to the pane.
+        .task(id: previewSettleToken) {
+            guard previewSettleToken > 0 else { return }
+            try? await Task.sleep(for: .seconds(HeldKeyPacer.previewSettleDelay))
+            guard !Task.isCancelled else { return }
+            syncPreviewItem()
+        }
         .defaultFocus($searchFocused, true)
         .onChange(of: uiState.focusToken) {
             filter = ClipFilter()
@@ -707,6 +725,7 @@ struct PanelContentView: View {
             previewVisible = false
             previewItem = nil
             vim.reset()
+            pacer.reset()
             inputMode = .normal
             searchFocused = true
             refreshSourceAppNames()
@@ -874,17 +893,23 @@ struct PanelContentView: View {
             // navigation for its whole life, and existing muscle memory (and
             // VimNavigator's `.up`/`.down`) should not be broken by a change
             // of axis.
-            .onKeyPress(keys: [.upArrow, .downArrow], phases: .down) { press in
-                moveSelection(press.key == .downArrow ? 1 : -1)
+            // `.repeat` as well as `.down`, so that holding a movement key
+            // keeps walking the strip: macOS delivers a held key as a stream
+            // of repeat events, and a handler listening only for `.down`
+            // never hears them. How fast those repeats are allowed to move
+            // the selection is `HeldKeyPacer`'s business, not the system
+            // key-repeat slider's.
+            .onKeyPress(keys: [.upArrow, .downArrow], phases: [.down, .repeat]) { press in
+                moveSelection(press.key == .downArrow ? 1 : -1, phase: press.phase)
                 return .handled
             }
-            .onKeyPress(keys: [.leftArrow, .rightArrow], phases: .down) { press in
+            .onKeyPress(keys: [.leftArrow, .rightArrow], phases: [.down, .repeat]) { press in
                 // While there is a query to edit, the arrows belong to the
                 // caret — swallowing them would make the search field
                 // impossible to correct. With an empty field (the state the
                 // panel opens in) they move the selection.
                 guard isNormalMode || filter.search.isEmpty else { return .ignored }
-                moveSelection(press.key == .rightArrow ? 1 : -1)
+                moveSelection(press.key == .rightArrow ? 1 : -1, phase: press.phase)
                 return .handled
             }
             .onKeyPress(keys: [.return], phases: .down) { press in
@@ -904,8 +929,13 @@ struct PanelContentView: View {
                 handleEscape()
                 return .handled
             }
-            .onKeyPress(phases: .down) { press in
-                if press.modifiers.contains(.command) {
+            // Repeats reach this handler so that the vim movement letters can
+            // be held like the arrows; `handleVimKey` drops every other key's
+            // repeats rather than running its command again.
+            .onKeyPress(phases: [.down, .repeat]) { press in
+                // The ⌘ shortcuts act on the press alone: a held ⌘1 should
+                // paste one clip, not one per repeat event.
+                if press.modifiers.contains(.command), !press.phase.contains(.repeat) {
                     if let digit = press.characters.first?.wholeNumberValue,
                        (1...9).contains(digit) {
                         quickPaste(digit)
@@ -1262,10 +1292,21 @@ struct PanelContentView: View {
         // sequence still gets first refusal, so `dl` aborts as vim expects.
         if !vim.hasPending, !press.modifiers.contains(.control) {
             switch key {
-            case "l": perform(.down); return .handled
-            case "h": perform(.up); return .handled
+            case "l": perform(.down, phase: press.phase); return .handled
+            case "h": perform(.up, phase: press.phase); return .handled
             default: break
             }
+        }
+
+        // Past this point a keystroke does something rather than going
+        // somewhere: it pastes, pins, deletes, toggles the queue, changes
+        // mode. None of that may be driven by auto-repeat — a held `d` would
+        // walk a confirmation sheet and a held `o` would paste the same clip
+        // twenty times — so a repeat of anything but the movement letters is
+        // swallowed here. `j`/`k` fall through to the navigator below, which
+        // is where their pacing is decided.
+        if press.phase.contains(.repeat), !Self.repeatableCharacters.contains(key) {
+            return .handled
         }
 
         var modifiers: VimModifiers = []
@@ -1293,9 +1334,18 @@ struct PanelContentView: View {
         KeyEquivalent.delete.character
     ]
 
-    private func perform(_ command: VimCommand) {
+    /// The vim keys that may be held down.
+    ///
+    /// Movement only, and the same four the arrows shadow, so that the panel
+    /// has one answer to "what happens when I hold this": → and `l` walk the
+    /// strip at the same pace, and neither `d` nor `q` walks anywhere.
+    private static let repeatableCharacters: Set<Character> = ["h", "j", "k", "l"]
+
+    private func perform(_ command: VimCommand, phase: KeyPress.Phases = .down) {
         switch command {
         case .down, .up, .top, .bottom, .halfPageDown, .halfPageUp:
+            let step = pacer.step(isRepeat: phase.contains(.repeat), now: Self.now())
+            guard step != .drop else { return }
             let ids = visibleIDs
             let index = VimNavigator.newIndex(
                 for: command,
@@ -1303,7 +1353,7 @@ struct PanelContentView: View {
                 count: ids.count
             )
             selection.select(index: index, in: ids)
-            syncPreviewItem()
+            refreshPreview(settling: step == .moveSettlingPreview)
         case .paste:
             pasteSelected(plainOnly: false)
         case .pastePlain:
@@ -1357,9 +1407,38 @@ struct PanelContentView: View {
 
     // MARK: Selection & paste
 
-    private func moveSelection(_ delta: Int) {
+    /// Move the selection one step, at the pace `HeldKeyPacer` allows.
+    ///
+    /// `phase` is the keystroke's phase: a `.down` press always moves, a
+    /// `.repeat` from a held key moves only if enough time has passed since
+    /// the last step the user saw.
+    private func moveSelection(_ delta: Int, phase: KeyPress.Phases = .down) {
+        let step = pacer.step(isRepeat: phase.contains(.repeat), now: Self.now())
+        guard step != .drop else { return }
         selection.move(by: delta, in: visibleIDs)
-        syncPreviewItem()
+        refreshPreview(settling: step == .moveSettlingPreview)
+    }
+
+    /// The panel's clock, read in exactly one place so that `HeldKeyPacer`
+    /// stays a pure function of the times handed to it and the tests can
+    /// drive it without waiting on real ones. Uptime rather than wall time:
+    /// it cannot step backwards when the clock is corrected.
+    private static func now() -> TimeInterval {
+        ProcessInfo.processInfo.systemUptime
+    }
+
+    /// Bring the preview pane onto the current selection — now, or once the
+    /// movement keys go quiet.
+    ///
+    /// The pane is expensive per clip: it reads the full-resolution image and
+    /// starts an on-device translation, both keyed on the item it is given.
+    /// Skimming past forty clips must start neither forty times, so a step
+    /// that is part of a run only restarts the settle timer in `body` and
+    /// leaves `previewItem` where it was; the clip the run ends on is the one
+    /// that loads.
+    private func refreshPreview(settling: Bool) {
+        previewSettleToken &+= 1
+        if !settling { syncPreviewItem() }
     }
 
     /// Paste the selected clip. Does nothing when the selection no longer
