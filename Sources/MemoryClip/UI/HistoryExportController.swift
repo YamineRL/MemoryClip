@@ -89,7 +89,14 @@ final class HistoryExportController {
 
         do {
             let count = try Self.writeExport(to: url, asCSV: asCSV, store: store)
-            log.notice("Exported \(count) clips to \(url.lastPathComponent, privacy: .public)")
+            // The name is whatever the user typed into the save panel, so it
+            // is their data and not ours to publish: the unified log outlives
+            // the export and survives "Clear All History", and a default name
+            // is only the default until someone types something about what
+            // they were exporting. The count stays public — it is the number
+            // anyone triaging a failed export actually needs, and it says
+            // nothing about what was in the clips.
+            log.notice("Exported \(count) clips to \(url.lastPathComponent, privacy: .private)")
         } catch ExportFailure.fetch(let error) {
             // A partially written file is worse than none: it looks like a
             // complete history but silently stops part way.
