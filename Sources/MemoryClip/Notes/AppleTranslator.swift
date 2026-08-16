@@ -42,8 +42,12 @@ struct AppleTranslator: NoteTranslator {
     }
 
     func readiness(for language: Locale.Language) async -> TranslationReadiness {
+        await readiness(from: language, to: NoteTranslation.target)
+    }
+
+    func readiness(from source: Locale.Language, to target: Locale.Language) async -> TranslationReadiness {
         #if canImport(Translation)
-        switch await LanguageAvailability().status(from: language, to: NoteTranslation.target) {
+        switch await LanguageAvailability().status(from: source, to: target) {
         case .installed: return .ready
         case .supported: return .needsDownload
         case .unsupported: return .unsupported
@@ -56,12 +60,20 @@ struct AppleTranslator: NoteTranslator {
 
     /// Translate, or return nil and leave the note in its own language.
     func translate(_ text: String, from language: Locale.Language) async -> TranslatedText? {
+        await translate(text, from: language, to: NoteTranslation.target)
+    }
+
+    /// The same, into a language the caller picked — what the preview pane
+    /// asks for. Every step below is target-independent except the
+    /// availability check and the session itself, which is why the note
+    /// pipeline's fixed English target is now just one caller of this.
+    func translate(_ text: String, from language: Locale.Language, to target: Locale.Language) async -> TranslatedText? {
         #if canImport(Translation)
         let identifier = LanguageDetector.identifier(for: language)
         let (sent, remainder) = NoteTranslation.bounded(text)
         guard !sent.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
 
-        switch await readiness(for: language) {
+        switch await readiness(from: language, to: target) {
         case .ready:
             NoteTranslation.clearPendingDownload(identifier)
         case .needsDownload:
@@ -81,7 +93,7 @@ struct AppleTranslator: NoteTranslator {
         // transform, the source language changes from clip to clip, and the
         // session is a reference type whose lifetime is easiest to reason
         // about when it does not outlive the call.
-        let session = TranslationSession(installedSource: language, target: NoteTranslation.target)
+        let session = TranslationSession(installedSource: language, target: target)
         defer { session.cancel() }
 
         do {

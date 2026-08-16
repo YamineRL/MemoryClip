@@ -51,22 +51,49 @@ struct TranslatedText: Sendable, Equatable {
 
 /// Anything that can turn foreign-language text into English.
 protocol NoteTranslator: Sendable {
-    /// Every language this Mac can translate into English, downloaded or not.
+    /// Every language this Mac can translate, downloaded or not — as a source
+    /// for the note pipeline, and as a target for the preview pane.
     ///
     /// Read live rather than hard-coded: the list is Apple's, it grows with
     /// macOS releases, and a list of our own would be wrong the moment one
-    /// does. Settings turns it into the menu the user picks from.
+    /// does. Settings turns it into the menus the user picks from.
     func supportedLanguages() async -> [Locale.Language]
 
-    /// Whether `language` could be translated right now, without a download.
+    /// Whether `language` could be translated into `NoteTranslation.target`
+    /// right now, without a download.
     ///
     /// Three-valued rather than a Bool because the middle case is the one the
     /// user can do something about — see `TranslationReadiness`.
     func readiness(for language: Locale.Language) async -> TranslationReadiness
 
+    /// The same question for a pair the caller chooses. The preview pane
+    /// translates into the user's own language rather than into English —
+    /// see `ClipTranslation` — so it asks about a pair, not a source.
+    func readiness(from source: Locale.Language, to target: Locale.Language) async -> TranslationReadiness
+
     /// Never throws: anything that goes wrong returns nil and the note is
     /// written in its original language.
     func translate(_ text: String, from language: Locale.Language) async -> TranslatedText?
+
+    /// Translate into a chosen language. Same contract: nil rather than a
+    /// throw, and the caller shows the original.
+    func translate(_ text: String, from source: Locale.Language, to target: Locale.Language) async -> TranslatedText?
+}
+
+/// The pair-aware calls, for a translator that only knows one target.
+///
+/// Every conformer answers about its own fixed target — English, for the two
+/// in this app that predate the preview pane, and whatever a test stub was
+/// told to return. A provider that can genuinely translate into more than one
+/// language implements both and these defaults never run.
+extension NoteTranslator {
+    func readiness(from source: Locale.Language, to target: Locale.Language) async -> TranslationReadiness {
+        await readiness(for: source)
+    }
+
+    func translate(_ text: String, from source: Locale.Language, to target: Locale.Language) async -> TranslatedText? {
+        await translate(text, from: source)
+    }
 }
 
 /// Whether a language pair can be used, could be after a download, or never.
@@ -256,8 +283,14 @@ enum LanguageDetector {
     /// would say the same — is not available for every identifier shape the
     /// recognizer emits (it returns bare codes like "ar" and "zh-Hans").
     static func needsTranslation(_ language: Locale.Language?) -> Bool {
+        needsTranslation(language, into: NoteTranslation.target)
+    }
+
+    /// The same question against a target the caller chooses, for the preview
+    /// pane's translation into the user's own language.
+    static func needsTranslation(_ language: Locale.Language?, into target: Locale.Language) -> Bool {
         guard let code = language?.languageCode?.identifier else { return false }
-        return code != NoteTranslation.target.languageCode?.identifier
+        return code != target.languageCode?.identifier
     }
 
     /// A BCP-47 identifier for storage and front matter ("ar", "zh-Hans").
@@ -342,6 +375,18 @@ enum TranslationCatalog {
             return TranslationLanguage(id: key, name: name, language: language)
         }
         .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+    }
+
+    /// The whole menu, with nothing dropped.
+    ///
+    /// The exclusion above exists because English cannot be a *source* for
+    /// the note pipeline, which translates into it. A target picker has no
+    /// such language: every one the framework names, English included, is
+    /// something a user might want their clips rendered into.
+    static func menu(from languages: [Locale.Language]) -> [TranslationLanguage] {
+        // "und" is BCP-47 for an undetermined language, so it matches nothing
+        // in the list and the exclusion is a no-op.
+        menu(from: languages, excluding: Locale.Language(identifier: "und"))
     }
 
     /// Whether a picked language and a detected one are the same language.
