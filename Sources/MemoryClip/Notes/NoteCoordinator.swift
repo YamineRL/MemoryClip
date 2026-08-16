@@ -476,6 +476,7 @@ final class NoteCoordinator {
             createdAt: item.createdAt,
             sourceAppName: item.sourceAppName,
             sourceFileURL: item.screenshotURL,
+            imageData: item.imageData,
             attachmentFileName: nil
         )
     }

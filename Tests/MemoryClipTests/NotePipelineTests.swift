@@ -380,4 +380,32 @@ final class NotePipelineTests: XCTestCase {
         // No "Original text" section: it would print the same paragraph twice.
         XCTAssertNil(draft.rawText)
     }
+
+    /// An image copied to the pasteboard has no file for `sourceFileURL` to
+    /// point at, so the draft has to carry the pixels themselves — otherwise
+    /// the sink has nothing to copy into the vault and the note comes out
+    /// without the picture it is a note about.
+    func testDraftCarriesThePixelsOfAPastedImage() throws {
+        let store = try ClipStore(inMemory: true)
+        let bytes = Data([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A])
+        store.insert(
+            CapturedClip(
+                kind: .image,
+                text: nil,
+                richTextData: nil,
+                imageData: bytes,
+                fileURLStrings: [],
+                colorHex: nil,
+                hash: ContentParser.hashData(bytes)
+            ),
+            sourceBundleID: "com.apple.Preview",
+            sourceAppName: "Preview"
+        )
+        let uuid = try XCTUnwrap(store.pendingOCR().first?.uuid)
+        store.applyOCR("text in the picture", toClipWith: uuid)
+
+        let draft = try XCTUnwrap(NoteCoordinator.draft(for: try XCTUnwrap(store.item(withUUID: uuid))))
+        XCTAssertNil(draft.sourceFileURL)
+        XCTAssertEqual(draft.imageData, bytes)
+    }
 }

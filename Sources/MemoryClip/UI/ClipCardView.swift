@@ -432,11 +432,22 @@ struct ClipCardView: View {
     }
 
     /// The card's closing stat line — Deck's "66 characters".
+    ///
+    /// "· noted" is the only confirmation ⌘S gets: the export runs off the
+    /// key press so the panel stays live, and only failure interrupts with an
+    /// alert. It is appended for every kind a note can be made from — not
+    /// just screenshots, as it was — because the clip whose note went missing
+    /// without a word was the pasted picture and the copied paragraph.
+    ///
+    /// It replaces "text found" rather than joining it: a clip that has been
+    /// noted obviously had text in it, and a three-part stat line is a stat
+    /// line that truncates on a narrow panel.
     private var statLine: String {
+        let noted = item.notePath != nil
         // Checked before the kind switch: a screenshot IS a file clip, and
         // "1 file" is the least informative thing the row could say about it.
         if item.isScreenshot {
-            if item.notePath != nil { return "Screenshot · noted" }
+            if noted { return "Screenshot · noted" }
             if !(item.ocrText ?? "").isEmpty { return "Screenshot · text found" }
             return "Screenshot"
         }
@@ -447,13 +458,17 @@ struct ClipCardView: View {
         case .color:
             return item.colorHex ?? "Color"
         case .image:
+            if noted { return "Image · noted" }
             if let ocr = item.ocrText, !ocr.isEmpty {
                 return "Image · text found"
             }
             return "Image"
         default:
             let count = summaryText.count
-            return count == 1 ? "1 character" : "\(count.formatted(.number.grouping(.automatic))) characters"
+            let characters = count == 1
+                ? "1 character"
+                : "\(count.formatted(.number.grouping(.automatic))) characters"
+            return noted ? "\(characters) · noted" : characters
         }
     }
 

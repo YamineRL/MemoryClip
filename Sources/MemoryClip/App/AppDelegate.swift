@@ -263,13 +263,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
 /// Opens (or brings forward) the Settings window.
 ///
-/// The status menu item fires while the menu is still tearing down, and
-/// activation requests made in that window are dropped, so the work is
-/// deferred one runloop turn. Everything else lives in
-/// `SettingsWindowController`.
+/// The status menu item fires while its menu is still tracking, and an
+/// activation request made in that window is dropped — the menu owns the
+/// event loop, and when it finally lets go, macOS restores whichever app was
+/// frontmost before the click. A window ordered in during that gets left
+/// behind: on screen, in front, and not the key window, which is the exact
+/// symptom of typing into a Settings pane and watching the keystrokes land
+/// in Brave.
+///
+/// `DispatchQueue.main.async` looked like the deferral that avoids this and
+/// is not: main-queue blocks drain in the run loop's COMMON modes, and
+/// `NSEventTrackingRunLoopMode` is one of them, so the block ran inside the
+/// very tracking loop it was meant to escape. `RunLoop.perform(inModes:)`
+/// names the mode outright, and `.default` cannot run until tracking has
+/// ended. Everything else lives in `SettingsWindowController`.
 @MainActor
 func openSettingsWindow() {
-    DispatchQueue.main.async {
-        SettingsWindowController.shared.show()
+    RunLoop.main.perform(inModes: [.default]) {
+        MainActor.assumeIsolated {
+            SettingsWindowController.shared.show()
+        }
     }
 }
