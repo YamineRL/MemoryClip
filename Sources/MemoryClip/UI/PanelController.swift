@@ -19,9 +19,12 @@ final class PanelUIState: ObservableObject {
 ///
 /// `cancelOperation` is overridden so Esc always dismisses the window, even
 /// when focus has left the SwiftUI key handlers (Full Keyboard Access, a
-/// footer menu, VoiceOver) — MemoryClip is an LSUIElement agent with no main menu,
-/// so there is no ⌘W/⌘Q to fall back on. `performClose` keeps the window
-/// delegate in the loop, which is what actually hides the window.
+/// footer menu, VoiceOver). The main menu does now carry ⌘W (Window → Close)
+/// and has carried ⌘Q all along, but MemoryClip is an LSUIElement agent that
+/// never shows a menu bar, so nothing on screen advertises either — Esc stays
+/// the way out that a hand already on the clip list will find. `performClose`
+/// keeps the window delegate in the loop, which is what actually hides the
+/// window.
 final class KeyablePanel: NSPanel {
     /// The object that drives Quick Look while this panel is the key window.
     ///

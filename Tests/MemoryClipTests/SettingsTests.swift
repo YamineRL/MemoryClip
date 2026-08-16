@@ -213,18 +213,58 @@ final class SettingsTests: XCTestCase {
     }
 
     /// The panel keys are handled inline in `PanelView`, so there is no state
-    /// machine to check them against — this is the one place the reference is
-    /// pinned to a literal list. The keys documented here must all be keys the
-    /// panel actually consumes.
-    func testPanelGroupListsTheKeysPanelViewHandles() {
-        let keys = ShortcutReference.panel.entries.map(\.keys)
-        XCTAssertEqual(
-            keys, ["↑ ↓", "Return", "⇧Return", "⌘1…⌘9", "Space", "Esc"],
-            "the panel key reference drifted from PanelView's key handling"
+    /// machine to check them against.
+    ///
+    /// The assertion is *coverage*, not an exact transcript. Pinning the row
+    /// list verbatim is what let this pane go stale in the first place: every
+    /// key the panel grew — the arrows along the strip, ⌘S, ⌘W, Quick Look —
+    /// was added to `PanelView` without the frozen list here noticing, because
+    /// a list only fails when someone edits the rows, and nobody was. Asking
+    /// instead that each key `PanelView` consumes appears *somewhere* in the
+    /// group fails on the omission itself, and leaves rewording, reordering
+    /// and merging rows free.
+    func testPanelGroupDocumentsTheKeysPanelViewHandles() throws {
+        let entries = ShortcutReference.panel.entries
+        let documented = entries.map(\.keys).joined(separator: "\u{1F}")
+        for key in ["↑", "↓", "←", "→", "Return", "⇧Return", "⌘1…⌘9", "⌘S", "Space", "Esc", "⌘W"] {
+            XCTAssertTrue(
+                documented.contains(key),
+                "\(key) is handled by PanelView but has no row in the panel key reference"
+            )
+        }
+
+        // Space is the one key whose row has to carry a branch: since Quick
+        // Look landed it escalates rather than toggling, and a row that still
+        // says "toggle" is wrong on exactly the screenshots and files people
+        // press it on. Esc is the same ladder coming back down.
+        let space = try XCTUnwrap(
+            entries.first { $0.keys == "Space" },
+            "no Space row to check for the Quick Look rung"
         )
+        XCTAssertTrue(
+            space.detail.contains("Quick Look"),
+            "Space escalates into Quick Look, and its row does not say so: \(space.detail)"
+        )
+        XCTAssertFalse(
+            space.detail.lowercased().contains("toggle"),
+            "Space stopped toggling the preview when Quick Look landed: \(space.detail)"
+        )
+        let escape = try XCTUnwrap(
+            entries.first { $0.keys == "Esc" },
+            "no Esc row to check for the Quick Look rung"
+        )
+        XCTAssertTrue(
+            escape.detail.contains("Quick Look"),
+            "Esc now closes Quick Look first, and its row does not say so: \(escape.detail)"
+        )
+
         XCTAssertNil(
             ShortcutReference.panel.note,
-            "the panel keys are unconditional; a note here implies a caveat that is not true"
+            """
+            the panel's caveats are per-key — the movement arrows and Space stand down while \
+            there is a query to edit, the rest never do — so they belong on their rows, not in \
+            a note the whole group would appear to inherit
+            """
         )
     }
 
@@ -253,7 +293,12 @@ final class SettingsTests: XCTestCase {
 
     /// Keys the panel or the mode switch — not the navigation state machine —
     /// handles, so no command is expected for them.
-    private static let nonNavigatorKeys: Set<String> = ["Esc", "Return", "Tab", "Space", "↑ ↓"]
+    ///
+    /// `h` and `l` are here for the same reason the arrows are: `PanelView`
+    /// answers them itself, so `VimNavigator` has no binding to unwrap.
+    private static let nonNavigatorKeys: Set<String> = [
+        "Esc", "Return", "Tab", "Space", "↑ ↓", "← →", "h", "l"
+    ]
 
     /// Splits a `ShortcutEntry.keys` string ("j / k", "/ or i", "dd") into its
     /// individual key tokens.

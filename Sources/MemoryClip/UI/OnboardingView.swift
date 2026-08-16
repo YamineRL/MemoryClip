@@ -117,7 +117,7 @@ enum OnboardingFlow {
                 "Zero network calls: no sync, no accounts, no analytics. History lives in a local database file.",
                 "No Accessibility, Screen Recording or Input Monitoring permission is required for capture, search or copy.",
                 "Sensitive content is skipped: Luhn-valid card numbers, copies made in password managers, and anything marked transient/concealed on the pasteboard.",
-                "Optional Touch ID lock before the panel opens (Settings → Security & Privacy, off by default).",
+                "Optional Touch ID lock before the panel opens (Settings → Privacy, off by default).",
             ]
         ),
         OnboardingStep(
