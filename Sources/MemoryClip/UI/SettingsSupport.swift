@@ -257,27 +257,61 @@ struct ShortcutGroup: Equatable, Identifiable {
 enum ShortcutReference {
     static let groups: [ShortcutGroup] = [panel, vim]
 
+    /// The keys `PanelView` handles itself, in the order a hand finds them:
+    /// move, paste, keep, look, leave.
+    ///
+    /// Two rows describe a key that does more than one thing, and both are
+    /// written as the ladder the code climbs rather than as a list of cases.
+    /// Space escalates: with the pane shut it opens the pane, and a second
+    /// press either hands a screenshot, image or file to Quick Look or — when
+    /// the clip is one Quick Look has nothing to show for — shuts the pane
+    /// again. Saying "toggle" would now be wrong on exactly the clips people
+    /// press it on most. Esc is the same ladder descended, one rung per press.
+    ///
+    /// The conditions live on the rows that have them rather than in a
+    /// group-wide note, because they are not the same condition: the movement
+    /// arrows and Space stand down while there is a query in the search field
+    /// to edit, and everything else here works regardless.
+    ///
+    /// Keys the panel merely refuses to swallow are not keys it handles, so
+    /// Tab and Delete are absent: they appear in `PanelView.reservedCharacters`
+    /// only to keep vim mode's catch-all from stealing them from the search
+    /// field and the focus ring.
     static let panel = ShortcutGroup(
         title: "Panel",
         entries: [
-            ShortcutEntry(keys: "↑ ↓", detail: "Move the selection"),
+            ShortcutEntry(keys: "↑ ↓", detail: "Move the selection; hold to keep moving"),
+            ShortcutEntry(keys: "← →", detail: "Move along the strip; hold to keep moving (search field empty)"),
             ShortcutEntry(keys: "Return", detail: "Paste the selected clip"),
             ShortcutEntry(keys: "⇧Return", detail: "Paste as plain text"),
             ShortcutEntry(keys: "⌘1…⌘9", detail: "Paste the first nine results"),
-            ShortcutEntry(keys: "Space", detail: "Toggle the preview pane (search field empty)"),
-            ShortcutEntry(keys: "Esc", detail: "Close the preview, then the panel")
+            ShortcutEntry(keys: "⌘S", detail: "Save the selected clip as a note"),
+            ShortcutEntry(
+                keys: "Space",
+                detail: "Open the preview; press again to Quick Look a screenshot, image or file, or to close the preview (search field empty)"
+            ),
+            ShortcutEntry(keys: "Esc", detail: "Close Quick Look, then the preview, then the panel"),
+            ShortcutEntry(keys: "⌘W", detail: "Close the panel")
         ]
     )
 
+    /// The vim bindings, which are `VimNavigator`'s with one exception: `h`
+    /// and `l` are answered by `PanelView` directly, because the strip runs
+    /// left to right and the horizontal pair had to move along it without the
+    /// shared, separately tested navigator growing a second name for a step it
+    /// already has. A reader of this pane cannot tell the difference, and
+    /// should not have to.
     static let vim = ShortcutGroup(
         title: "Vim navigation",
         note: "Only when vim mode is on. The panel opens in NORMAL mode (shown in the search bar) where these keys navigate; / or i switches to INSERT mode to type in the search field, and Esc switches back.",
         entries: [
-            ShortcutEntry(keys: "j / k", detail: "Move down / up"),
+            ShortcutEntry(keys: "j / k", detail: "Move down / up; hold to keep moving"),
+            ShortcutEntry(keys: "h / l", detail: "Move back / forward along the strip; hold to keep moving"),
             ShortcutEntry(keys: "gg / G", detail: "Jump to the top / bottom"),
             ShortcutEntry(keys: "⌃d / ⌃u", detail: "Half-page down / up"),
             ShortcutEntry(keys: "o / ⇧O", detail: "Paste / paste as plain text"),
             ShortcutEntry(keys: "p", detail: "Pin or unpin the selected clip"),
+            ShortcutEntry(keys: "n", detail: "Save the selected clip as a note"),
             ShortcutEntry(keys: "dd", detail: "Delete the selected clip (asks first)"),
             ShortcutEntry(keys: "q / ⇧Q", detail: "Add to the queue / paste the queue"),
             ShortcutEntry(keys: "/ or i", detail: "Search: / starts a fresh query, i edits the current one"),

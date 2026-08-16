@@ -188,6 +188,40 @@ final class OnboardingTests: XCTestCase {
         )
     }
 
+    /// Every "Settings → X" in the tour must name a pane that exists.
+    ///
+    /// The tour is written once and read by every new user, so a pointer at a
+    /// pane that has since been renamed sends them looking for a word the
+    /// sidebar no longer contains — which is exactly what "Settings → Security
+    /// & Privacy" did after the pane became Privacy. Derived from
+    /// `SettingsPane.title` rather than a list of accepted words, so renaming a
+    /// pane fails here instead of quietly making the tour wrong.
+    func testEverySettingsPointerNamesAPaneThatExists() {
+        let titles = Set(SettingsPane.allCases.map(\.title))
+        // "System Settings → Privacy & Security" is macOS's own pane and not
+        // ours to check; neutralise the phrase before scanning for ours.
+        let text = OnboardingFlow.steps
+            .flatMap(\.bullets)
+            .joined(separator: "\n")
+            .replacingOccurrences(of: "System Settings → ", with: "macOS pane ")
+
+        var rest = Substring(text)
+        var checked = 0
+        while let marker = rest.range(of: "Settings → ") {
+            rest = rest[marker.upperBound...]
+            let name = String(rest.prefix { $0.isLetter })
+            checked += 1
+            XCTAssertTrue(
+                titles.contains(name),
+                "the tour points at Settings → \(name), which is not one of \(titles.sorted())"
+            )
+        }
+        XCTAssertGreaterThan(
+            checked, 0,
+            "no Settings pointers were found at all — the scan, not the tour, is what broke"
+        )
+    }
+
     /// Nothing the tour offers may become a gate. The flow is what `Next` and
     /// `Done` consult, and it has no notion of a step being satisfied — this
     /// pins that: every page is reachable and leavable with the setup
