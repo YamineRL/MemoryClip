@@ -37,7 +37,7 @@ Requires macOS 26 on Apple silicon.
     <td width="50%"><img src="docs/screenshots/menu-bar.svg" alt="The menu-bar dropdown listing recent clips and app commands"></td>
   </tr>
   <tr>
-    <td align="center"><em>Preview pane — <code>Space</code> to toggle.</em></td>
+    <td align="center"><em>Preview pane — <code>Space</code> to open, again for Quick Look.</em></td>
     <td align="center"><em>Menu-bar dropdown — the last five clips.</em></td>
   </tr>
   <tr>
@@ -85,8 +85,8 @@ glyph gives the last five clips, Pause Capture, Clear All History, Settings and 
 | `⇧Return` | Paste it as **plain text**, dropping fonts and colours |
 | `⌘1`–`⌘9` | Paste any of the first nine results directly |
 | `⌘S` | Save the selected clip as a note, if it carries any text |
-| `Space` | Toggle the preview pane, while the search field is empty |
-| `Esc` | Close the preview, then the panel |
+| `Space` | Open the preview pane; press it again on a picture or a file for full-size **Quick Look** |
+| `Esc` | Close Quick Look, then the preview, then the panel |
 
 Pasting puts the clip on the clipboard, reactivates your previous app and sends a ⌘V. If
 macOS blocks that synthetic keystroke the clip is still on the clipboard — see

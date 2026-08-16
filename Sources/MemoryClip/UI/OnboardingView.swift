@@ -91,7 +91,7 @@ enum OnboardingFlow {
                 "Type to search across text, OCR text, colors, file names and source app; filter chips narrow by type or by the app you copied from.",
                 "↑/↓ move the selection, Return pastes, ⇧Return pastes as plain text.",
                 "⌘1…⌘9 instantly paste the first nine results.",
-                "Space toggles the preview pane, which also offers text transforms (case, JSON, Base64, URL encode, sort/dedupe).",
+                "Space opens the preview pane, which also offers text transforms (case, JSON, Base64, URL encode, sort/dedupe); pressing it again on a picture or a file opens Quick Look full size.",
                 "Pin a clip from its row button or context menu — pinned clips are never removed automatically.",
             ]
         ),

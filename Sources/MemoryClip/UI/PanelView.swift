@@ -479,6 +479,11 @@ struct PanelActions {
     var openNote: (ClipItem) -> Void
     /// Show a screenshot clip's file in the Finder.
     var revealInFinder: (ClipItem) -> Void
+    /// Show a run of clips full size in Quick Look, opening on `index`.
+    ///
+    /// The completion carries the clip Quick Look was showing when it closed,
+    /// so the panel's selection can follow wherever the arrows ended up.
+    var quickLook: ([ClipItem], Int, @escaping (UUID) -> Void) -> Void
 }
 
 /// The main clip-panel view.
@@ -885,11 +890,11 @@ struct PanelContentView: View {
             }
             .onKeyPress(.space, phases: .down) { _ in
                 if isNormalMode {
-                    togglePreview()
+                    escalatePreview()
                     return .handled
                 }
                 guard !vimModeEnabled, filter.search.isEmpty else { return .ignored }
-                togglePreview()
+                escalatePreview()
                 return .handled
             }
             .onKeyPress(.escape, phases: .down) { _ in
@@ -1149,17 +1154,59 @@ struct PanelContentView: View {
 
     // MARK: Preview
 
-    /// Space toggles the preview pane; it opens on the currently selected
-    /// clip (or the first visible one when the selection is out of range).
-    private func togglePreview() {
-        if previewVisible {
+    /// Space escalates rather than toggling.
+    ///
+    /// The first press opens the preview pane, as it always did. A second
+    /// press on a clip Quick Look can show — a screenshot, a file, a pasted
+    /// picture — hands it to Quick Look full size, which is the Finder gesture
+    /// applied to the clip already in front of you. On a clip Quick Look has
+    /// nothing to do with (text, rich text, a colour, a link) the second press
+    /// closes the pane, exactly as before. Escape is untouched and still
+    /// unwinds pane then panel, so nothing is trapped by the extra rung.
+    private func escalatePreview() {
+        let target = previewVisible ? previewItem ?? selectedItem : nil
+        switch QuickLook.spaceAction(
+            previewVisible: previewVisible,
+            canQuickLook: target.map { QuickLook.canPreview($0) } ?? false
+        ) {
+        case .openPreview:
+            openPreview()
+        case .closePreview:
             closePreview()
-            return
+        case .openQuickLook:
+            guard let target else { return }
+            showQuickLook(from: target)
         }
+    }
+
+    /// Open the preview pane on the currently selected clip (or the first
+    /// visible one when the selection is out of range).
+    private func openPreview() {
         guard let item = selectedItem ?? visibleItems.first else { return }
         previewItem = item
         previewVisible = true
         announce("Preview shown, \(item.announcementSummary)")
+    }
+
+    /// Hand the panel's whole filtered list to Quick Look, positioned on the
+    /// clip the pane is showing.
+    ///
+    /// The list rather than the one clip, so ← and → walk the history full
+    /// size the way arrowing through a Finder folder does. The preview pane
+    /// is deliberately left open underneath: Escape closes Quick Look, and a
+    /// second Escape then closes the pane, so the way out retraces the way in.
+    private func showQuickLook(from item: ClipItem) {
+        guard let plan = QuickLook.plan(for: visibleItems, startingAt: item.uuid) else { return }
+        announce("Quick Look, \(item.announcementSummary)")
+        actions.quickLook(plan.items, plan.index) { uuid in
+            // Quick Look leaves the panel on whichever clip the user landed
+            // on, not the one they started from. A clip that was deleted or
+            // filtered away meanwhile resolves to no row, which the panel
+            // already treats as "nothing to act on" rather than falling back
+            // to the newest clip.
+            selection = ClipSelection(id: uuid)
+            syncPreviewItem()
+        }
     }
 
     private func closePreview() {
