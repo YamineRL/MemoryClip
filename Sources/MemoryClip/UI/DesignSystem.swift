@@ -117,6 +117,11 @@ enum Design {
         /// take. The ceiling above is the height at `previewPaneHeight`; past
         /// that, the room the drag added is split with the clip below.
         static let previewTranslationGrowthShare: CGFloat = 0.5
+        /// How far past a scroll view's edge content must reach before the
+        /// scroll hint appears.
+        static let scrollHintSlack: CGFloat = 4
+        /// The height of the fade the hint sits in.
+        static let scrollHintFade: CGFloat = 28
         /// Floor under an image clip's picture, so it cannot be squeezed into
         /// a band by the text blocks sharing the pane with it.
         ///
@@ -249,6 +254,8 @@ enum Design {
         static let bodySize: CGFloat = 13
         /// The preview's body text.
         static let previewBodySize: CGFloat = 13
+        /// The chevron in a scroll view's "more below" capsule.
+        static let scrollHintSize: CGFloat = 9
         /// The instant-calc result, which is the answer the user came for.
         static let calcResultSize: CGFloat = 24
 
@@ -439,6 +446,61 @@ struct KeyCap: View {
     }
 }
 
+/// The capsule shown at the foot of a scroll view while content continues
+/// below its edge.
+struct ScrollMoreIndicator: View {
+    var body: some View {
+        Image(systemName: "chevron.down")
+            .font(.system(size: Design.Typography.scrollHintSize, weight: .semibold))
+            .foregroundStyle(Color(nsColor: .secondaryLabelColor))
+            .padding(.horizontal, Design.Space.normal)
+            .padding(.vertical, Design.Space.tight)
+            .background(.ultraThinMaterial, in: Capsule(style: .continuous))
+            .overlay(
+                Capsule(style: .continuous)
+                    .strokeBorder(Design.Palette.hairline, lineWidth: Design.Stroke.hairline)
+            )
+            .shadow(color: Design.Palette.cardShadow, radius: 3, y: 1)
+            .accessibilityHidden(true)
+    }
+}
+
+/// Fades the last line of a scroll view out under a `ScrollMoreIndicator`,
+/// and shows both only while there is more to scroll to.
+///
+/// The fade is a mask on the content rather than a gradient over it: these
+/// panes are translucent, so there is no colour to fade into.
+struct ScrollMoreHint: ViewModifier {
+    @State private var hasMore = false
+
+    func body(content: Content) -> some View {
+        content
+            .onScrollGeometryChange(for: Bool.self) { geometry in
+                let bottom = geometry.contentOffset.y + geometry.containerSize.height
+                return geometry.contentSize.height - bottom > Design.Size.scrollHintSlack
+            } action: { _, more in
+                withAnimation(Design.Motion.quick) { hasMore = more }
+            }
+            .mask(alignment: .top) {
+                VStack(spacing: 0) {
+                    Rectangle()
+                    LinearGradient(
+                        colors: [.black, .black.opacity(hasMore ? 0.15 : 1)],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                    .frame(height: Design.Size.scrollHintFade)
+                }
+            }
+            .overlay(alignment: .bottom) {
+                ScrollMoreIndicator()
+                    .padding(.bottom, Design.Space.tight)
+                    .opacity(hasMore ? 1 : 0)
+                    .allowsHitTesting(false)
+            }
+    }
+}
+
 /// The small capsule used for detected content kinds in the preview.
 struct DetectionChip: View {
     let text: String
@@ -458,6 +520,11 @@ struct DetectionChip: View {
 }
 
 extension View {
+    /// Mark a scroll view as one that says when it has more below.
+    func scrollMoreHint() -> some View {
+        modifier(ScrollMoreHint())
+    }
+
     /// A pane: a rounded, outlined surface for grouped content.
     func designPane(
         radius: CGFloat = Design.Radius.pane,
