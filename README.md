@@ -437,5 +437,6 @@ which of Deck's visual choices were kept and which were not.
 
 ## Licence
 
-[Apache-2.0](LICENSE) — permissive, with an explicit patent grant. Copyright 2026
-MemoryClip.
+**All rights reserved** — see [LICENSE](LICENSE). The source is published to be read,
+not reused: you may download and run the app, and nothing else without a written
+licence. Commercial use of any kind is by arrangement — open an issue to ask.
