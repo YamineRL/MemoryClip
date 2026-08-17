@@ -25,17 +25,17 @@ enum PreviewCopy {
 
         if item.kind == .image || item.isScreenshot {
             if let extracted = ClipDisplay.extractedText(for: item) {
-                options.append(PreviewCopyOption(title: "Copy Extracted Text", text: extracted))
+                options.append(PreviewCopyOption(title: loc("Copy Extracted Text"), text: extracted))
             }
         } else {
             switch item.kind {
             case .text, .richText, .link:
                 if let text = present(item.text) {
-                    options.append(PreviewCopyOption(title: "Copy Text", text: text))
+                    options.append(PreviewCopyOption(title: loc("Copy Text"), text: text))
                 }
             case .color:
                 if let hex = present(item.colorHex) {
-                    options.append(PreviewCopyOption(title: "Copy Hex", text: hex))
+                    options.append(PreviewCopyOption(title: loc("Copy Hex"), text: hex))
                 }
             case .image, .file:
                 break
@@ -43,7 +43,7 @@ enum PreviewCopy {
         }
 
         if let translation = present(translation) {
-            options.append(PreviewCopyOption(title: "Copy Translation", text: translation))
+            options.append(PreviewCopyOption(title: loc("Copy Translation"), text: translation))
         }
 
         // Decoded, never `URL.absoluteString`: what goes on the pasteboard is
@@ -51,11 +51,11 @@ enum PreviewCopy {
         let paths = item.fileURLStrings.map(ClipDisplay.displayPath)
         if item.kind == .file, !paths.isEmpty {
             options.append(PreviewCopyOption(
-                title: paths.count == 1 ? "Copy File Path" : "Copy File Paths",
+                title: paths.count == 1 ? loc("Copy File Path") : loc("Copy File Paths"),
                 text: paths.joined(separator: "\n")
             ))
             options.append(PreviewCopyOption(
-                title: paths.count == 1 ? "Copy File Name" : "Copy File Names",
+                title: paths.count == 1 ? loc("Copy File Name") : loc("Copy File Names"),
                 text: ClipDisplay.displayNames(item.fileURLStrings)
             ))
         }

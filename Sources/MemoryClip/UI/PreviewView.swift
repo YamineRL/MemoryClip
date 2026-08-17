@@ -68,7 +68,7 @@ struct PreviewView: View {
                     .font(.system(size: calcFontSize, weight: .semibold))
                     .foregroundStyle(Color(nsColor: .labelColor))
                     .textSelection(.enabled)
-                    .accessibilityLabel("Equals \(calc)")
+                    .accessibilityLabel(loc("Equals %@", calc))
             }
 
             if !detectedKinds.isEmpty {
@@ -78,9 +78,9 @@ struct PreviewView: View {
                     }
                     Spacer(minLength: Design.Space.normal)
                     if detectedKinds.contains(.json), let onTransform {
-                        Button("Format JSON") { onTransform(.jsonFormat) }
+                        Button(loc("Format JSON")) { onTransform(.jsonFormat) }
                             .buttonStyle(.bordered)
-                        Button("Minify JSON") { onTransform(.jsonMinify) }
+                        Button(loc("Minify JSON")) { onTransform(.jsonMinify) }
                             .buttonStyle(.bordered)
                     }
                 }
@@ -188,7 +188,7 @@ struct PreviewView: View {
         if presenter.isTranslating || presenter.translation != nil {
             VStack(alignment: .leading, spacing: Design.Space.snug) {
                 HStack(spacing: Design.Space.snug) {
-                    Text(presenter.translation?.languagePair ?? "Translating…")
+                    Text(presenter.translation?.languagePair ?? loc("Translating…"))
                         .font(Design.Typography.meta)
                         .foregroundStyle(Color(nsColor: .secondaryLabelColor))
                     if presenter.isTranslating {
@@ -228,7 +228,7 @@ struct PreviewView: View {
             // own element, so it can be read, navigated and selected, and the
             // group carries the label that says what it is.
             .accessibilityElement(children: .contain)
-            .accessibilityLabel(presenter.translation?.accessibilityDescription ?? "Translating this clip")
+            .accessibilityLabel(presenter.translation?.accessibilityDescription ?? loc("Translating this clip"))
         }
     }
 
@@ -322,7 +322,7 @@ struct PreviewView: View {
             if let extracted = extractedText, presenter.translation == nil {
                 Divider()
                 VStack(alignment: .leading, spacing: Design.Space.snug) {
-                    Text("Extracted Text")
+                    Text(loc("Extracted Text"))
                         .font(Design.Typography.meta)
                         .foregroundStyle(Color(nsColor: .secondaryLabelColor))
                     ScrollView {
@@ -408,7 +408,7 @@ struct PreviewView: View {
                     Text(hex)
                         .font(.title3.monospaced().weight(.medium))
                         .textSelection(.enabled)
-                    Text("RGB \(rgbDescription(of: color))")
+                    Text(loc("RGB %@", rgbDescription(of: color)))
                         .font(.callout.monospacedDigit())
                         .foregroundStyle(Color(nsColor: .secondaryLabelColor))
                         .textSelection(.enabled)
@@ -454,7 +454,7 @@ struct PreviewView: View {
                 .font(.system(size: 22, weight: .light))
                 .symbolRenderingMode(.hierarchical)
                 .accessibilityHidden(true)
-            Text("Nothing to preview")
+            Text(loc("Nothing to preview"))
                 .font(Design.Typography.meta)
         }
         .foregroundStyle(Color(nsColor: .secondaryLabelColor))
@@ -465,9 +465,9 @@ struct PreviewView: View {
 
     private func label(for kind: DetectedKind) -> String {
         switch kind {
-        case .email: return "Email"
+        case .email: return loc("Email")
         case .url: return "URL"
-        case .phone: return "Phone"
+        case .phone: return loc("Phone")
         case .jwt: return "JWT"
         case .json: return "JSON"
         }

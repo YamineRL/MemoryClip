@@ -483,10 +483,10 @@ final class PanelController: NSObject, NSWindowDelegate {
     private func presentNoteFailure(_ error: NoteError) {
         let alert = NSAlert()
         alert.alertStyle = .warning
-        alert.messageText = "MemoryClip could not save the note."
-        alert.informativeText = error.errorDescription ?? "Unknown error."
-        alert.addButton(withTitle: "OK")
-        alert.addButton(withTitle: "Open Settings…")
+        alert.messageText = loc("MemoryClip could not save the note.")
+        alert.informativeText = error.errorDescription ?? loc("Unknown error.")
+        alert.addButton(withTitle: loc("OK"))
+        alert.addButton(withTitle: loc("Open Settings…"))
         NSApp.activate()
         if alert.runModal() == .alertSecondButtonReturn {
             openSettingsWindow()
@@ -504,7 +504,7 @@ final class PanelController: NSObject, NSWindowDelegate {
     func show() {
         Task { @MainActor in
             // Touch ID / passcode gate; fails open when disabled/unavailable.
-            guard await AppLockService.shared.gate(reason: "Unlock MemoryClip clipboard history") else { return }
+            guard await AppLockService.shared.gate(reason: loc("Unlock MemoryClip clipboard history")) else { return }
 
             self.ensurePanel()
             guard let panel = self.panel else { return }

@@ -38,7 +38,7 @@ final class HistoryExportController {
     func exportHistory(asCSV: Bool) {
         NSApp.activate()
         // Bulk disclosure of the entire history — always behind the lock.
-        authenticating(reason: "Unlock MemoryClip to export clipboard history") { [weak self] in
+        authenticating(reason: loc("Unlock MemoryClip to export clipboard history")) { [weak self] in
             self?.performExport(asCSV: asCSV)
         }
     }
@@ -103,14 +103,14 @@ final class HistoryExportController {
             try? FileManager.default.removeItem(at: url)
             log.error("Export failed to fetch history: \(error.localizedDescription)")
             presentError(
-                message: "Could not read the clipboard history.",
+                message: loc("Could not read the clipboard history."),
                 informative: error.localizedDescription
             )
         } catch {
             try? FileManager.default.removeItem(at: url)
             log.error("Export failed: \(error.localizedDescription)")
             presentError(
-                message: "Export failed.",
+                message: loc("Export failed."),
                 informative: error.localizedDescription
             )
         }
@@ -179,19 +179,16 @@ final class HistoryExportController {
     private func confirmExport(asCSV: Bool) -> Bool {
         let alert = NSAlert()
         alert.alertStyle = .warning
-        alert.messageText = "Export your entire clipboard history?"
+        alert.messageText = loc("Export your entire clipboard history?")
         let payload = asCSV
-            ? "every clip's text, source app and timestamps"
-            : "every clip's text, source app, timestamps and Base64 copies of image and rich-text clips"
-        alert.informativeText = """
-            The file is UNENCRYPTED plain text containing \(payload) — including any passwords, \
-            tokens or other secrets you have copied.
-
-            MemoryClip writes it readable by your user account only, but anyone who can open the file \
-            can read your whole history. Store it somewhere you trust, or delete it when done.
-            """
-        alert.addButton(withTitle: "Export…")
-        alert.addButton(withTitle: "Cancel")
+            ? loc("every clip's text, source app and timestamps")
+            : loc("every clip's text, source app, timestamps and Base64 copies of image and rich-text clips")
+        alert.informativeText = loc(
+            "The file is UNENCRYPTED plain text containing %@ — including any passwords, tokens or other secrets you have copied.\n\nMemoryClip writes it readable by your user account only, but anyone who can open the file can read your whole history. Store it somewhere you trust, or delete it when done.",
+            payload
+        )
+        alert.addButton(withTitle: loc("Export…"))
+        alert.addButton(withTitle: loc("Cancel"))
         return alert.runModal() == .alertFirstButtonReturn
     }
 
@@ -201,7 +198,7 @@ final class HistoryExportController {
         alert.alertStyle = .warning
         alert.messageText = message
         alert.informativeText = informative
-        alert.addButton(withTitle: "OK")
+        alert.addButton(withTitle: loc("OK"))
         alert.runModal()
     }
 }

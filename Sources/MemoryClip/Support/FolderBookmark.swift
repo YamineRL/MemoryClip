@@ -31,7 +31,7 @@ enum FolderBookmark {
         panel.canChooseFiles = false
         panel.allowsMultipleSelection = false
         panel.canCreateDirectories = true
-        panel.prompt = "Choose"
+        panel.prompt = loc("Choose")
         panel.title = title
         panel.message = message
         if let suggestion { panel.directoryURL = suggestion }

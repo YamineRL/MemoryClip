@@ -103,53 +103,53 @@ struct ClipCardView: View {
         .onHover { isHovering = $0 }
         .task(id: contentKey) { await refreshCalc() }
         .contextMenu {
-            Button("Paste") { onPaste(false) }
-            Button("Paste as Plain Text") { onPaste(true) }
-            Button("Copy Only") { onCopyOnly() }
+            Button(loc("Paste")) { onPaste(false) }
+            Button(loc("Paste as Plain Text")) { onPaste(true) }
+            Button(loc("Copy Only")) { onCopyOnly() }
             Divider()
             if item.kind == .link {
-                Button("Show QR Code") { onShowQR() }
+                Button(loc("Show QR Code")) { onShowQR() }
             }
             if extractedText != nil {
-                Button("Copy Extracted Text") { onCopyExtractedText() }
+                Button(loc("Copy Extracted Text")) { onCopyExtractedText() }
             }
             if isTextBearing {
-                Menu("Transform") {
+                Menu(loc("Transform")) {
                     ForEach(Transform.allCases) { transform in
                         Button(transform.label) { onTransform(transform) }
                     }
                 }
             }
             if item.isScreenshot {
-                Button("Reveal in Finder") { onRevealInFinder() }
+                Button(loc("Reveal in Finder")) { onRevealInFinder() }
             }
             if canSaveNote {
-                Button(item.notePath == nil ? "Save as Note" : "Update Note") { onSaveNote() }
+                Button(item.notePath == nil ? loc("Save as Note") : loc("Update Note")) { onSaveNote() }
             }
             if item.notePath != nil {
-                Button("Open Note") { onOpenNote() }
+                Button(loc("Open Note")) { onOpenNote() }
             }
             Divider()
-            Button(queuePosition == nil ? "Add to Queue" : "Remove from Queue") { onToggleQueue() }
-            Button(item.isPinned ? "Unpin" : "Pin") { togglePinned() }
-            Button("Delete", role: .destructive) { deleteItem() }
+            Button(queuePosition == nil ? loc("Add to Queue") : loc("Remove from Queue")) { onToggleQueue() }
+            Button(item.isPinned ? loc("Unpin") : loc("Pin")) { togglePinned() }
+            Button(loc("Delete"), role: .destructive) { deleteItem() }
         }
         // One element per card: the default leaf-by-leaf exposure made a card
         // an unlabelled pile of glyphs.
         .accessibilityElement(children: .combine)
         .accessibilityLabel(accessibilityLabel)
         .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
-        .accessibilityAction(named: item.isPinned ? "Unpin" : "Pin") { togglePinned() }
-        .accessibilityAction(named: "Delete") { deleteItem() }
-        .accessibilityAction(named: queuePosition == nil ? "Add to Queue" : "Remove from Queue") {
+        .accessibilityAction(named: item.isPinned ? loc("Unpin") : loc("Pin")) { togglePinned() }
+        .accessibilityAction(named: loc("Delete")) { deleteItem() }
+        .accessibilityAction(named: queuePosition == nil ? loc("Add to Queue") : loc("Remove from Queue")) {
             onToggleQueue()
         }
         .accessibilityActions {
             if canSaveNote {
-                Button(item.notePath == nil ? "Save as Note" : "Update Note") { onSaveNote() }
+                Button(item.notePath == nil ? loc("Save as Note") : loc("Update Note")) { onSaveNote() }
             }
             if item.notePath != nil {
-                Button("Open Note") { onOpenNote() }
+                Button(loc("Open Note")) { onOpenNote() }
             }
         }
         .accessibilityActions {
@@ -159,12 +159,12 @@ struct ClipCardView: View {
                 }
             }
             if item.kind == .link {
-                Button("Show QR Code") { onShowQR() }
+                Button(loc("Show QR Code")) { onShowQR() }
             }
             if extractedText != nil {
-                Button("Copy Extracted Text") { onCopyExtractedText() }
+                Button(loc("Copy Extracted Text")) { onCopyExtractedText() }
             }
-            Button("Copy Only") { onCopyOnly() }
+            Button(loc("Copy Only")) { onCopyOnly() }
         }
     }
 
@@ -220,10 +220,10 @@ struct ClipCardView: View {
             HStack(spacing: Design.Space.hair) {
                 cardActionButton(
                     systemImage: item.isPinned ? "pin.slash" : "pin",
-                    label: item.isPinned ? "Unpin" : "Pin",
+                    label: item.isPinned ? loc("Unpin") : loc("Pin"),
                     action: togglePinned
                 )
-                cardActionButton(systemImage: "trash", label: "Delete", action: deleteItem)
+                cardActionButton(systemImage: "trash", label: loc("Delete"), action: deleteItem)
             }
         } else {
             HStack(spacing: Design.Space.tight) {
@@ -235,7 +235,7 @@ struct ClipCardView: View {
                         .foregroundStyle(Design.Palette.onAccent)
                         .frame(width: Design.Size.queueBadge, height: Design.Size.queueBadge)
                         .background(Circle().fill(Design.Palette.accent))
-                        .help("Queued at position \(queuePosition)")
+                        .help(loc("Queued at position %d", queuePosition))
                 }
                 if item.isPinned {
                     Image(systemName: "pin.fill")
@@ -274,7 +274,7 @@ struct ClipCardView: View {
 
     private var appName: String {
         let name = (item.sourceAppName ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-        return name.isEmpty ? "Unknown" : name
+        return name.isEmpty ? loc("Unknown") : name
     }
 
     private var kindSymbol: String {
@@ -447,28 +447,28 @@ struct ClipCardView: View {
         // Checked before the kind switch: a screenshot IS a file clip, and
         // "1 file" is the least informative thing the row could say about it.
         if item.isScreenshot {
-            if noted { return "Screenshot · noted" }
-            if !(item.ocrText ?? "").isEmpty { return "Screenshot · text found" }
-            return "Screenshot"
+            if noted { return loc("Screenshot · noted") }
+            if !(item.ocrText ?? "").isEmpty { return loc("Screenshot · text found") }
+            return loc("Screenshot")
         }
         switch item.kind {
         case .file:
             let count = item.fileURLStrings.count
-            return count == 1 ? "1 file" : "\(count) files"
+            return count == 1 ? loc("1 file") : loc("%d files", count)
         case .color:
-            return item.colorHex ?? "Color"
+            return item.colorHex ?? loc("Color")
         case .image:
-            if noted { return "Image · noted" }
+            if noted { return loc("Image · noted") }
             if let ocr = item.ocrText, !ocr.isEmpty {
-                return "Image · text found"
+                return loc("Image · text found")
             }
-            return "Image"
+            return loc("Image")
         default:
             let count = summaryText.count
             let characters = count == 1
-                ? "1 character"
-                : "\(count.formatted(.number.grouping(.automatic))) characters"
-            return noted ? "\(characters) · noted" : characters
+                ? loc("1 character")
+                : loc("%@ characters", count.formatted(.number.grouping(.automatic)))
+            return noted ? loc("%@ · noted", characters) : characters
         }
     }
 

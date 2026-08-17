@@ -20,15 +20,15 @@ enum Transform: String, CaseIterable, Identifiable, Sendable {
         switch self {
         case .uppercased: "UPPERCASE"
         case .lowercased: "lowercase"
-        case .titleCase: "Title Case"
-        case .jsonFormat: "Format JSON"
-        case .jsonMinify: "Minify JSON"
-        case .base64Encode: "Base64 Encode"
-        case .base64Decode: "Base64 Decode"
-        case .urlEncode: "URL Encode"
-        case .urlDecode: "URL Decode"
-        case .sortLines: "Sort Lines"
-        case .dedupeLines: "Deduplicate Lines"
+        case .titleCase: loc("Title Case")
+        case .jsonFormat: loc("Format JSON")
+        case .jsonMinify: loc("Minify JSON")
+        case .base64Encode: loc("Base64 Encode")
+        case .base64Decode: loc("Base64 Decode")
+        case .urlEncode: loc("URL Encode")
+        case .urlDecode: loc("URL Decode")
+        case .sortLines: loc("Sort Lines")
+        case .dedupeLines: loc("Deduplicate Lines")
         }
     }
 

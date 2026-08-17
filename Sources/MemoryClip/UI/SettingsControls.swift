@@ -136,19 +136,19 @@ struct LaunchAtLoginToggle: View {
             // same way by both windows.
             HStack(spacing: Design.Space.normal) {
                 Label {
-                    Text("Launch at login")
+                    Text(loc("Launch at login"))
                 } icon: {
                     SettingsIcon(symbol: "power", tint: Color(nsColor: .systemGreen))
                 }
                 Spacer(minLength: Design.Space.normal)
-                Toggle("Launch at login", isOn: launchAtLoginBinding)
+                Toggle(loc("Launch at login"), isOn: launchAtLoginBinding)
                     .labelsHidden()
             }
             if let launchAtLoginError {
                 SettingsCallout(text: launchAtLoginError)
             }
             if showsHint {
-                SettingsHint("MemoryClip runs as a menu-bar app: no Dock icon, no window until you open the panel.")
+                SettingsHint(loc("MemoryClip runs as a menu-bar app: no Dock icon, no window until you open the panel."))
             }
         }
     }
@@ -185,7 +185,7 @@ struct LaunchAtLoginToggle: View {
             bundlePath.hasPrefix("/Applications/")
             || bundlePath.hasPrefix(NSHomeDirectory() + "/Applications/")
         if !installed {
-            return "Launch at login needs MemoryClip in your Applications folder. Move MemoryClip.app there, reopen it, and try again."
+            return loc("Launch at login needs MemoryClip in your Applications folder. Move MemoryClip.app there, reopen it, and try again.")
         }
         return error.localizedDescription
     }
@@ -244,7 +244,7 @@ struct NoteDestinationSetup: View {
                 }
             } label: {
                 Label {
-                    Text("Write notes to")
+                    Text(loc("Write notes to"))
                 } icon: {
                     SettingsIcon(symbol: "square.and.arrow.down.fill", tint: Color(nsColor: .systemTeal))
                 }
@@ -272,8 +272,8 @@ struct NoteDestinationSetup: View {
         HStack(spacing: Design.Space.normal) {
             Label {
                 VStack(alignment: .leading, spacing: Design.Space.hair) {
-                    Text("Folder")
-                    Text(vault?.path(percentEncoded: false) ?? "Not chosen yet")
+                    Text(loc("Folder"))
+                    Text(vault?.path(percentEncoded: false) ?? loc("Not chosen yet"))
                         .font(.caption)
                         .foregroundStyle(Color(nsColor: .secondaryLabelColor))
                         .lineLimit(1)
@@ -288,15 +288,15 @@ struct NoteDestinationSetup: View {
             // button several hundred points left the moment one was picked.
             // Pinned this way the button holds still and the path truncates.
             .frame(maxWidth: .infinity, alignment: .leading)
-            Button("Choose…") { chooseVault() }
+            Button(loc("Choose…")) { chooseVault() }
         }
         if showsDetail {
-            Toggle("Sort notes into folders by date", isOn: $dateFolders)
-            Toggle("Copy the screenshot into the folder", isOn: $copyAttachments)
+            Toggle(loc("Sort notes into folders by date"), isOn: $dateFolders)
+            Toggle(loc("Copy the screenshot into the folder"), isOn: $copyAttachments)
             if copyAttachments {
                 HStack(spacing: Design.Space.normal) {
-                    Text("Attachments subfolder")
-                    TextField("Attachments subfolder", text: $attachmentFolder)
+                    Text(loc("Attachments subfolder"))
+                    TextField(loc("Attachments subfolder"), text: $attachmentFolder)
                         .labelsHidden()
                         // Fills the rest of the row, the way a field labelled
                         // by an enclosing Form does.
@@ -304,9 +304,9 @@ struct NoteDestinationSetup: View {
                 }
             }
             MarkdownCompatibilityGuide(copiesAttachments: copyAttachments)
-            SettingsHint("Plain Markdown files with YAML front matter — an Obsidian vault, or anything else that reads .md off disk. Copying the screenshot in is what lets the note embed it, and means the note survives you clearing out your Desktop.\n\nSorting by date files each note under a folder like 26-03 March/16, so a folder you have kept for years is still something you can walk through. The file name keeps its own timestamp either way, and notes you have already saved stay where they are — turning this on or off never moves anything. Screenshots always go to the one attachments folder, since an embed finds them anywhere in the vault.")
+            SettingsHint(loc("Plain Markdown files with YAML front matter — an Obsidian vault, or anything else that reads .md off disk. Copying the screenshot in is what lets the note embed it, and means the note survives you clearing out your Desktop.\n\nSorting by date files each note under a folder like 26-03 March/16, so a folder you have kept for years is still something you can walk through. The file name keeps its own timestamp either way, and notes you have already saved stay where they are — turning this on or off never moves anything. Screenshots always go to the one attachments folder, since an embed finds them anywhere in the vault."))
         } else {
-            SettingsHint("Plain Markdown files with YAML front matter — an Obsidian vault, or anything else that reads .md off disk. Choosing the folder here is also what grants MemoryClip access to it.")
+            SettingsHint(loc("Plain Markdown files with YAML front matter — an Obsidian vault, or anything else that reads .md off disk. Choosing the folder here is also what grants MemoryClip access to it."))
         }
     }
 
@@ -317,13 +317,13 @@ struct NoteDestinationSetup: View {
         // and dropped everywhere else, so in the tour — a plain stack — the
         // field arrived with nothing saying what it was.
         HStack(spacing: Design.Space.normal) {
-            Text("Notes folder")
-            TextField("Notes folder", text: $notesAppFolder)
+            Text(loc("Notes folder"))
+            TextField(loc("Notes folder"), text: $notesAppFolder)
                 .labelsHidden()
                 .frame(maxWidth: .infinity)
         }
         SettingsCallout(
-            text: "Notes is the one destination that needs a permission: macOS will ask to let MemoryClip control it the first time. The screenshot goes in as a link — Notes does not accept an image through automation.",
+            text: loc("Notes is the one destination that needs a permission: macOS will ask to let MemoryClip control it the first time. The screenshot goes in as a link — Notes does not accept an image through automation."),
             symbol: "lock.fill",
             tint: Color(nsColor: .systemOrange)
         )
@@ -332,19 +332,19 @@ struct NoteDestinationSetup: View {
     @ViewBuilder
     private var shortcutOptions: some View {
         HStack(spacing: Design.Space.normal) {
-            Text("Shortcut name")
-            TextField("Shortcut name", text: $shortcutName)
+            Text(loc("Shortcut name"))
+            TextField(loc("Shortcut name"), text: $shortcutName)
                 .labelsHidden()
                 .frame(maxWidth: .infinity)
         }
-        SettingsHint("MemoryClip runs this Shortcut with the note as its input, so anything Shortcuts can reach — Bear, Things, DEVONthink, a folder in iCloud — can be the destination.")
+        SettingsHint(loc("MemoryClip runs this Shortcut with the note as its input, so anything Shortcuts can reach — Bear, Things, DEVONthink, a folder in iCloud — can be the destination."))
     }
 
     private func chooseVault() {
         let chosen = FolderBookmark.choose(
             key: NoteSettingsKeys.vaultBookmark,
-            title: "Choose Note Folder",
-            message: "Pick the folder MemoryClip should write notes into — an Obsidian vault, or any folder of Markdown files.",
+            title: loc("Choose Note Folder"),
+            message: loc("Pick the folder MemoryClip should write notes into — an Obsidian vault, or any folder of Markdown files."),
             startingAt: vault
         )
         guard let chosen else { return }
@@ -389,7 +389,7 @@ private struct MarkdownCompatibilityGuide: View {
             .padding(.top, Design.Space.hair)
         } label: {
             Label {
-                Text("Which apps can open these notes?")
+                Text(loc("Which apps can open these notes?"))
             } icon: {
                 SettingsIcon(symbol: "questionmark.circle.fill", tint: Color(nsColor: .systemGray))
             }
@@ -400,17 +400,9 @@ private struct MarkdownCompatibilityGuide: View {
     /// can be a sentence rather than a paragraph.
     private var preamble: String {
         let embed = copiesAttachments
-            ? "The screenshot is copied in and embedded as ![[name.png]] — a wiki-style embed that Obsidian and Logseq resolve and most other editors show as plain text."
-            : "The screenshot is not copied, so the note links to it where it sits with an ordinary [Screenshot](file://…) link, which every Markdown editor renders."
-        return """
-            Every note is a plain .md file named "2026-08-13 1422 Title.md", with YAML \
-            front matter (title, created, source, tags, lang) above the text. Anything \
-            that reads Markdown off disk can open one; apps differ on two things only — \
-            whether they understand front matter, and whether they resolve wiki-style \
-            embeds.
-
-            \(embed)
-            """
+            ? loc("The screenshot is copied in and embedded as ![[name.png]] — a wiki-style embed that Obsidian and Logseq resolve and most other editors show as plain text.")
+            : loc("The screenshot is not copied, so the note links to it where it sits with an ordinary [Screenshot](file://…) link, which every Markdown editor renders.")
+        return loc("Every note is a plain .md file named \"2026-08-13 1422 Title.md\", with YAML front matter (title, created, source, tags, lang) above the text. Anything that reads Markdown off disk can open one; apps differ on two things only — whether they understand front matter, and whether they resolve wiki-style embeds.\n\n%@", embed)
     }
 
     private struct App: Identifiable {
@@ -422,29 +414,25 @@ private struct MarkdownCompatibilityGuide: View {
     private static let apps: [App] = [
         App(
             name: "Obsidian",
-            advice: "Pick your vault folder, or any folder inside it. Keep \"Copy the screenshot into the folder\" on — that is what makes the embed resolve. Front matter shows up as note properties, so tags work as tags and you can query lang, source and created from Dataview."
+            advice: loc("Pick your vault folder, or any folder inside it. Keep \"Copy the screenshot into the folder\" on — that is what makes the embed resolve. Front matter shows up as note properties, so tags work as tags and you can query lang, source and created from Dataview.")
         ),
         App(
             name: "Logseq",
-            advice: "Pick the \"pages\" folder inside your graph, and set the attachments subfolder to \"assets\" — the folder Logseq keeps its files in. It reads front matter, and re-indexes new files when the graph is reopened."
+            advice: loc("Pick the \"pages\" folder inside your graph, and set the attachments subfolder to \"assets\" — the folder Logseq keeps its files in. It reads front matter, and re-indexes new files when the graph is reopened.")
         ),
         App(
             name: "iA Writer, Typora, Zettlr, VS Code",
-            advice: "Pick any folder these already watch. They render standard Markdown, so turn \"Copy the screenshot into the folder\" off and the note links to the screenshot instead of embedding it — an embed they cannot resolve shows up as literal ![[…]] text."
+            advice: loc("Pick any folder these already watch. They render standard Markdown, so turn \"Copy the screenshot into the folder\" off and the note links to the screenshot instead of embedding it — an embed they cannot resolve shows up as literal ![[…]] text.")
         ),
         App(
             name: "DEVONthink",
-            advice: "Pick any folder, then index it (File → Index Files and Folders). Indexed notes stay files on disk, so MemoryClip can still update one in place."
+            advice: loc("Pick any folder, then index it (File → Index Files and Folders). Indexed notes stay files on disk, so MemoryClip can still update one in place.")
         ),
         App(
             name: "iCloud Drive, Dropbox, Syncthing",
-            advice: "A synced folder works like any other. Notes are written whole, so a half-written file is never what syncs."
+            advice: loc("A synced folder works like any other. Notes are written whole, so a half-written file is never what syncs.")
         ),
     ]
 
-    private static let elsewhere = """
-        Bear, Craft, Notion and Things do not keep notes as files. Use the Shortcut \
-        destination for those — MemoryClip hands the note to a Shortcut, which can put it \
-        anywhere Shortcuts reaches. For Apple Notes, use the Notes destination.
-        """
+    private static let elsewhere = loc("Bear, Craft, Notion and Things do not keep notes as files. Use the Shortcut destination for those — MemoryClip hands the note to a Shortcut, which can put it anywhere Shortcuts reaches. For Apple Notes, use the Notes destination.")
 }

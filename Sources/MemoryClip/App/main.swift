@@ -35,7 +35,7 @@ enum MainMenu {
         let menu = NSMenu(title: "MemoryClip")
 
         let settings = NSMenuItem(
-            title: "Settings…",
+            title: loc("Settings…"),
             action: #selector(MenuActions.openSettings),
             keyEquivalent: ","
         )
@@ -45,10 +45,10 @@ enum MainMenu {
         menu.addItem(.separator())
 
         menu.addItem(
-            NSMenuItem(title: "Hide MemoryClip", action: #selector(NSApplication.hide(_:)), keyEquivalent: "h")
+            NSMenuItem(title: loc("Hide MemoryClip"), action: #selector(NSApplication.hide(_:)), keyEquivalent: "h")
         )
         menu.addItem(
-            NSMenuItem(title: "Quit MemoryClip", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+            NSMenuItem(title: loc("Quit MemoryClip"), action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         )
 
         item.submenu = menu
@@ -71,9 +71,9 @@ enum MainMenu {
     @MainActor
     private static func windowMenuItem() -> NSMenuItem {
         let item = NSMenuItem()
-        let menu = NSMenu(title: "Window")
+        let menu = NSMenu(title: loc("Window"))
         menu.addItem(
-            NSMenuItem(title: "Close", action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w")
+            NSMenuItem(title: loc("Close"), action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w")
         )
         item.submenu = menu
         return item
@@ -82,17 +82,17 @@ enum MainMenu {
     @MainActor
     private static func editMenuItem() -> NSMenuItem {
         let item = NSMenuItem()
-        let menu = NSMenu(title: "Edit")
+        let menu = NSMenu(title: loc("Edit"))
 
-        menu.addItem(NSMenuItem(title: "Undo", action: Selector(("undo:")), keyEquivalent: "z"))
-        let redo = NSMenuItem(title: "Redo", action: Selector(("redo:")), keyEquivalent: "z")
+        menu.addItem(NSMenuItem(title: loc("Undo"), action: Selector(("undo:")), keyEquivalent: "z"))
+        let redo = NSMenuItem(title: loc("Redo"), action: Selector(("redo:")), keyEquivalent: "z")
         redo.keyEquivalentModifierMask = [.command, .shift]
         menu.addItem(redo)
         menu.addItem(.separator())
-        menu.addItem(NSMenuItem(title: "Cut", action: #selector(NSText.cut(_:)), keyEquivalent: "x"))
-        menu.addItem(NSMenuItem(title: "Copy", action: #selector(NSText.copy(_:)), keyEquivalent: "c"))
-        menu.addItem(NSMenuItem(title: "Paste", action: #selector(NSText.paste(_:)), keyEquivalent: "v"))
-        menu.addItem(NSMenuItem(title: "Select All", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a"))
+        menu.addItem(NSMenuItem(title: loc("Cut"), action: #selector(NSText.cut(_:)), keyEquivalent: "x"))
+        menu.addItem(NSMenuItem(title: loc("Copy"), action: #selector(NSText.copy(_:)), keyEquivalent: "c"))
+        menu.addItem(NSMenuItem(title: loc("Paste"), action: #selector(NSText.paste(_:)), keyEquivalent: "v"))
+        menu.addItem(NSMenuItem(title: loc("Select All"), action: #selector(NSText.selectAll(_:)), keyEquivalent: "a"))
 
         item.submenu = menu
         return item

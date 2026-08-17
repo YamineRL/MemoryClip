@@ -227,16 +227,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func recoverStore(after error: Error) -> ClipStore? {
         let alert = NSAlert()
         alert.alertStyle = .critical
-        alert.messageText = "MemoryClip could not open its clipboard history."
-        alert.informativeText = """
-            \(error.localizedDescription)
-
-            You can move the damaged history aside and start a new one (the \
-            old files are kept, not deleted), or run this session without \
-            saving anything to disk.
-            """
-        alert.addButton(withTitle: "Reset History")
-        alert.addButton(withTitle: "Run Without Saving")
+        alert.messageText = loc("MemoryClip could not open its clipboard history.")
+        alert.informativeText = loc(
+            "%@\n\nYou can move the damaged history aside and start a new one (the old files are kept, not deleted), or run this session without saving anything to disk.",
+            error.localizedDescription
+        )
+        alert.addButton(withTitle: loc("Reset History"))
+        alert.addButton(withTitle: loc("Run Without Saving"))
 
         NSApp.activate()
         if alert.runModal() == .alertFirstButtonReturn {

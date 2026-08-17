@@ -64,94 +64,94 @@ enum OnboardingFlow {
         OnboardingStep(
             id: "welcome",
             symbol: "clipboard",
-            title: "Welcome to MemoryClip",
-            subtitle: "A menu-bar clipboard history for macOS.",
+            title: loc("Welcome to MemoryClip"),
+            subtitle: loc("A menu-bar clipboard history for macOS."),
             bullets: [
-                "Everything you copy — text, rich text, images, files, links, hex colors — is kept in a local history.",
-                "MemoryClip lives in the menu bar (no Dock icon) and starts capturing as soon as it launches.",
-                "Identical re-copies are deduplicated; old clips age out by count and by age (Settings → History).",
+                loc("Everything you copy — text, rich text, images, files, links, hex colors — is kept in a local history."),
+                loc("MemoryClip lives in the menu bar (no Dock icon) and starts capturing as soon as it launches."),
+                loc("Identical re-copies are deduplicated; old clips age out by count and by age (Settings → History)."),
             ],
             setup: .launchAtLogin
         ),
         OnboardingStep(
             id: "panel",
             symbol: "command",
-            title: "Open the panel with ⇧⌘V",
-            subtitle: "The global hotkey is the main way in.",
+            title: loc("Open the panel with ⇧⌘V"),
+            subtitle: loc("The global hotkey is the main way in."),
             bullets: [
-                "Press ⇧⌘V anywhere to toggle the clip panel; press it again (or Esc) to close.",
-                "The shortcut is rebindable in Settings → Shortcuts.",
-                "You can also click the clipboard glyph in the menu bar and choose “Open MemoryClip”.",
+                loc("Press ⇧⌘V anywhere to toggle the clip panel; press it again (or Esc) to close."),
+                loc("The shortcut is rebindable in Settings → Shortcuts."),
+                loc("You can also click the clipboard glyph in the menu bar and choose “Open MemoryClip”."),
             ]
         ),
         OnboardingStep(
             id: "keyboard",
             symbol: "keyboard",
-            title: "Paste without the mouse",
-            subtitle: "The panel is keyboard-first: the search field always has focus.",
+            title: loc("Paste without the mouse"),
+            subtitle: loc("The panel is keyboard-first: the search field always has focus."),
             bullets: [
-                "Type to search across text, OCR text, colors, file names and source app; filter chips narrow by type or by the app you copied from.",
-                "↑/↓ move the selection, Return pastes, ⇧Return pastes as plain text.",
-                "⌘1…⌘9 instantly paste the first nine results.",
-                "Space opens the preview pane, which also offers text transforms (case, JSON, Base64, URL encode, sort/dedupe); pressing it again on a picture or a file opens Quick Look full size.",
-                "Pin a clip from its row button or context menu — pinned clips are never removed automatically.",
+                loc("Type to search across text, OCR text, colors, file names and source app; filter chips narrow by type or by the app you copied from."),
+                loc("↑/↓ move the selection, Return pastes, ⇧Return pastes as plain text."),
+                loc("⌘1…⌘9 instantly paste the first nine results."),
+                loc("Space opens the preview pane, which also offers text transforms (case, JSON, Base64, URL encode, sort/dedupe); pressing it again on a picture or a file opens Quick Look full size."),
+                loc("Pin a clip from its row button or context menu — pinned clips are never removed automatically."),
             ]
         ),
         OnboardingStep(
             id: "menubar",
             symbol: "menubar.arrow.up.rectangle",
-            title: "The menu-bar dropdown",
-            subtitle: "For the clip you copied a moment ago.",
+            title: loc("The menu-bar dropdown"),
+            subtitle: loc("For the clip you copied a moment ago."),
             bullets: [
-                "The dropdown lists your last 5 clips — click one to paste it into the app you were just in.",
-                "“Pause Capture” stops recording until you resume; the menu-bar glyph changes to a pause symbol.",
-                "“Clear All History…” nukes everything (with a confirmation). Exporting your history as JSON or CSV lives in Settings → History.",
+                loc("The dropdown lists your last 5 clips — click one to paste it into the app you were just in."),
+                loc("“Pause Capture” stops recording until you resume; the menu-bar glyph changes to a pause symbol."),
+                loc("“Clear All History…” nukes everything (with a confirmation). Exporting your history as JSON or CSV lives in Settings → History."),
             ]
         ),
         OnboardingStep(
             id: "privacy",
             symbol: "lock.shield",
-            title: "Private by construction",
-            subtitle: "Fully on-device, permission-minimal.",
+            title: loc("Private by construction"),
+            subtitle: loc("Fully on-device, permission-minimal."),
             bullets: [
-                "Zero network calls: no sync, no accounts, no analytics. History lives in a local database file.",
-                "No Accessibility, Screen Recording or Input Monitoring permission is required for capture, search or copy.",
-                "Sensitive content is skipped: Luhn-valid card numbers, copies made in password managers, and anything marked transient/concealed on the pasteboard.",
-                "Optional Touch ID lock before the panel opens (Settings → Privacy, off by default).",
+                loc("Zero network calls: no sync, no accounts, no analytics. History lives in a local database file."),
+                loc("No Accessibility, Screen Recording or Input Monitoring permission is required for capture, search or copy."),
+                loc("Sensitive content is skipped: Luhn-valid card numbers, copies made in password managers, and anything marked transient/concealed on the pasteboard."),
+                loc("Optional Touch ID lock before the panel opens (Settings → Privacy, off by default)."),
             ]
         ),
         OnboardingStep(
             id: "autopaste",
             symbol: "arrow.down.doc",
-            title: "About automatic paste",
-            subtitle: "The one place macOS can get in the way.",
+            title: loc("About automatic paste"),
+            subtitle: loc("The one place macOS can get in the way."),
             bullets: [
-                "After you pick a clip, MemoryClip simulates ⌘V into the previous app.",
-                "If macOS blocks synthetic key events (Accessibility not granted), the clip is still copied — just paste manually with ⌘V.",
-                "Granting MemoryClip Accessibility in System Settings → Privacy & Security makes auto-paste reliable everywhere; you can also turn the attempt off in Settings → General.",
+                loc("After you pick a clip, MemoryClip simulates ⌘V into the previous app."),
+                loc("If macOS blocks synthetic key events (Accessibility not granted), the clip is still copied — just paste manually with ⌘V."),
+                loc("Granting MemoryClip Accessibility in System Settings → Privacy & Security makes auto-paste reliable everywhere; you can also turn the attempt off in Settings → General."),
             ]
         ),
         OnboardingStep(
             id: "extras",
             symbol: "wand.and.stars",
-            title: "A few extras",
-            subtitle: "Available now, all on-device.",
+            title: loc("A few extras"),
+            subtitle: loc("Available now, all on-device."),
             bullets: [
-                "Image OCR: text inside screenshots is extracted with the Vision framework in the background, so you can find an image by the words in it.",
-                "Queue mode: mark several clips (context menu → Add to Queue), then paste them in order with one action.",
-                "Vim keys: opt in under Settings → Panel for j/k, gg/G, ⌃d/⌃u, o/⇧O, p, n, dd, q/⇧Q in normal mode; press / or i to search, Esc to go back to normal.",
+                loc("Image OCR: text inside screenshots is extracted with the Vision framework in the background, so you can find an image by the words in it."),
+                loc("Queue mode: mark several clips (context menu → Add to Queue), then paste them in order with one action."),
+                loc("Vim keys: opt in under Settings → Panel for j/k, gg/G, ⌃d/⌃u, o/⇧O, p, n, dd, q/⇧Q in normal mode; press / or i to search, Esc to go back to normal."),
             ]
         ),
         OnboardingStep(
             id: "notes",
             symbol: "note.text",
-            title: "Keep a clip as a note",
-            subtitle: "The one thing worth setting up now: where those notes land.",
+            title: loc("Keep a clip as a note"),
+            subtitle: loc("The one thing worth setting up now: where those notes land."),
             bullets: [
-                "Any clip carrying text — including the text read out of a screenshot — can be written out: select it in the panel and press ⌘S, or choose “Save as Note” from its context menu.",
-                "Where this Mac has Apple Intelligence, the on-device model gives the note a title, a summary and tags (Settings → Notes); text in another language is translated into English first (Settings → Translation). Both run here, and both are already on.",
-                "Choose a destination below. The Markdown folder is the default and starts out unset — until a folder is chosen, saving a note just tells you to choose one.",
-                "Screenshots can do this by themselves: Settings → Screenshots keeps new ones in your history, and Settings → Notes can write a note for every screenshot with enough text in it.",
+                loc("Any clip carrying text — including the text read out of a screenshot — can be written out: select it in the panel and press ⌘S, or choose “Save as Note” from its context menu."),
+                loc("Where this Mac has Apple Intelligence, the on-device model gives the note a title, a summary and tags (Settings → Notes); text in another language is translated into English first (Settings → Translation). Both run here, and both are already on."),
+                loc("Choose a destination below. The Markdown folder is the default and starts out unset — until a folder is chosen, saving a note just tells you to choose one."),
+                loc("Screenshots can do this by themselves: Settings → Screenshots keeps new ones in your history, and Settings → Notes can write a note for every screenshot with enough text in it."),
             ],
             setup: .noteDestination
         ),
@@ -326,20 +326,20 @@ struct OnboardingView: View {
             }
             .animation(Design.Motion.standard, value: index)
             .accessibilityElement(children: .ignore)
-            .accessibilityLabel("Step \(index + 1) of \(OnboardingFlow.count)")
+            .accessibilityLabel(loc("Step %d of %d", index + 1, OnboardingFlow.count))
 
             Spacer()
 
-            Button("Back") {
+            Button(loc("Back")) {
                 index = OnboardingFlow.previousIndex(before: index)
             }
             .disabled(OnboardingFlow.isFirst(index))
 
             if OnboardingFlow.isLast(index) {
-                Button("Done", action: onFinish)
+                Button(loc("Done"), action: onFinish)
                     .keyboardShortcut(.defaultAction)
             } else {
-                Button("Next") {
+                Button(loc("Next")) {
                     index = OnboardingFlow.nextIndex(after: index)
                 }
                 .keyboardShortcut(.defaultAction)

@@ -217,7 +217,7 @@ struct ClipTranslationResult: Equatable, Sendable {
     var accessibilityDescription: String {
         let source = LanguageDetector.displayName(forIdentifier: sourceLanguage)
         let target = LanguageDetector.displayName(forIdentifier: targetLanguage)
-        return "Translated from \(source) into \(target)"
+        return loc("Translated from %@ into %@", source, target)
     }
 }
 
