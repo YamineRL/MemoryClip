@@ -3,6 +3,7 @@
 dist/
 .DS_Store
 .qwen/
+.claude/
 
 # Generated icon intermediates (Resources/AppIcon.icns IS committed —
 # it is a build input for the .app bundle).

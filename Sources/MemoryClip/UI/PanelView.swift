@@ -1500,6 +1500,8 @@ private struct PreviewResizeHandle: View {
 
     /// The height the current drag started from; nil between drags.
     @State private var startHeight: CGFloat?
+    /// The pointer's screen y when the drag started; nil between drags.
+    @State private var startPointerY: CGFloat?
     @State private var isHovering = false
 
     var body: some View {
@@ -1524,15 +1526,24 @@ private struct PreviewResizeHandle: View {
         }
         .gesture(
             DragGesture(minimumDistance: 1)
-                .onChanged { value in
+                // Measured from the pointer's screen position, not the
+                // gesture's translation: the handle moves as the pane resizes,
+                // so a view-relative translation feeds its own result back in
+                // and the drag oscillates.
+                .onChanged { _ in
                     let start = startHeight ?? height
+                    let anchor = startPointerY ?? NSEvent.mouseLocation.y
                     startHeight = start
+                    startPointerY = anchor
                     onResize(PanelGeometry.clampPreviewHeight(
-                        start - value.translation.height,
+                        start + (NSEvent.mouseLocation.y - anchor),
                         ceiling: ceiling
                     ))
                 }
-                .onEnded { _ in startHeight = nil }
+                .onEnded { _ in
+                    startHeight = nil
+                    startPointerY = nil
+                }
         )
         .accessibilityElement()
         .accessibilityLabel(loc("Preview height"))
