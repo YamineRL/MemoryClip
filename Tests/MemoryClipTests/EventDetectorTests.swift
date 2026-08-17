@@ -138,6 +138,28 @@ final class EventDetectorTests: XCTestCase {
         XCTAssertEqual(event?.title, "Postmortem: the April outage")
     }
 
+    func testTrailingConnectorIsTrimmedOffTheTitle() {
+        // "Call with mehdi the 18 of Aug…" — the date match starts at "18",
+        // so striking it out leaves the article stranded at the end.
+        let event = detect("Call with mehdi the 18 of Aug 2026 at 12:55")
+        XCTAssertEqual(event?.title, "Call with mehdi")
+    }
+
+    func testTrailingConnectorsAreTrimmedRepeatedly() {
+        XCTAssertEqual(detect("Sync on the 20 August 2026 at 3:00 PM")?.title, "Sync")
+        XCTAssertEqual(detect("Review at 20 August 2026 at 3:00 PM")?.title, "Review")
+    }
+
+    func testAConnectorInsideTheTitleIsKept() {
+        let event = detect("Call with the design team\n20 August 2026 at 3:00 PM")
+        XCTAssertEqual(event?.title, "Call with the design team")
+    }
+
+    func testATitleThatIsOnlyAConnectorFallsBack() {
+        let event = detect("the 20 August 2026 at 3:00 PM", fallback: "Event")
+        XCTAssertEqual(event?.title, "Event")
+    }
+
     func testFallbackTitleIsUsedWhenNothingSurvives() {
         let event = detect("August 20, 2026 at 3:00 PM", fallback: "Screenshot")
         XCTAssertEqual(event?.title, "Screenshot")
@@ -161,6 +183,26 @@ final class EventDetectorTests: XCTestCase {
         ] {
             XCTAssertTrue(EventDetector.isMeetingURL(URL(string: host)!), host)
         }
+    }
+
+    func testMeetingSubdomainsCountWhateverTheService() {
+        // The named list can never be complete — a host whose first label
+        // says what it is counts on its own.
+        for host in [
+            "https://meet.proton.me/callurl",
+            "https://call.example.org/abc",
+            "https://video.acme.co/room/9",
+            "https://vc.example.com/x"
+        ] {
+            XCTAssertTrue(EventDetector.isMeetingURL(URL(string: host)!), host)
+        }
+    }
+
+    func testProtonCallIsAStrongSignal() {
+        let event = detect("Call with mehdi the 18 of Aug 2026 at 12:55 https://meet.proton.me/callurl")
+        XCTAssertEqual(event?.title, "Call with mehdi")
+        XCTAssertEqual(event?.meetingURL?.host(), "meet.proton.me")
+        XCTAssertEqual(event?.isStrongSignal, true, "a timed call with a meeting link must create on its own")
     }
 
     func testOrdinaryLinksAreNotMeetings() {
