@@ -13,6 +13,10 @@
   <a href="https://www.paypal.com/donate/?hosted_button_id=H8XWE3HUPKCME"><img src="https://img.shields.io/badge/Donate-PayPal-00457C?logo=paypal&amp;logoColor=white" alt="Donate with PayPal"></a>
 </p>
 
+<p align="center">
+  <a href="https://www.producthunt.com/products/memoryclip?embed=true&amp;utm_source=badge-featured&amp;utm_medium=badge&amp;utm_campaign=badge-memoryclip" target="_blank" rel="noopener noreferrer"><picture><source media="(prefers-color-scheme: dark)" srcset="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1225026&amp;theme=dark&amp;t=1786972607168"><img alt="MemoryClip - From clipboard to notes, calendar, and translation. | Product Hunt" width="250" height="54" src="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1225026&amp;theme=light&amp;t=1786972607168"></picture></a>
+</p>
+
 A local-first menu-bar clipboard manager for macOS: keyboard-first history of everything
 you copy. It also notices your screenshots, reads the text out of them — 30 languages,
 translated into English when it is not one you read — and turns one into a note in
