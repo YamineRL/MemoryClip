@@ -434,3 +434,8 @@ MemoryClip is inspired by [Deck](https://github.com/yuzeguitarist/Deck) — a
 **clean-room implementation**, containing **no Deck code**. Where the two diverge it is
 deliberate: the design notes in `DesignSystem.swift` and `ClipCardView.swift` record
 which of Deck's visual choices were kept and which were not.
+
+## Licence
+
+[Apache-2.0](LICENSE) — permissive, with an explicit patent grant. Copyright 2026
+MemoryClip.
