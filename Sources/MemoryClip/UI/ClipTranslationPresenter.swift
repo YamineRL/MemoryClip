@@ -16,6 +16,11 @@ final class ClipTranslationPresenter {
     private(set) var isTranslating = false
 
     private let runs: ClipTranslationRuns
+    /// Which refresh is the current one. A run outlives the refresh that
+    /// started it, so its partials and its answer both arrive at a pane that
+    /// may have moved on; anything from an earlier generation is dropped
+    /// rather than shown over what the pane holds now.
+    private var generation = 0
 
     init(runs: ClipTranslationRuns = .shared) {
         self.runs = runs
@@ -32,6 +37,8 @@ final class ClipTranslationPresenter {
         isEnabled: Bool,
         target: Locale.Language
     ) async {
+        generation += 1
+        let generation = self.generation
         translation = nil
         isTranslating = false
         guard !item.isDeleted else { return }
@@ -55,12 +62,22 @@ final class ClipTranslationPresenter {
             // The cancelled path used to return with the flag still set, and
             // a pane that spins for ever reads as a broken app rather than as
             // one that gave up.
-            defer { isTranslating = false }
+            defer { if self.generation == generation { isTranslating = false } }
 
-            let result = await runs.translation(for: request, of: item, in: context)
+            // Each chunk goes on screen as it lands, ahead of the answer.
+            let result = await runs.translation(for: request, of: item, in: context) { [weak self] partial in
+                guard let self, self.generation == generation else { return }
+                self.translation = partial
+            }
             // The answer belongs to the clip that was on screen when this
-            // started; a cancelled refresh is no longer looking at it.
-            guard !Task.isCancelled, let result else { return }
+            // started; a cancelled refresh is no longer looking at it, and
+            // takes whatever it had shown on the way with it.
+            guard self.generation == generation else { return }
+            guard !Task.isCancelled else {
+                translation = nil
+                return
+            }
+            guard let result else { return }
             translation = result
         }
     }

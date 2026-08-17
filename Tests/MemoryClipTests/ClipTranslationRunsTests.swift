@@ -44,7 +44,19 @@ private struct GatedTranslator: NoteTranslator {
     }
 
     func translate(_ text: String, from source: Locale.Language, to target: Locale.Language) async -> TranslatedText? {
+        await translate(text, from: source, to: target) { _ in }
+    }
+
+    func translate(
+        _ text: String,
+        from source: Locale.Language,
+        to target: Locale.Language,
+        onProgress: @escaping @MainActor @Sendable (String) -> Void
+    ) async -> TranslatedText? {
         await ledger.record(text)
+        // One chunk in before the gate, so a test can look at the pane while
+        // the rest is still coming.
+        await onProgress("Half of: \(text)")
         await gate.wait()
         // The real engine surfaces cancellation as a thrown error and returns
         // nil; this stands in for that.
@@ -258,6 +270,33 @@ final class ClipTranslationPresenterTests: XCTestCase {
         XCTAssertNil(presenter.translation)
         let asked = await ledger.texts.count
         XCTAssertEqual(asked, 0)
+    }
+
+    /// The reason for all of this: a clip long enough to take seconds shows
+    /// what has arrived while the rest is still coming, spinner and all.
+    func testAPartialTranslationIsShownWhileTheRestIsStillComing() async throws {
+        let task = refresh()
+        try await waitForPartial()
+
+        XCTAssertEqual(presenter.translation?.text, "Half of: \(chinese)")
+        XCTAssertEqual(presenter.translation?.sourceLanguage, "zh")
+        XCTAssertTrue(presenter.isTranslating, "the pane is not finished until the last chunk lands")
+        XCTAssertNil(item.cachedClipTranslation, "only the finished translation is kept on the clip")
+
+        await gate.open()
+        await task.value
+
+        XCTAssertFalse(presenter.isTranslating)
+        XCTAssertEqual(presenter.translation?.text, "English of: \(chinese)")
+        XCTAssertEqual(item.cachedClipTranslation?.text, "English of: \(chinese)")
+    }
+
+    private func waitForPartial() async throws {
+        for _ in 0..<200 {
+            if presenter.translation != nil { return }
+            try await Task.sleep(for: .milliseconds(5))
+        }
+        XCTFail("no partial translation ever reached the pane")
     }
 
     /// A clip translated before is shown at once, without the engine.

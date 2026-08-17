@@ -301,6 +301,108 @@ final class ClipTranslationServiceTests: XCTestCase {
     }
 }
 
+/// A translator that answers a chunk at a time, the way the engine does once
+/// a clip is cut up for it.
+private struct ChunkingTranslator: NoteTranslator {
+    func supportedLanguages() async -> [Locale.Language] { [] }
+    func readiness(for language: Locale.Language) async -> TranslationReadiness { .ready }
+
+    func translate(_ text: String, from language: Locale.Language) async -> TranslatedText? {
+        await translate(text, from: language, to: NoteTranslation.target)
+    }
+
+    func translate(_ text: String, from source: Locale.Language, to target: Locale.Language) async -> TranslatedText? {
+        await translate(text, from: source, to: target) { _ in }
+    }
+
+    func translate(
+        _ text: String,
+        from source: Locale.Language,
+        to target: Locale.Language,
+        onProgress: @escaping @MainActor @Sendable (String) -> Void
+    ) async -> TranslatedText? {
+        var sofar = ""
+        for chunk in NoteTranslation.chunks(text) {
+            sofar += "[\(chunk.text)]" + chunk.separator
+            await onProgress(sofar.trimmingCharacters(in: .whitespacesAndNewlines))
+        }
+        return TranslatedText(
+            text: sofar.trimmingCharacters(in: .whitespacesAndNewlines),
+            sourceLanguage: LanguageDetector.identifier(for: source)
+        )
+    }
+}
+
+/// Where the partial translations are collected, since they arrive on the main
+/// actor and the test reads them from off it.
+@MainActor
+private final class PartialLog {
+    private(set) var results: [ClipTranslationResult] = []
+    func add(_ result: ClipTranslationResult) { results.append(result) }
+}
+
+/// A long clip arriving a piece at a time instead of all at the end.
+@MainActor
+final class ClipTranslationProgressTests: XCTestCase {
+    private let longFrench = (0..<6)
+        .map { "Paragraphe \($0).\nLa réunion de mardi porte sur le budget, le calendrier et les nouvelles règles." }
+        .joined(separator: "\n\n")
+
+    private func request(isTruncated: Bool = false) -> ClipTranslationRequest {
+        ClipTranslationRequest(
+            text: longFrench,
+            isTruncated: isTruncated,
+            source: Locale.Language(identifier: "fr"),
+            target: germanTarget
+        )
+    }
+
+    /// What the pane is for: something to read before the whole clip is done.
+    /// Each partial is labelled like the finished translation and is longer
+    /// than the one before it, so the pane only ever grows.
+    func testPartialsArriveLabelledAndGrowing() async throws {
+        let log = PartialLog()
+        let service = ClipTranslationService(translator: ChunkingTranslator())
+
+        let translated = await service.translation(for: request()) { log.add($0) }
+        let result = try XCTUnwrap(translated)
+
+        XCTAssertGreaterThan(log.results.count, 1, "a clip this long must not arrive in one piece")
+        for partial in log.results {
+            XCTAssertEqual(partial.sourceLanguage, "fr")
+            XCTAssertEqual(partial.targetLanguage, "de")
+        }
+        XCTAssertEqual(log.results.map(\.text.count), log.results.map(\.text.count).sorted())
+        XCTAssertEqual(log.results.last?.text, result.text)
+    }
+
+    /// The marker says where the translation stopped, which is only true once
+    /// it has: a partial that carried it would be claiming the rest of the
+    /// clip is untranslatable rather than merely late.
+    func testOnlyTheFinishedTranslationCarriesTheTruncationMarker() async throws {
+        let log = PartialLog()
+        let service = ClipTranslationService(translator: ChunkingTranslator())
+
+        let translated = await service.translation(for: request(isTruncated: true)) { log.add($0) }
+        let result = try XCTUnwrap(translated)
+
+        XCTAssertTrue(result.text.hasSuffix(NoteTranslation.truncationMarker))
+        XCTAssertFalse(log.results.contains { $0.text.contains(NoteTranslation.truncationMarker) })
+    }
+
+    /// A translator that cannot deliver early still works: the note pipeline's
+    /// callers see exactly what they saw before.
+    func testATranslatorWithoutProgressReportsNothingUntilItIsDone() async throws {
+        let log = PartialLog()
+        let service = ClipTranslationService(translator: StubTranslator())
+
+        let result = await service.translation(for: request()) { log.add($0) }
+
+        XCTAssertTrue(log.results.isEmpty)
+        XCTAssertEqual(result?.text, "Translation of: \(longFrench)")
+    }
+}
+
 /// The settings and the cache columns behind them.
 @MainActor
 final class ClipTranslationSettingsTests: XCTestCase {
