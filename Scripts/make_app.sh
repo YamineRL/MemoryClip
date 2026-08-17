@@ -34,6 +34,9 @@ mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$BIN" "$APP/Contents/MacOS/MemoryClip"
 cp "Resources/Info.plist" "$APP/Contents/Info.plist"
 cp "$ICON" "$APP/Contents/Resources/AppIcon.icns"
+# FSL asks that the terms travel with any copy, and most copies of MemoryClip are
+# this bundle rather than the repository.
+cp "LICENSE" "$APP/Contents/Resources/LICENSE"
 
 # The string catalogue: Bundle.module resolves against Contents/Resources.
 BUNDLE="$(dirname "$BIN")/MemoryClip_MemoryClip.bundle"

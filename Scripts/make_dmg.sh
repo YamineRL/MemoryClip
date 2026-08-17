@@ -59,6 +59,7 @@ codesign --verify --deep --strict "$APP" \
 STAGE="$(mktemp -d "${TMPDIR:-/tmp}/memoryclip-dmg.XXXXXX")"
 cp -R "$APP" "$STAGE/MemoryClip.app" || die "could not stage MemoryClip.app"
 ln -s /Applications "$STAGE/Applications" || die "could not create /Applications symlink"
+cp "$ROOT/LICENSE" "$STAGE/LICENSE" || die "could not stage LICENSE"
 
 # --- 5. Build the image (idempotent: any previous DMG is replaced). ----------
 rm -f "$DMG"

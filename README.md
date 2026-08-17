@@ -437,9 +437,19 @@ which of Deck's visual choices were kept and which were not.
 
 ## Licence
 
-[PolyForm Noncommercial 1.0.0](LICENSE). Free for anyone using it for themselves — study
-it, change it, share it — and free for charities, schools and public institutions.
-**Any use by or for a business needs a licence from me**; open an issue to arrange one.
+[FSL-1.1-ALv2](LICENSE) — the Functional Source License, with Apache-2.0 as its future
+licence. Use it for anything you like, including your work at a company: read it, change
+it, build on it, pass it on. The one thing it withholds is competing use — making
+MemoryClip, or something with substantially the same functionality, available in a
+commercial product or service. Ask me first, by opening an issue.
 
-Source-available rather than open source: the noncommercial restriction is what the OSI
-definition rules out, so MemoryClip is not FOSS and does not claim to be.
+That restriction expires. **Every version becomes Apache-2.0 two years after its
+release**, on its own clock, so what is protected is always the current code and never
+the archive.
+
+Source-available rather than open source: a licence that withholds one field of use fails
+the OSI definition, so MemoryClip is not FOSS and does not claim to be. Contributions are
+welcome under [CONTRIBUTING.md](CONTRIBUTING.md).
+
+"MemoryClip" and the MemoryClip icon are unregistered trademarks. The licence covers the
+code, not the name: a build you distribute needs a name of its own.
