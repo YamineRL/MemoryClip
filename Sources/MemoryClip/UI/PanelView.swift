@@ -701,7 +701,8 @@ struct PanelContentView: View {
                     PreviewView(
                         item: item,
                         onTransform: { actions.applyTransform(item, $0) },
-                        onCopy: { actions.copyText(item, $0) }
+                        onCopy: { actions.copyText(item, $0) },
+                        paneHeight: resolvedPreviewHeight
                     )
                     .frame(height: resolvedPreviewHeight)
                 }
