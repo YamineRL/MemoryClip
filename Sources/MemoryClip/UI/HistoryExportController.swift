@@ -71,7 +71,11 @@ final class HistoryExportController {
     }
 
     private func performExport(asCSV: Bool) {
-        NSApp.activate()
+        // Reached through the Touch ID gate, which is another process's sheet:
+        // the cooperative `NSApp.activate()` that used to stand here can be
+        // refused, leaving the confirmation alert behind the Settings window
+        // that raised it — on an agent app with nothing in the Dock to click.
+        WindowFocus.restoreAfterSystemPrompt()
         // Nothing to export before `AppDelegate` has handed the store over;
         // better to do nothing than to write an empty file that reads as a
         // history with no clips in it.
