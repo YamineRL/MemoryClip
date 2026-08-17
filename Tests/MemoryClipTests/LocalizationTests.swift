@@ -47,7 +47,7 @@ final class LocalizationTests: XCTestCase {
             "General": "Général",
             "History": "Historique",
             "Privacy": "Confidentialité",
-            "Search clips": "Rechercher un élément",
+            "Search clips": "Rechercher un clip",
             "Reveal in Finder": "Afficher dans le Finder",
             "Launch at login": "Lancer au démarrage",
             "Delete entire clipboard history?": "Supprimer tout l’historique du presse-papiers\u{00A0}?",
@@ -60,7 +60,7 @@ final class LocalizationTests: XCTestCase {
     func testFormattedKeysSubstituteInFrench() async throws {
         let french = L10n.resolveBundle(code: "fr")
         let format = L10n.string("Keep up to %d clips", in: french)
-        XCTAssertEqual(String(format: format, locale: Locale(identifier: "fr"), 200), "Conserver jusqu’à 200 éléments")
+        XCTAssertEqual(String(format: format, locale: Locale(identifier: "fr"), 200), "Conserver jusqu’à 200 clips")
     }
 
     // MARK: Catalogue completeness
