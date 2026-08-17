@@ -379,3 +379,16 @@
 "%@ · in calendar" = "%@ · dans le calendrier";
 "MemoryClip could not add the event." = "MemoryClip n’a pas pu ajouter l’événement.";
 "Add the selected clip to the calendar" = "Ajouter le clip sélectionné au calendrier";
+"Calendar" = "Calendrier";
+"Adding events" = "Ajout d’événements";
+"Add events automatically" = "Ajouter les événements automatiquement";
+"An event is created on its own only when the clip names a time of day and either a meeting link or an address. A bare date — a deadline in a paragraph, an expiry notice, a headline — is left alone. Anything MemoryClip passes over you can still add yourself: select the clip in the panel and choose Add to Calendar." = "Un événement n’est créé de lui-même que si le clip indique une heure ainsi qu’un lien de réunion ou une adresse. Une simple date — une échéance au fil d’un paragraphe, un avis d’expiration, un titre d’article — est laissée de côté. Ce que MemoryClip laisse passer, vous pouvez toujours l’ajouter vous-même : sélectionnez le clip dans le panneau et choisissez Ajouter au calendrier.";
+"Tell me when an event is added" = "M’avertir lorsqu’un événement est ajouté";
+"The notification names the event and when it starts, and carries an Undo button that takes it straight back out of your calendar. Undo works while MemoryClip is running; after a quit, remove the event in Calendar like any other." = "La notification indique l’événement et son heure de début, et propose un bouton Annuler qui le retire aussitôt de votre calendrier. Annuler fonctionne tant que MemoryClip est ouvert ; après avoir quitté l’app, supprimez l’événement dans Calendrier comme n’importe quel autre.";
+"Events" = "Événements";
+"Events last %d minutes" = "Les événements durent %d minutes";
+"Used only when the clip names a start and no end. Text that gives both — \"3:00 PM – 4:00 PM\" — books exactly what it says." = "Utilisé uniquement lorsque le clip indique un début sans fin. Un texte qui donne les deux — « 15:00 – 16:00 » — réserve exactement ce qu’il annonce.";
+"macOS asks once, the first time an event is added. MemoryClip asks only for permission to add events: it cannot read your calendar, and so cannot offer you a list to pick from. Events go to whichever calendar you have set as the default for new events in Calendar." = "macOS pose la question une seule fois, lors du premier ajout d’événement. MemoryClip ne demande que l’autorisation d’ajouter des événements : il ne peut pas lire votre calendrier, et ne peut donc pas vous en proposer la liste. Les événements sont ajoutés au calendrier que vous avez défini par défaut pour les nouveaux événements dans Calendrier.";
+"Added to your %@ calendar" = "Ajouté à votre calendrier %@";
+"%@ — %@" = "%@ — %@";
+"Open in Calendar" = "Ouvrir dans Calendrier";

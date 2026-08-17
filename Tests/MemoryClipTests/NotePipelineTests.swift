@@ -302,7 +302,7 @@ final class NotePipelineTests: XCTestCase {
         let notes = NoteCoordinator(store: store, refiner: StubRefiner())
         let ocr = OCRCoordinator(store: store)
         // Exactly what AppDelegate wires up.
-        ocr.onRecognition = { [weak notes] in notes?.processPending() }
+        ocr.onRecognition = { [weak notes] _ in notes?.processPending() }
         ocr.processPending()
 
         var attempts = 0

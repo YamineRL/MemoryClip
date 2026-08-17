@@ -69,7 +69,14 @@ final class OCRCoordinator {
     ///
     /// Fired per batch rather than per drain so a long catch-up starts
     /// producing notes immediately instead of at the end of the backlog.
-    var onRecognition: (@MainActor () -> Void)?
+    ///
+    /// The clips that produced text are named rather than merely counted,
+    /// because the calendar's automatic path needs the clip and not just the
+    /// news: a screenshot has no text when it is captured, so this is the
+    /// first moment its appointment exists, and handing over the uuids is what
+    /// lets that path act on exactly those clips instead of re-reading
+    /// history. Refinement ignores the list and asks its own queue.
+    var onRecognition: (@MainActor ([UUID]) -> Void)?
 
     private let store: ClipStore
     private var task: Task<Void, Never>?
@@ -192,13 +199,13 @@ final class OCRCoordinator {
             guard !pending.isEmpty else { return false }
 
             let results = await Self.recognizeAll(pending, concurrency: Self.concurrency)
-            var recognizedAny = false
+            var recognized: [UUID] = []
             for (uuid, text) in results {
                 // ocrAttempted is set here even when text is nil, so a clip
                 // Vision could make nothing of is never re-queued forever.
                 store.applyOCR(text, toClipWith: uuid)
                 if let text {
-                    recognizedAny = true
+                    recognized.append(uuid)
                     log.notice("OCR extracted \(text.count) characters from an image clip")
                 }
             }
@@ -206,7 +213,7 @@ final class OCRCoordinator {
             // Only when there is text: a batch Vision made nothing of leaves
             // no clip pending refinement, so waking that stage would be a
             // query for an empty queue.
-            if recognizedAny { onRecognition?() }
+            if !recognized.isEmpty { onRecognition?(recognized) }
 
             // Anything skipped (OCR switched off, or cancelled, mid-batch)
             // is left pending on purpose: it is picked up when OCR is

@@ -21,6 +21,14 @@ private final class FakeEventSink: EventSink {
 
     var calendarTitle = "Work"
 
+    /// What the automatic path asks before it uses a sink at all. The real one
+    /// answers from TCC; this one is set by the test that cares.
+    ///
+    /// `nonisolated(unsafe)` because the protocol requirement is not
+    /// main-actor bound while this class is. Every test that touches it runs
+    /// on the main actor, and nothing else reads it.
+    nonisolated(unsafe) var wouldPromptForAccess = false
+
     @MainActor
     func save(_ event: DetectedEvent) async throws -> EventReceipt {
         if let saveError { throw saveError }
@@ -168,6 +176,126 @@ final class CalendarEventTests: XCTestCase {
         sink.saveError = nil
         _ = await coordinator.addEvent(for: item)
         XCTAssertNil(coordinator.lastError)
+    }
+
+    // MARK: - Creating without being asked
+
+    /// A clip with no clock time and no corroboration. `EventDetector` reads a
+    /// date out of it — so the manual button would schedule it — and
+    /// `isStrongSignal` is what says it is not an appointment.
+    private static let bareDate = "Your subscription renews on August 20, 2026"
+
+    func testAStrongSignalClipSchedulesItself() async throws {
+        UserDefaults.standard.set(true, forKey: CalendarSettingsKeys.autoCreate)
+        UserDefaults.standard.set(false, forKey: CalendarSettingsKeys.notifyOnAutoCreate)
+        let store = try makeStore()
+        let item = try insert(Self.invitation, into: store)
+        let sink = FakeEventSink()
+        let coordinator = CalendarCoordinator(store: store, sink: sink)
+
+        let receipt = await coordinator.autoCreateIfWanted(for: item)
+
+        XCTAssertNotNil(receipt, "a timed invitation with a meeting link is what the setting is for")
+        XCTAssertEqual(sink.saved.count, 1)
+        XCTAssertEqual(
+            try XCTUnwrap(store.item(withUUID: item.uuid)).calendarEventID,
+            receipt?.eventIdentifier
+        )
+    }
+
+    func testAWeakSignalClipIsLeftAlone() async throws {
+        UserDefaults.standard.set(true, forKey: CalendarSettingsKeys.autoCreate)
+        let store = try makeStore()
+        let item = try insert(Self.bareDate, into: store)
+        let sink = FakeEventSink()
+        let coordinator = CalendarCoordinator(store: store, sink: sink)
+
+        // The date is real — the manual button would have scheduled it.
+        XCTAssertNotNil(coordinator.event(for: item))
+
+        let receipt = await coordinator.autoCreateIfWanted(for: item)
+
+        XCTAssertNil(receipt, "a bare date is a date, not an appointment")
+        XCTAssertTrue(sink.saved.isEmpty)
+        XCTAssertNil(try XCTUnwrap(store.item(withUUID: item.uuid)).calendarEventID)
+    }
+
+    func testNothingIsCreatedWhileTheSettingIsOff() async throws {
+        UserDefaults.standard.set(false, forKey: CalendarSettingsKeys.autoCreate)
+        let store = try makeStore()
+        let item = try insert(Self.invitation, into: store)
+        let sink = FakeEventSink()
+        let coordinator = CalendarCoordinator(store: store, sink: sink)
+
+        let receipt = await coordinator.autoCreateIfWanted(for: item)
+
+        XCTAssertNil(receipt)
+        XCTAssertTrue(sink.saved.isEmpty, "the sink must not be reached at all")
+    }
+
+    func testAClipThatAlreadyHasAnEventIsNotScheduledTwice() async throws {
+        UserDefaults.standard.set(true, forKey: CalendarSettingsKeys.autoCreate)
+        UserDefaults.standard.set(false, forKey: CalendarSettingsKeys.notifyOnAutoCreate)
+        let store = try makeStore()
+        let item = try insert(Self.invitation, into: store)
+        let sink = FakeEventSink()
+        let coordinator = CalendarCoordinator(store: store, sink: sink)
+
+        _ = await coordinator.addEvent(for: item)
+        let refreshed = try XCTUnwrap(store.item(withUUID: item.uuid))
+
+        let receipt = await coordinator.autoCreateIfWanted(for: refreshed)
+
+        XCTAssertNil(receipt)
+        XCTAssertEqual(sink.saved.count, 1, "the appointment is in the calendar once")
+    }
+
+    /// The first permission dialog has to come from something the user
+    /// pressed, so a sink that has never been asked declines the automatic
+    /// path and keeps working for the manual one.
+    func testTheFirstPermissionPromptIsLeftToTheButton() async throws {
+        UserDefaults.standard.set(true, forKey: CalendarSettingsKeys.autoCreate)
+        UserDefaults.standard.set(false, forKey: CalendarSettingsKeys.notifyOnAutoCreate)
+        let store = try makeStore()
+        let item = try insert(Self.invitation, into: store)
+        let sink = FakeEventSink()
+        sink.wouldPromptForAccess = true
+        let coordinator = CalendarCoordinator(store: store, sink: sink)
+
+        let receipt = await coordinator.autoCreateIfWanted(for: item)
+
+        XCTAssertNil(receipt)
+        XCTAssertTrue(sink.saved.isEmpty)
+
+        guard case .success = await coordinator.addEvent(for: item) else {
+            return XCTFail("the button may prompt, so it must not be blocked by the same check")
+        }
+    }
+
+    func testABatchOnlyOffersTheClipsItNames() async throws {
+        UserDefaults.standard.set(true, forKey: CalendarSettingsKeys.autoCreate)
+        UserDefaults.standard.set(false, forKey: CalendarSettingsKeys.notifyOnAutoCreate)
+        let store = try makeStore()
+        let named = try insert(Self.invitation, into: store)
+        let unnamed = try insert(
+            """
+            Retro
+            August 21, 2026 at 11:00 AM – 11:30 AM
+            Zoom: https://us02web.zoom.us/j/89123456780
+            """,
+            into: store
+        )
+        let sink = FakeEventSink()
+        let coordinator = CalendarCoordinator(store: store, sink: sink)
+
+        await coordinator.autoCreateIfWanted(forClipsWith: [named.uuid])
+
+        XCTAssertEqual(sink.saved.count, 1)
+        XCTAssertNotNil(try XCTUnwrap(store.item(withUUID: named.uuid)).calendarEventID)
+        XCTAssertNil(
+            try XCTUnwrap(store.item(withUUID: unnamed.uuid)).calendarEventID,
+            "a clip the batch did not name is a clip recognition did not just finish"
+        )
     }
 
     // MARK: - Undo
@@ -352,5 +480,61 @@ final class CalendarEventTests: XCTestCase {
 
         let end = EventKitSink.inclusiveAllDayEnd(start: event.start, halfOpenEnd: event.end)
         XCTAssertTrue(calendar.isDate(end, inSameDayAs: event.start))
+    }
+}
+
+/// The banner's words, which are the only half of `EventNotifier` a test can
+/// reach: everything else needs a notification centre, and asking for one in
+/// this process raises rather than returning nil (see `EventNotifier`).
+final class EventNotifierTests: XCTestCase {
+    private let start = Date(timeIntervalSince1970: 1_787_670_000)
+
+    private func message(isAllDay: Bool = false, locale: Locale = Locale(identifier: "en_GB")) -> EventNotifier.Message {
+        EventNotifier.message(
+            eventTitle: "Design review",
+            start: start,
+            isAllDay: isAllDay,
+            calendarTitle: "Work",
+            locale: locale
+        )
+    }
+
+    /// The test process is not an app bundle, so nothing here may reach the
+    /// notification centre. This is the assertion that says so out loud: if it
+    /// ever fails, the delivery half has become reachable from the suite and
+    /// the next automatic event crashes it.
+    func testTheNotificationCentreIsOutOfReachUnderTest() {
+        XCTAssertFalse(EventNotifier.isAvailable)
+    }
+
+    func testTheBannerNamesTheEventAndItsCalendar() {
+        let message = message()
+        XCTAssertEqual(message.title, loc("Added to your %@ calendar", "Work"))
+        XCTAssertTrue(message.body.contains("Design review"), message.body)
+    }
+
+    func testATimedEventSaysWhatTimeItStarts() {
+        let timed = message()
+        let allDay = message(isAllDay: true)
+        XCTAssertNotEqual(timed.body, allDay.body)
+        XCTAssertTrue(timed.body.contains(":"), "a timed event states its clock time: \(timed.body)")
+        XCTAssertFalse(allDay.body.contains(":"), "midnight is storage, not a start time: \(allDay.body)")
+    }
+
+    /// The date is rendered with the app's locale rather than the system's, so
+    /// a French reader does not get an English date inside a French sentence.
+    func testTheStartIsFormattedInTheGivenLocale() {
+        let english = message(locale: Locale(identifier: "en_GB")).body
+        let french = message(locale: Locale(identifier: "fr_FR")).body
+        XCTAssertNotEqual(english, french, "the locale is not reaching the date style")
+    }
+
+    func testTheActionsAreDistinctlyIdentified() {
+        let identifiers = [
+            EventNotifier.categoryIdentifier,
+            EventNotifier.undoActionIdentifier,
+            EventNotifier.openActionIdentifier
+        ]
+        XCTAssertEqual(Set(identifiers).count, identifiers.count, "two notification identifiers collide")
     }
 }
