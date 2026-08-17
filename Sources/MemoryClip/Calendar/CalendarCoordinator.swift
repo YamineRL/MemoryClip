@@ -113,6 +113,78 @@ final class CalendarCoordinator {
         }
     }
 
+    // MARK: - Creating without being asked
+
+    /// Create this clip's event unprompted, when the user asked for that to
+    /// happen and the clip is corroborated enough to deserve it.
+    ///
+    /// Returns nil for every clip it declines, which is nearly all of them.
+    /// Nothing is reported to the user on a decline: this runs while a clip is
+    /// being captured, with no window open and nobody waiting on an answer.
+    @discardableResult
+    func autoCreateIfWanted(for item: ClipItem) async -> EventReceipt? {
+        // Off unless asked for. Read first because it is the cheapest guard
+        // here, and because it being off is the common case — it makes the
+        // whole feature cost one `UserDefaults` read per captured clip.
+        guard Self.isAutoCreateEnabled else { return nil }
+
+        // A clip that already has an event is a clip this has already seen,
+        // or one the user added by hand. Either way a second event for the
+        // same appointment is a duplicate in their calendar, which is exactly
+        // the kind of mess that gets a feature switched off.
+        guard item.calendarEventID == nil else { return nil }
+
+        // Nothing that reads as an appointment: no date at all, or no text.
+        guard let detected = event(for: item) else { return nil }
+
+        // The line between "there is a date in here" and "this is an
+        // appointment". `isStrongSignal` wants a clock time and either a
+        // meeting link or an address; see `DetectedEvent.isStrongSignal` for
+        // why a bare date must never become an event on its own. The manual
+        // button has no such requirement, and should not.
+        guard detected.isStrongSignal else { return nil }
+
+        // The first permission prompt must not come from here. A TCC dialog
+        // raised by a background capture arrives with nothing on screen that
+        // asked for it — `NotesAppSink`'s header records what that costs for
+        // the Automation grant — so an app that has never been asked declines
+        // and leaves the prompt to the panel's button, which a human pressed.
+        // Once answered, every later capture takes this path normally.
+        guard !sink.wouldPromptForAccess else {
+            log.notice("Automatic calendar event skipped: calendar access has not been asked for yet")
+            return nil
+        }
+
+        guard case .success(let receipt) = await addEvent(for: item) else { return nil }
+
+        // Something that writes to a calendar behind the user's back is only
+        // acceptable while it keeps saying that it did — and the banner is
+        // where undo lives, which is the other half of the same bargain.
+        if Self.notifiesOnAutoCreate {
+            await EventNotifier.post(
+                eventTitle: detected.title,
+                start: receipt.start,
+                isAllDay: detected.isAllDay,
+                calendarTitle: receipt.calendarTitle
+            )
+        }
+        return receipt
+    }
+
+    /// Offer a batch of clips to the automatic path.
+    ///
+    /// The screenshot half of the wiring: a screenshot has no text when it is
+    /// captured, so its appointment only exists once recognition has run, and
+    /// `OCRCoordinator` reports the clips a batch produced text for. Bounded
+    /// by that batch — this never queries history and never revisits a clip it
+    /// has already answered for.
+    func autoCreateIfWanted(forClipsWith uuids: [UUID]) async {
+        guard Self.isAutoCreateEnabled, !uuids.isEmpty else { return }
+        for item in store.items(withUUIDs: uuids) {
+            await autoCreateIfWanted(for: item)
+        }
+    }
+
     /// Remove the event created last and forget it on the clip.
     ///
     /// Succeeds with nothing done when no event has been created in this run:

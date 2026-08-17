@@ -44,6 +44,20 @@ final class EventKitSink: EventSink {
 
     // MARK: - EventSink
 
+    /// True exactly while the user has never been asked.
+    ///
+    /// `.notDetermined` is the one status whose `requestAccess` puts a dialog
+    /// on screen; every other status answers from what macOS already recorded,
+    /// which is why the denied and restricted cases below can be turned into
+    /// errors without a second prompt attempt.
+    ///
+    /// `nonisolated` because `authorizationStatus(for:)` is a static read of
+    /// TCC state that touches nothing this class holds, and because the
+    /// protocol requirement it satisfies is not main-actor bound.
+    nonisolated var wouldPromptForAccess: Bool {
+        EKEventStore.authorizationStatus(for: .event) == .notDetermined
+    }
+
     @MainActor
     func save(_ event: DetectedEvent) async throws -> EventReceipt {
         try await requestAccess()

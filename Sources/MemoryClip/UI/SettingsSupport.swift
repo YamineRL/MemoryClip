@@ -20,6 +20,7 @@ enum SettingsPane: String, CaseIterable, Identifiable, Sendable {
     case screenshots
     case notes
     case translation
+    case calendar
     case about
 
     /// What opens when nothing has been chosen yet, and the fallback for a
@@ -38,6 +39,7 @@ enum SettingsPane: String, CaseIterable, Identifiable, Sendable {
         case .screenshots: return loc("Screenshots")
         case .notes: return loc("Notes")
         case .translation: return loc("Translation")
+        case .calendar: return loc("Calendar")
         case .about: return loc("About")
         }
     }
@@ -65,6 +67,7 @@ enum SettingsPane: String, CaseIterable, Identifiable, Sendable {
         case .screenshots: return "camera.viewfinder"
         case .notes: return "note.text"
         case .translation: return "character.bubble.fill"
+        case .calendar: return "calendar"
         case .about: return "info.circle.fill"
         }
     }
@@ -90,6 +93,16 @@ enum SettingsPane: String, CaseIterable, Identifiable, Sendable {
     /// distinct enough but it is the one system colour a white glyph does not
     /// hold up against, and every tile here is a white glyph.
     ///
+    /// Calendar then took the red Translation could not have, and the
+    /// objection above does not carry across: what ruled red out there was
+    /// that the pane shows two `SettingsCallout`s, so its own tint would have
+    /// been the colour sitting inside it saying "something went wrong". This
+    /// pane's single callout is the permission note, which is tinted orange
+    /// like the Notes automation one, so nothing red appears under the header.
+    /// And red is not merely what was left: it is the colour macOS's own
+    /// Calendar has worn since the app was called iCal, which makes it the one
+    /// tile in the sidebar a user can identify before reading anything.
+    ///
     /// System colours rather than literals, so macOS retunes them for Dark
     /// Mode and Increase Contrast — the same rule the rest of `Design` follows.
     var tint: Color {
@@ -102,6 +115,7 @@ enum SettingsPane: String, CaseIterable, Identifiable, Sendable {
         case .screenshots: return Color(nsColor: .systemGreen)
         case .notes: return Color(nsColor: .systemTeal)
         case .translation: return Color(nsColor: .systemBrown)
+        case .calendar: return Color(nsColor: .systemRed)
         case .about: return Color(nsColor: .systemIndigo)
         }
     }
@@ -134,7 +148,7 @@ struct SettingsPaneGroup: Identifiable, Sendable {
 extension SettingsPane {
     /// The sidebar, grouped.
     ///
-    /// Nine flat rows is a list you read top to bottom every time; grouped,
+    /// Ten flat rows is a list you read top to bottom every time; grouped,
     /// you only read the group you are in. The split is by *what the user came
     /// to change*, not by which subsystem implements it:
     ///
@@ -157,6 +171,11 @@ extension SettingsPane {
     ///   what MemoryClip refuses to capture or requires Touch ID for
     ///   (Privacy). Privacy sits here rather than beside About because both
     ///   its switches are capture policy — they change what lands in history.
+    ///   Calendar closes the group: it acts on any clip that reads as an
+    ///   appointment, whether it was copied or screenshotted, so it is not the
+    ///   screenshot pipeline's business. It goes after Privacy because the
+    ///   three before it are about clips arriving and this one is about a clip
+    ///   leaving for somewhere else.
     /// - **Screenshots** — the screenshot → text → note pipeline, which is one
     ///   feature with an input (the watched folder) and an output (where notes
     ///   are written). Split across the sidebar it reads as two unrelated
@@ -166,7 +185,7 @@ extension SettingsPane {
     ///   would add a word to read without adding a distinction.
     static let groups: [SettingsPaneGroup] = [
         SettingsPaneGroup(title: loc("General"), panes: [.general, .shortcuts, .translation]),
-        SettingsPaneGroup(title: loc("Clipboard"), panes: [.history, .panel, .privacy]),
+        SettingsPaneGroup(title: loc("Clipboard"), panes: [.history, .panel, .privacy, .calendar]),
         SettingsPaneGroup(title: loc("Screenshots"), panes: [.screenshots, .notes]),
         SettingsPaneGroup(title: nil, panes: [.about])
     ]

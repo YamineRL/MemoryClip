@@ -30,6 +30,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private(set) var noteCoordinator: NoteCoordinator!
     private(set) var calendarCoordinator: CalendarCoordinator!
 
+    /// Answers the Undo and Open in Calendar buttons on the banner an
+    /// automatically created event posts. Held for the life of the app
+    /// because `UNUserNotificationCenter.delegate` is a weak reference.
+    private var eventNotificationDelegate: EventNotificationDelegate?
+
     /// Watches for the user picking a different screenshot folder in
     /// Settings, so the watcher re-points without a relaunch.
     private var screenshotFolderObserver: (any NSObjectProtocol)?
@@ -113,8 +118,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         watcher.onCapture = { [weak self] kind in
-            guard kind == .image else { return }
-            self?.ocrCoordinator.processPending()
+            guard let self else { return }
+            // An image carries no text yet, so it goes to recognition and the
+            // calendar hears about it further down, from `onRecognition`.
+            // Everything else arrives with whatever text it will ever have,
+            // which makes capture the moment to look for an appointment in it.
+            if kind == .image {
+                self.ocrCoordinator.processPending()
+            } else {
+                self.offerNewestClipToCalendar()
+            }
         }
 
         // A screenshot carries pixels exactly like a pasteboard image does —
@@ -128,9 +141,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // the note. Without this the chain stopped at OCR: only the catch-up
         // call below ever started refinement, so a screenshot taken while the
         // app was running never became a note until the next launch.
-        ocrCoordinator.onRecognition = { [weak self] in
-            self?.noteCoordinator.processPending()
+        ocrCoordinator.onRecognition = { [weak self] recognized in
+            guard let self else { return }
+            self.noteCoordinator.processPending()
+            // …and the same text is where a screenshot's appointment first
+            // exists. Only the clips this batch produced text for are offered,
+            // so nothing rescans the history.
+            Task { @MainActor [weak self] in
+                await self?.calendarCoordinator.autoCreateIfWanted(forClipsWith: recognized)
+            }
         }
+
+        // Registering the category and taking delivery of its buttons is all
+        // that happens at launch; permission is asked for at the first banner
+        // (see `EventNotifier`). Inert in a process with no bundle identifier,
+        // which is every process that is not the built app.
+        let notificationDelegate = EventNotificationDelegate(calendarCoordinator: calendarCoordinator)
+        eventNotificationDelegate = notificationDelegate
+        EventNotifier.install(delegate: notificationDelegate)
 
         screenshotFolderObserver = NotificationCenter.default.addObserver(
             forName: .memoryClipScreenshotFolderChanged,
@@ -185,6 +213,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Stop any in-flight queue run before the services it drives go away.
         panelController?.cancelQueue()
         store?.stopMaintenance()
+    }
+
+    // MARK: - Calendar
+
+    /// Offer the clip that was just captured to the calendar's automatic path.
+    ///
+    /// `PasteboardWatcher.onCapture` reports the *kind* it stored and
+    /// `ClipStore.insert` hands nothing back, so the row is resolved here —
+    /// and the newest row is it: capture is synchronous, this callback fires
+    /// on the same actor immediately after the insert, and a duplicate paste
+    /// floats the existing row to the top rather than adding a second one.
+    ///
+    /// The setting is read before the fetch as well as inside the coordinator,
+    /// so that with the feature off — which is the default — a copy costs one
+    /// `UserDefaults` read and no query at all.
+    private func offerNewestClipToCalendar() {
+        guard CalendarCoordinator.isAutoCreateEnabled,
+              let item = store.recent(limit: 1).first else { return }
+        Task { @MainActor [weak self] in
+            await self?.calendarCoordinator.autoCreateIfWanted(for: item)
+        }
     }
 
     // MARK: - Maintenance

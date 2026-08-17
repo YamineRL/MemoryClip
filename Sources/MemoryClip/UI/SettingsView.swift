@@ -11,7 +11,7 @@ import Translation
 /// no keyboard route between panes at all, so the only way to reach Notes was
 /// to aim at it. A `NavigationSplitView` fixes both at once: the sidebar has
 /// room to name and group all of them, and a `List` with a selection binding
-/// is arrow-key navigable and VoiceOver-navigable for free. There are nine
+/// is arrow-key navigable and VoiceOver-navigable for free. There are ten
 /// panes now, which is the argument making itself.
 ///
 /// The window, not this view, owns the frame (see `SettingsWindowController`).
@@ -170,6 +170,7 @@ extension SettingsPane {
         case .screenshots: ScreenshotSettingsPane()
         case .notes: NotesSettingsPane()
         case .translation: TranslationSettingsPane()
+        case .calendar: CalendarSettingsPane()
         case .about: AboutSettingsPane()
         }
     }
@@ -1084,6 +1085,69 @@ private struct NotesSettingsPane: View {
                 SettingsHint(autoNoteEnabled
                     ? loc("Off by default for a reason: a busy day of screenshots is a busy day of notes. The character threshold skips the ones with nothing worth keeping.")
                     : loc("Notes are written when you ask for one — select a clip in the panel and choose Save as Note. Turn this on to have every screenshot with enough text write itself."))
+            }
+        }
+        .formStyle(.grouped)
+    }
+}
+
+// MARK: - Calendar
+
+/// When a clip becomes a calendar event, and how long that event runs.
+///
+/// Two settings and a permission note, in the order the questions arrive:
+/// whether MemoryClip is allowed to create an event without being asked,
+/// whether it says so when it does, and what an event with no stated end
+/// should run for.
+///
+/// The notification switch is nested under the automatic one the way the Notes
+/// pane nests its character threshold: it is a setting about a thing that only
+/// happens automatically, so it is not a question to put to someone who has
+/// left automatic creation off.
+private struct CalendarSettingsPane: View {
+    @AppStorage(CalendarSettingsKeys.autoCreate) private var autoCreate = false
+    @AppStorage(CalendarSettingsKeys.notifyOnAutoCreate) private var notifyOnAutoCreate = true
+    @AppStorage(CalendarSettingsKeys.eventDurationMinutes) private var durationMinutes = 60
+
+    var body: some View {
+        Form {
+            Section(loc("Adding events")) {
+                Toggle(isOn: $autoCreate) {
+                    Label {
+                        Text(loc("Add events automatically"))
+                    } icon: {
+                        SettingsIcon(symbol: "calendar.badge.plus", tint: Color(nsColor: .systemRed))
+                    }
+                }
+                SettingsHint(loc("An event is created on its own only when the clip names a time of day and either a meeting link or an address. A bare date — a deadline in a paragraph, an expiry notice, a headline — is left alone. Anything MemoryClip passes over you can still add yourself: select the clip in the panel and choose Add to Calendar."))
+
+                if autoCreate {
+                    Toggle(isOn: $notifyOnAutoCreate) {
+                        Label {
+                            Text(loc("Tell me when an event is added"))
+                        } icon: {
+                            SettingsIcon(symbol: "bell.badge.fill", tint: Color(nsColor: .systemBlue))
+                        }
+                    }
+                    SettingsHint(loc("The notification names the event and when it starts, and carries an Undo button that takes it straight back out of your calendar. Undo works while MemoryClip is running; after a quit, remove the event in Calendar like any other."))
+                }
+            }
+
+            Section(loc("Events")) {
+                Stepper(value: $durationMinutes, in: 15...480, step: 15) {
+                    Label {
+                        Text(loc("Events last %d minutes", durationMinutes))
+                    } icon: {
+                        SettingsIcon(symbol: "clock.fill", tint: Color(nsColor: .systemOrange))
+                    }
+                }
+                SettingsHint(loc("Used only when the clip names a start and no end. Text that gives both — \"3:00 PM – 4:00 PM\" — books exactly what it says."))
+
+                SettingsCallout(
+                    text: loc("macOS asks once, the first time an event is added. MemoryClip asks only for permission to add events: it cannot read your calendar, and so cannot offer you a list to pick from. Events go to whichever calendar you have set as the default for new events in Calendar."),
+                    symbol: "lock.fill",
+                    tint: Color(nsColor: .systemOrange)
+                )
             }
         }
         .formStyle(.grouped)

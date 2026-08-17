@@ -98,6 +98,18 @@ final class SettingsTests: XCTestCase {
         }
     }
 
+    /// The calendar acts on any clip that reads as an appointment, copied or
+    /// screenshotted alike, so it is clipboard-wide and not part of the
+    /// screenshot pipeline the Screenshots group describes.
+    func testCalendarSitsUnderClipboard() throws {
+        let group = try XCTUnwrap(
+            SettingsPane.groups.first { $0.panes.contains(.calendar) },
+            "Calendar is not in the sidebar at all"
+        )
+        XCTAssertEqual(group.title, "Clipboard", "Calendar belongs to the Clipboard category")
+        XCTAssertEqual(group.panes.last, .calendar, "Calendar goes after Privacy, at the end of the group")
+    }
+
     /// Titles and symbols are what a row *is*: a blank one renders an
     /// unlabelled row, and a shared one makes two panes look like each other
     /// in a sidebar whose whole job is telling them apart.
@@ -128,7 +140,10 @@ final class SettingsTests: XCTestCase {
     func testPaneRawValuesAreStable() {
         XCTAssertEqual(
             SettingsPane.allCases.map(\.rawValue),
-            ["general", "shortcuts", "history", "panel", "privacy", "screenshots", "notes", "translation", "about"],
+            [
+                "general", "shortcuts", "history", "panel", "privacy",
+                "screenshots", "notes", "translation", "calendar", "about"
+            ],
             "a persisted pane identifier changed — see SettingsKeys.settingsPane"
         )
     }

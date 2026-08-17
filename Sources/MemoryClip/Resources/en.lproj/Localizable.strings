@@ -379,3 +379,16 @@
 "%@ · in calendar" = "%@ · in calendar";
 "MemoryClip could not add the event." = "MemoryClip could not add the event.";
 "Add the selected clip to the calendar" = "Add the selected clip to the calendar";
+"Calendar" = "Calendar";
+"Adding events" = "Adding events";
+"Add events automatically" = "Add events automatically";
+"An event is created on its own only when the clip names a time of day and either a meeting link or an address. A bare date — a deadline in a paragraph, an expiry notice, a headline — is left alone. Anything MemoryClip passes over you can still add yourself: select the clip in the panel and choose Add to Calendar." = "An event is created on its own only when the clip names a time of day and either a meeting link or an address. A bare date — a deadline in a paragraph, an expiry notice, a headline — is left alone. Anything MemoryClip passes over you can still add yourself: select the clip in the panel and choose Add to Calendar.";
+"Tell me when an event is added" = "Tell me when an event is added";
+"The notification names the event and when it starts, and carries an Undo button that takes it straight back out of your calendar. Undo works while MemoryClip is running; after a quit, remove the event in Calendar like any other." = "The notification names the event and when it starts, and carries an Undo button that takes it straight back out of your calendar. Undo works while MemoryClip is running; after a quit, remove the event in Calendar like any other.";
+"Events" = "Events";
+"Events last %d minutes" = "Events last %d minutes";
+"Used only when the clip names a start and no end. Text that gives both — \"3:00 PM – 4:00 PM\" — books exactly what it says." = "Used only when the clip names a start and no end. Text that gives both — \"3:00 PM – 4:00 PM\" — books exactly what it says.";
+"macOS asks once, the first time an event is added. MemoryClip asks only for permission to add events: it cannot read your calendar, and so cannot offer you a list to pick from. Events go to whichever calendar you have set as the default for new events in Calendar." = "macOS asks once, the first time an event is added. MemoryClip asks only for permission to add events: it cannot read your calendar, and so cannot offer you a list to pick from. Events go to whichever calendar you have set as the default for new events in Calendar.";
+"Added to your %@ calendar" = "Added to your %@ calendar";
+"%@ — %@" = "%@ — %@";
+"Open in Calendar" = "Open in Calendar";

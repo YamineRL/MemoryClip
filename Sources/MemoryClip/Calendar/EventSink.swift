@@ -29,6 +29,19 @@ struct EventReceipt: Sendable, Equatable {
 /// await the TCC prompt. Every failure is a `CalendarError`, so the UI has one
 /// thing to catch and one sentence to show.
 protocol EventSink: Sendable {
+    /// Whether the next `save` would put a permission dialog on screen.
+    ///
+    /// Asked by the automatic path and by nothing else. A prompt is a modal
+    /// interruption the user has to answer, and one raised by a background
+    /// sweep arrives with nothing on screen explaining what asked for it —
+    /// the hazard `NotesAppSink`'s header records for the Automation grant.
+    /// So automatic creation declines while this is true and leaves the first
+    /// prompt to the panel's button, which a human pressed.
+    ///
+    /// Defaulted to false because a sink that needs no grant can never
+    /// prompt, which is every sink but the EventKit one.
+    var wouldPromptForAccess: Bool { get }
+
     /// Create `event` in the user's default calendar.
     func save(_ event: DetectedEvent) async throws -> EventReceipt
 
@@ -42,4 +55,8 @@ protocol EventSink: Sendable {
     /// one" means, and why undo cannot outlive the run of the app that did the
     /// creating.
     func removeLastSaved() async throws
+}
+
+extension EventSink {
+    var wouldPromptForAccess: Bool { false }
 }
