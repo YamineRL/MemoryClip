@@ -3,6 +3,75 @@ import Combine
 import QuickLookUI
 import SwiftUI
 
+/// Panel frame arithmetic, independent of any window or screen.
+enum PanelGeometry {
+    /// Used when no screen can be resolved.
+    static let fallbackVisibleFrame = NSRect(x: 0, y: 0, width: 1440, height: 900)
+
+    /// Vertical space the panel may occupy, leaving a margin above and below.
+    static func maxPanelHeight(in visibleFrame: NSRect) -> CGFloat {
+        max(0, visibleFrame.height - Design.Size.panelBottomMargin * 2)
+    }
+
+    /// Tallest preview pane that still leaves the panel inside `visibleFrame`.
+    static func maxPreviewHeight(in visibleFrame: NSRect) -> CGFloat {
+        let room = maxPanelHeight(in: visibleFrame)
+            - Design.Size.panelHeight
+            - Design.Size.previewResizeHandleHeight
+        return max(Design.Size.previewPaneMinHeight, room)
+    }
+
+    static func clampPreviewHeight(_ height: CGFloat, ceiling: CGFloat) -> CGFloat {
+        let top = max(ceiling, Design.Size.previewPaneMinHeight)
+        guard height.isFinite else { return min(Design.Size.previewPaneHeight, top) }
+        return min(max(height, Design.Size.previewPaneMinHeight), top)
+    }
+
+    static func clampPreviewHeight(_ height: CGFloat, in visibleFrame: NSRect) -> CGFloat {
+        clampPreviewHeight(height, ceiling: maxPreviewHeight(in: visibleFrame))
+    }
+
+    /// The panel's frame: centred, bottom-anchored a margin above the visible
+    /// frame, and never outside it on any edge. `previewHeight` is nil while
+    /// the preview pane is closed.
+    static func panelFrame(in visibleFrame: NSRect, previewHeight: CGFloat?) -> NSRect {
+        let width = min(
+            min(
+                Design.Size.panelWidth,
+                max(Design.Size.panelMinWidth, visibleFrame.width - Design.Size.panelSideMargin * 2)
+            ),
+            visibleFrame.width
+        )
+        var requested = Design.Size.panelHeight
+        if let previewHeight {
+            requested += Design.Size.previewResizeHandleHeight
+                + clampPreviewHeight(previewHeight, in: visibleFrame)
+        }
+        let height = min(requested, maxPanelHeight(in: visibleFrame)).rounded(.down)
+        let x = clamp(
+            visibleFrame.midX - width / 2,
+            low: visibleFrame.minX,
+            high: visibleFrame.maxX - width
+        )
+        let y = clamp(
+            visibleFrame.minY + Design.Size.panelBottomMargin,
+            low: visibleFrame.minY,
+            high: visibleFrame.maxY - height
+        )
+        return NSRect(
+            x: x.rounded(.down),
+            y: y.rounded(.down),
+            width: width.rounded(.down),
+            height: height
+        )
+    }
+
+    /// Clamps to `low` when `high` falls below it.
+    private static func clamp(_ value: CGFloat, low: CGFloat, high: CGFloat) -> CGFloat {
+        max(low, min(value, max(low, high)))
+    }
+}
+
 /// Observable state shared between PanelController and the SwiftUI panel.
 @MainActor
 final class PanelUIState: ObservableObject {
@@ -13,6 +82,18 @@ final class PanelUIState: ObservableObject {
     /// True while the preview pane is open, so the panel window can grow
     /// upward to make room for it. The panel's bottom edge stays anchored.
     @Published var isExpanded = false
+    /// The preview pane's height, as the resize handle last left it.
+    @Published var previewHeight = PanelUIState.storedPreviewHeight
+    /// What the panel's screen allows `previewHeight` to reach. Written by
+    /// `PanelController` every time the panel is placed.
+    @Published var maxPreviewHeight = Design.Size.previewPaneHeight
+
+    /// The stored height, falling back to the default when nothing (not even
+    /// a registered default) has been written yet.
+    private static var storedPreviewHeight: CGFloat {
+        let stored = UserDefaults.standard.double(forKey: NoteSettingsKeys.previewPaneHeight)
+        return stored > 0 ? CGFloat(stored) : Design.Size.previewPaneHeight
+    }
 }
 
 /// NSPanel subclass that can take keyboard focus (for typing search terms).
@@ -122,13 +203,38 @@ final class PanelController: NSObject, NSWindowDelegate {
             object: nil
         )
 
+        // The panel is repositioned when the screen it sits on changes shape:
+        // a Dock that appears, a resolution change, a display unplugged.
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(screenParametersDidChange),
+            name: NSApplication.didChangeScreenParametersNotification,
+            object: nil
+        )
+
         // The preview pane does not fit inside the compact panel — the panel
         // is a 200-point-tall deck of cards, not a 560-point window any more —
-        // so opening it grows the window instead.
+        // so opening it grows the window instead. Both sinks take the new
+        // value as an argument rather than reading it back off `uiState`.
         uiState.$isExpanded
             .removeDuplicates()
             .sink { [weak self] expanded in
-                self?.applyPanelHeight(expanded: expanded, animated: true)
+                guard let self else { return }
+                self.applyPanelHeight(
+                    expanded: expanded,
+                    previewHeight: self.uiState.previewHeight,
+                    animated: true
+                )
+            }
+            .store(in: &cancellables)
+
+        // Dragging the resize handle: the window follows the pane point for
+        // point, so this one is not animated.
+        uiState.$previewHeight
+            .removeDuplicates()
+            .sink { [weak self] height in
+                guard let self, self.uiState.isExpanded else { return }
+                self.applyPanelHeight(expanded: true, previewHeight: height, animated: false)
             }
             .store(in: &cancellables)
     }
@@ -175,7 +281,10 @@ final class PanelController: NSObject, NSWindowDelegate {
         panel.title = "MemoryClip"
         panel.titleVisibility = .hidden
         panel.titlebarAppearsTransparent = true
-        panel.isMovableByWindowBackground = true
+        // Not draggable: the panel places itself, and a background drag
+        // covers the whole slab, SwiftUI content included.
+        panel.isMovable = false
+        panel.isMovableByWindowBackground = false
         panel.isReleasedWhenClosed = false
         panel.level = .floating
         panel.isFloatingPanel = true
@@ -219,24 +328,40 @@ final class PanelController: NSObject, NSWindowDelegate {
     /// Height is the only thing that varies — the preview pane makes the panel
     /// taller — and the panel grows *upward* so the slab never appears to
     /// slide off the bottom of the screen.
-    private func applyPanelHeight(expanded: Bool, animated: Bool) {
+    private func applyPanelHeight(expanded: Bool, previewHeight: CGFloat, animated: Bool) {
         guard let panel else { return }
-        let visibleFrame = (panel.screen ?? NSScreen.main)?.visibleFrame
-            ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
+        let visibleFrame = placementScreen(for: panel)?.visibleFrame
+            ?? PanelGeometry.fallbackVisibleFrame
 
-        let margin = Design.Size.panelSideMargin
-        let width = min(Design.Size.panelWidth, max(320, visibleFrame.width - margin * 2))
-        let requested = expanded ? Design.Size.panelExpandedHeight : Design.Size.panelHeight
-        let height = min(requested, visibleFrame.height - Design.Size.panelBottomMargin * 2)
+        let ceiling = PanelGeometry.maxPreviewHeight(in: visibleFrame)
+        if uiState.maxPreviewHeight != ceiling {
+            uiState.maxPreviewHeight = ceiling
+        }
 
-        let frame = NSRect(
-            x: (visibleFrame.midX - width / 2).rounded(),
-            y: (visibleFrame.minY + Design.Size.panelBottomMargin).rounded(),
-            width: width.rounded(),
-            height: height.rounded()
+        let frame = PanelGeometry.panelFrame(
+            in: visibleFrame,
+            previewHeight: expanded ? previewHeight : nil
         )
         guard frame != panel.frame else { return }
         panel.setFrame(frame, display: true, animate: animated && panel.isVisible)
+    }
+
+    /// The screen the panel is on, else the pointer's, else the key window's.
+    private func placementScreen(for panel: NSWindow) -> NSScreen? {
+        panel.screen
+            ?? NSScreen.screens.first { $0.frame.contains(NSEvent.mouseLocation) }
+            ?? NSScreen.main
+            ?? NSScreen.screens.first
+    }
+
+    /// Re-place a visible panel after the screen layout changes.
+    @objc private func screenParametersDidChange() {
+        guard let panel, panel.isVisible else { return }
+        applyPanelHeight(
+            expanded: uiState.isExpanded,
+            previewHeight: uiState.previewHeight,
+            animated: false
+        )
     }
 
     /// Every closure captures `self` weakly: they are retained by the SwiftUI
@@ -390,7 +515,11 @@ final class PanelController: NSObject, NSWindowDelegate {
             // is a wide deck anchored to the BOTTOM of the screen, centred
             // horizontally, the way Deck presents itself. The status item's
             // frame is therefore no longer used as an anchor.
-            self.applyPanelHeight(expanded: self.uiState.isExpanded, animated: false)
+            self.applyPanelHeight(
+                expanded: self.uiState.isExpanded,
+                previewHeight: self.uiState.previewHeight,
+                animated: false
+            )
 
             self.uiState.isPaused = self.watcher.isPaused
             NSApp.activate()

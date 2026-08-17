@@ -82,9 +82,8 @@ enum Design {
             + topBarHeight
             + cardStripHeight
             + panelFooterHeight
-        /// Panel height while the preview pane is open. The panel grows
-        /// *upward*: its bottom edge is anchored to the screen.
-        static let panelExpandedHeight: CGFloat = panelHeight + previewPaneHeight
+        /// Floor on the panel's width, for a screen narrower than the panel.
+        static let panelMinWidth: CGFloat = 320
         /// Gap between the panel and the bottom / sides of the visible screen.
         static let panelBottomMargin: CGFloat = 28
         static let panelSideMargin: CGFloat = 24
@@ -95,8 +94,16 @@ enum Design {
         static let panelTopPadding: CGFloat = 10
         /// The footer strip (source-app menu, clip count, delete-all).
         static let panelFooterHeight: CGFloat = 34
-        /// The preview pane, revealed under the card strip.
+        /// The preview pane, revealed under the card strip. The starting
+        /// height only: dragging the handle above the pane resizes it, and the
+        /// result is stored under `NoteSettingsKeys.previewPaneHeight`.
         static let previewPaneHeight: CGFloat = 250
+        /// Floor under the resized pane.
+        static let previewPaneMinHeight: CGFloat = 150
+        /// The drag-to-resize strip between the card strip and the preview.
+        static let previewResizeHandleHeight: CGFloat = 10
+        /// The grip drawn on that strip.
+        static let previewResizeGripWidth: CGFloat = 36
         /// Ceiling on an image clip's extracted-text block, so a screenshot
         /// full of text cannot crowd the image out of the same pane.
         static let previewExtractedTextHeight: CGFloat = 110
