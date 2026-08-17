@@ -85,9 +85,23 @@ struct PreviewView: View {
             }
         }
         .padding(Design.Space.roomy)
+        // Full-bleed and hit-testable, so a right-click in the pane's empty
+        // space — padding, the room beside a short line — reaches the menu.
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .contentShape(Rectangle())
+        .contextMenu {
+            ForEach(copyOptions) { option in
+                Button(option.title) { PreviewCopy.perform(option, for: item) }
+            }
+        }
         .task(id: contentKey) { await refreshAnalysis() }
         .task(id: contentKey) { await loadFullImage() }
         .task(id: translationKey) { await refreshTranslation() }
+    }
+
+    /// What the right-click menu offers for this clip.
+    private var copyOptions: [PreviewCopyOption] {
+        PreviewCopy.options(for: item, translation: presenter.translation?.text)
     }
 
     // MARK: Cached analysis
