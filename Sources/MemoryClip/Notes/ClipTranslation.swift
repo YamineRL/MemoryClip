@@ -243,11 +243,24 @@ struct ClipTranslationService: Sendable {
     /// nobody reads next to its original; here the original is on screen
     /// directly underneath, so repeating it would fill the pane with the text
     /// the translation was supposed to save the reader from.
-    func translation(for request: ClipTranslationRequest) async -> ClipTranslationResult? {
+    /// - Parameter onProgress: given the translation so far each time a piece
+    ///   of it lands, so a long clip fills in rather than appearing at the end.
+    ///   The truncation marker is not on those: it says where the translation
+    ///   stopped, which is only true of the finished one.
+    func translation(
+        for request: ClipTranslationRequest,
+        onProgress: @escaping @MainActor @Sendable (ClipTranslationResult) -> Void = { _ in }
+    ) async -> ClipTranslationResult? {
+        let source = LanguageDetector.identifier(for: request.source)
+        let target = ClipTranslation.identity(of: request.target)
+
         guard let translated = await translator.translate(
             request.text,
             from: request.source,
-            to: request.target
+            to: request.target,
+            onProgress: { partial in
+                onProgress(ClipTranslationResult(text: partial, sourceLanguage: source, targetLanguage: target))
+            }
         ) else { return nil }
 
         var text = translated.text
@@ -257,7 +270,7 @@ struct ClipTranslationService: Sendable {
         return ClipTranslationResult(
             text: text,
             sourceLanguage: translated.sourceLanguage,
-            targetLanguage: ClipTranslation.identity(of: request.target)
+            targetLanguage: target
         )
     }
 }

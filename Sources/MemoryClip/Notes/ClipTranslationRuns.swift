@@ -40,6 +40,10 @@ final class ClipTranslationRuns {
     private struct Run {
         let request: ClipTranslationRequest
         let task: Task<ClipTranslationResult?, Never>
+        /// Everyone waiting to be shown the run's partial translations. A pane
+        /// that joins a run already going is added here and starts seeing them
+        /// from the next chunk on.
+        var observers: [(ClipTranslationResult) -> Void] = []
     }
 
     private var runs: [UUID: Run] = [:]
@@ -55,29 +59,50 @@ final class ClipTranslationRuns {
     /// Waiting on this is safe from anywhere: a caller that is cancelled
     /// while waiting simply stops caring about the answer, and the answer is
     /// still made and still cached.
+    /// - Parameter onProgress: given each partial translation as it lands. The
+    ///   finished one is returned rather than passed here.
     func translation(
         for request: ClipTranslationRequest,
         of item: ClipItem,
-        in context: ModelContext?
+        in context: ModelContext?,
+        onProgress: @escaping (ClipTranslationResult) -> Void = { _ in }
     ) async -> ClipTranslationResult? {
         let uuid = item.uuid
 
         if let existing = runs[uuid] {
-            if existing.request == request { return await existing.task.value }
+            if existing.request == request {
+                runs[uuid]?.observers.append(onProgress)
+                return await existing.task.value
+            }
             existing.task.cancel()
         }
 
         let task = Task { @MainActor [service] in
-            let result = await service.translation(for: request)
+            let result = await service.translation(for: request) { partial in
+                self.publish(partial, for: uuid, of: request)
+            }
             // Cached here rather than by the caller, because by the time this
             // lands the caller is often gone — which is the whole point.
             if let result { Self.cache(result, on: item, in: context) }
             runs[uuid] = nil
             return result
         }
-        runs[uuid] = Run(request: request, task: task)
+        runs[uuid] = Run(request: request, task: task, observers: [onProgress])
 
         return await task.value
+    }
+
+    /// Hand a partial translation to whoever is watching this clip.
+    ///
+    /// Dropped when the run it came from is no longer the clip's: a superseded
+    /// run is translating text the pane would not show.
+    private func publish(
+        _ partial: ClipTranslationResult,
+        for uuid: UUID,
+        of request: ClipTranslationRequest
+    ) {
+        guard let run = runs[uuid], run.request == request else { return }
+        for observer in run.observers { observer(partial) }
     }
 
     /// Keep the translation on the clip, so the next look at it is free.
