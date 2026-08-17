@@ -152,6 +152,21 @@ final class ClipTranslationPlanTests: XCTestCase {
         XCTAssertFalse(request.isTruncated)
     }
 
+    /// A clip in a script that spells its words in ideographs clears a lower
+    /// floor than one that spells them in letters: nineteen characters of
+    /// Traditional Chinese is sixteen words, and the recognizer names it at
+    /// 1.00 where four Latin letters are guesswork.
+    func testShortIdeographicTextIsTranslated() {
+        let phrase = "若主願之 如主所願 萬贊歸主 祈主恕饒"
+        XCTAssertLessThan(phrase.count, LanguageDetector.minimumCharacters)
+
+        guard case .translate(let request) = plan(text: phrase) else {
+            return XCTFail("expected sixteen ideographs to be translated")
+        }
+        XCTAssertEqual(request.source.languageCode?.identifier, "zh")
+        XCTAssertEqual(request.text, phrase)
+    }
+
     /// The budget is the note pipeline's, and so is the promise that the rest
     /// of the clip is marked rather than dropped.
     func testLongTextIsBoundedAndMarkedTruncated() {

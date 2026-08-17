@@ -153,7 +153,7 @@ enum ClipTranslation {
         guard isEnabled else { return .skip }
 
         let trimmed = (text ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-        guard trimmed.count >= LanguageDetector.minimumCharacters else { return .skip }
+        guard trimmed.count >= LanguageDetector.minimumCharacters(for: trimmed) else { return .skip }
 
         // Checked before the recognizer runs: a clip already translated for
         // this target costs nothing to show again, which is the point of

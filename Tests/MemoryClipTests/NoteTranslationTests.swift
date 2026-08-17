@@ -155,6 +155,66 @@ final class LanguageDetectorTests: XCTestCase {
     }
 }
 
+// MARK: - The length floor
+
+/// Which floor a text has to clear, and why there is more than one.
+///
+/// `minimumCharacters` is a count of an alphabet's letters. Asking a script
+/// that does not spell its words in letters to clear it turned away text the
+/// recognizer had already named at 1.00 — sixteen ideographs read as nothing
+/// because they were written in nineteen characters.
+final class LanguageFloorTests: XCTestCase {
+    /// Four Traditional Chinese phrases: nineteen characters, one under the
+    /// alphabet's floor, and sixteen words over the script's.
+    private let phrase = "若主願之 如主所願 萬贊歸主 祈主恕饒"
+
+    func testTheFloorFollowsTheScript() {
+        XCTAssertEqual(LanguageDetector.minimumCharacters(for: phrase),
+                       LanguageDetector.minimumScriptCharacters)
+        XCTAssertEqual(LanguageDetector.minimumCharacters(for: arabic),
+                       LanguageDetector.minimumScriptCharacters)
+        XCTAssertEqual(LanguageDetector.minimumCharacters(for: "Paste as plain text"),
+                       LanguageDetector.minimumCharacters)
+        // A Latin page quoting a few ideographs is a Latin page, and holding
+        // it to the lower floor is how a logo becomes a language.
+        XCTAssertEqual(LanguageDetector.minimumCharacters(for: "Buy 老干妈 crisp"),
+                       LanguageDetector.minimumCharacters)
+        // Text with no letters in it names no script, so the floor stands.
+        XCTAssertEqual(LanguageDetector.minimumCharacters(for: "670 23.63 (%)"),
+                       LanguageDetector.minimumCharacters)
+    }
+
+    func testShortIdeographicTextIsIdentified() {
+        XCTAssertLessThan(phrase.count, LanguageDetector.minimumCharacters)
+        let language = LanguageDetector.dominantLanguage(of: phrase)
+        XCTAssertEqual(language?.languageCode?.identifier, "zh")
+        XCTAssertEqual(language?.script?.identifier, "Hant")
+    }
+
+    func testShortTextInOtherScriptsIsIdentified() {
+        XCTAssertEqual(LanguageDetector.dominantLanguage(of: "Спасибо большое")?
+            .languageCode?.identifier, "ru")
+        XCTAssertEqual(LanguageDetector.dominantLanguage(of: "ありがとうございます")?
+            .languageCode?.identifier, "ja")
+    }
+
+    /// The floor the measurements justify: under it, Latin fragments come
+    /// back confident and wrong — "Bio" as Croatian at 0.81, "TODO" as
+    /// Spanish at 0.81 — and each one is a translation of text that needed
+    /// none.
+    func testShortLatinTextIsStillTurnedAway() {
+        for fragment in ["Bio", "TODO", "Nike", "Ubuntu", "npm install", "Sign in"] {
+            XCTAssertNil(LanguageDetector.dominantLanguage(of: fragment), fragment)
+        }
+    }
+
+    /// A lower floor is still a floor: two ideographs are a logo rather than
+    /// a sentence, which is what `minimumScriptCharacters` is set to exclude.
+    func testAScriptStillHasToClearItsOwnFloor() {
+        XCTAssertNil(LanguageDetector.dominantLanguage(of: "谢谢"))
+    }
+}
+
 // MARK: - Mixed-script detection
 
 /// The Laoganma bug and the guards written for it.

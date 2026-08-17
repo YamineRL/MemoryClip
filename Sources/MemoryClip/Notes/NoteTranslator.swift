@@ -273,7 +273,8 @@ enum NoteTranslation {
 enum LanguageDetector {
     // MARK: Thresholds
 
-    /// Below this many characters, identification is guesswork.
+    /// Below this many characters of Latin script, identification is
+    /// guesswork. `minimumCharacters(for:)` is what callers ask.
     ///
     /// `NLLanguageRecognizer` will happily name a language for "OK" or for a
     /// row of menu titles, and a wrong answer here costs a pointless
@@ -328,6 +329,33 @@ enum LanguageDetector {
     /// is about eight words of an ideographic script and one short phrase of
     /// an alphabetic one, which is the least that could be called text.
     static let minimumScriptCharacters = 8
+
+    /// The floor `text` has to clear before its language is worth reading.
+    ///
+    /// `minimumCharacters` counts an alphabet, where twenty characters is
+    /// about four words — and four words is close to the least the
+    /// recognizer can tell one Latin language from another on. Below it the
+    /// answers are confident and wrong: "Bio" comes back Croatian at 0.81,
+    /// "TODO" Spanish at 0.81, "Nike" Turkish at 0.70.
+    ///
+    /// Outside Latin script that floor measures the wrong thing. Twenty
+    /// ideographs are twenty words, and no script but Latin has to compete
+    /// with a dozen languages spelled the same way, so the recognizer is
+    /// saturated far below it: two characters of Chinese, five of Japanese
+    /// and seven of Cyrillic each come back at 1.00 with the runner-up at
+    /// nothing. Held to twenty, text like that is turned away while it is
+    /// still perfectly identifiable. So the census picks the floor —
+    /// `minimumScriptCharacters`, which this type already trusts to say when
+    /// there is enough of a script to read, and which is set at the width of
+    /// about eight ideographic words. The confidence and margin rules are
+    /// what actually rule on the answer, whichever floor let it through.
+    static func minimumCharacters(for text: String) -> Int {
+        let script = dominantScript(of: text)
+        // `.other` keeps the alphabet's floor: a script this type does not
+        // model is not one it can claim to know the shape of.
+        guard let script, script != .latin, script != .other else { return minimumCharacters }
+        return minimumScriptCharacters
+    }
 
     /// The share of CJK characters that have to be kana before the text is
     /// called Japanese outright.
@@ -472,14 +500,14 @@ enum LanguageDetector {
     /// already — `NoteCoordinator` — is the one that supplies them.
     static func dominantLanguage(of text: String, preferring preferred: [String] = []) -> Locale.Language? {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard trimmed.count >= minimumCharacters else { return nil }
+        guard trimmed.count >= minimumCharacters(for: trimmed) else { return nil }
 
         // Judge the filtered text where enough of it survives, the original
         // where it does not. A short UI screenshot can be nothing but
         // capitalised labels, and reading that on weak evidence beats
         // reading a two-word remnant on none.
         let filtered = signalBearingText(in: trimmed)
-        let sample = filtered.count >= minimumCharacters ? filtered : trimmed
+        let sample = filtered.count >= minimumCharacters(for: filtered) ? filtered : trimmed
 
         let dominant = dominantScript(of: sample)
 
