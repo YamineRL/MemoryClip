@@ -437,6 +437,9 @@ which of Deck's visual choices were kept and which were not.
 
 ## Licence
 
-**All rights reserved** — see [LICENSE](LICENSE). The source is published to be read,
-not reused: you may download and run the app, and nothing else without a written
-licence. Commercial use of any kind is by arrangement — open an issue to ask.
+[PolyForm Noncommercial 1.0.0](LICENSE). Free for anyone using it for themselves — study
+it, change it, share it — and free for charities, schools and public institutions.
+**Any use by or for a business needs a licence from me**; open an issue to arrange one.
+
+Source-available rather than open source: the noncommercial restriction is what the OSI
+definition rules out, so MemoryClip is not FOSS and does not claim to be.

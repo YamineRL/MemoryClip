@@ -242,7 +242,7 @@ footer a { margin: 0 10px; }
       <a class="btn ghost" href="https://www.paypal.com/donate/?hosted_button_id=H8XWE3HUPKCME" rel="noopener">Donate</a>
       <a class="ph-badge" href="https://www.producthunt.com/products/memoryclip?embed=true&amp;utm_source=badge-featured&amp;utm_medium=badge&amp;utm_campaign=badge-memoryclip" target="_blank" rel="noopener noreferrer"><picture><source media="(prefers-color-scheme: dark)" srcset="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1225026&amp;theme=dark&amp;t=1786972607168"><img alt="MemoryClip - From clipboard to notes, calendar, and translation. | Product Hunt" width="250" height="54" src="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1225026&amp;theme=light&amp;t=1786972607168"></picture></a>
     </div>
-    <p class="meta" id="meta">Free and open source · Requires macOS 26 on Apple silicon</p>
+    <p class="meta" id="meta">Free download · source available · Requires macOS 26 on Apple silicon</p>
   </div>
 </header>
 
@@ -422,7 +422,7 @@ brew trust yaminerl/memoryclip &amp;&amp; brew install --cask memoryclip</code><
     if (!dmg) return;
     for (const b of buttons) if (b) b.href = dmg.browser_download_url;
     const mb = (dmg.size / 1048576).toFixed(1);
-    meta.textContent = `Version ${release.tag_name.replace(/^v/, '')} · ${mb} MB · Free and open source · Requires macOS 26 on Apple silicon`;
+    meta.textContent = `Version ${release.tag_name.replace(/^v/, '')} · ${mb} MB · Free download · source available · Requires macOS 26 on Apple silicon`;
   } catch (e) {
     /* keep the releases-page fallback */
   }
