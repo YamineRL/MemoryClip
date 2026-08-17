@@ -227,6 +227,7 @@ struct PreviewView: View {
                                 translationTextHeight = height
                             }
                     }
+                    .scrollMoreHint()
                     // An exact height, not a maximum: a scroll view takes
                     // every point it is offered up to its cap, so a
                     // two-line translation in a `maxHeight` frame sat in
@@ -298,6 +299,7 @@ struct PreviewView: View {
                 }
             }
         }
+        .scrollMoreHint()
     }
 
     @ViewBuilder
@@ -342,6 +344,7 @@ struct PreviewView: View {
                         extractedBody(extracted)
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }
+                    .scrollMoreHint()
                 }
                 // Bounded so a text-heavy screenshot cannot squeeze the image
                 // out of the pane entirely.
