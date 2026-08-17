@@ -11,12 +11,12 @@ enum TypeFilter: String, CaseIterable, Identifiable {
     /// Human-readable label for menus and chips.
     var label: String {
         switch self {
-        case .all: return "All"
-        case .text: return "Text"
-        case .image: return "Images"
-        case .link: return "Links"
-        case .file: return "Files"
-        case .color: return "Colors"
+        case .all: return loc("All")
+        case .text: return loc("Text")
+        case .image: return loc("Images")
+        case .link: return loc("Links")
+        case .file: return loc("Files")
+        case .color: return loc("Colors")
         }
     }
 
@@ -120,17 +120,17 @@ extension ClipDisplayable {
             // is the same bug as showing it, only louder.
             raw = ClipDisplay.displayNames(fileURLStrings)
         case .color:
-            raw = colorHex ?? "colour"
+            raw = colorHex ?? loc("colour")
         case .image:
             let ocr = ocrText?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-            raw = ocr.isEmpty ? "image" : "image, \(ocr)"
+            raw = ocr.isEmpty ? loc("image") : loc("image, %@", ocr)
         default:
             raw = (text ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
         }
         let collapsed = raw
             .replacingOccurrences(of: "\n", with: " ")
             .trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !collapsed.isEmpty else { return "empty clip" }
+        guard !collapsed.isEmpty else { return loc("empty clip") }
         return collapsed.count > 80 ? String(collapsed.prefix(80)) + "…" : collapsed
     }
 }
@@ -449,8 +449,8 @@ enum PanelInputMode: Equatable {
 
     var announcement: String {
         switch self {
-        case .normal: return "Normal mode. Slash to search."
-        case .insert: return "Search mode. Escape to return to normal mode."
+        case .normal: return loc("Normal mode. Slash to search.")
+        case .insert: return loc("Search mode. Escape to return to normal mode.")
         }
     }
 
@@ -761,14 +761,14 @@ struct PanelContentView: View {
             announceSelection()
         }
         .confirmationDialog(
-            "Delete this clip?",
+            loc("Delete this clip?"),
             isPresented: deleteConfirmationBinding,
             titleVisibility: .visible
         ) {
-            Button("Delete Clip", role: .destructive) { confirmDelete() }
-            Button("Cancel", role: .cancel) { pendingDelete = nil }
+            Button(loc("Delete Clip"), role: .destructive) { confirmDelete() }
+            Button(loc("Cancel"), role: .cancel) { pendingDelete = nil }
         } message: {
-            Text("Deleting a clip cannot be undone.")
+            Text(loc("Deleting a clip cannot be undone."))
         }
     }
 
@@ -816,7 +816,7 @@ struct PanelContentView: View {
     }
 
     private var searchPlaceholder: String {
-        isNormalMode ? "Press / to search" : "Search clips"
+        isNormalMode ? loc("Press / to search") : loc("Search clips")
     }
 
     /// Makes the vim mode visible instead of leaving it as invisible state.
@@ -836,10 +836,10 @@ struct PanelContentView: View {
                 )
             )
             .foregroundStyle(Color(nsColor: inputMode == .normal ? .secondaryLabelColor : .labelColor))
-            .accessibilityLabel(inputMode == .normal ? "Normal mode" : "Search mode")
+            .accessibilityLabel(inputMode == .normal ? loc("Normal mode") : loc("Search mode"))
             .help(inputMode == .normal
-                  ? "Vim normal mode — press / or i to search"
-                  : "Search mode — press Esc for vim navigation")
+                  ? loc("Vim normal mode — press / or i to search")
+                  : loc("Search mode — press Esc for vim navigation"))
     }
 
     // MARK: Quick filters
@@ -862,7 +862,7 @@ struct PanelContentView: View {
         // and each keeps its own selected trait — they are just grouped
         // under one name.
         .accessibilityElement(children: .contain)
-        .accessibilityLabel("Filter by type")
+        .accessibilityLabel(loc("Filter by type"))
     }
 
     private func filterChip(_ typeFilter: TypeFilter) -> some View {
@@ -895,7 +895,7 @@ struct PanelContentView: View {
             .contentShape(Capsule(style: .continuous))
         }
         .buttonStyle(.plain)
-        .help("Show only \(typeFilter.label.lowercased())")
+        .help(loc("Show only %@", typeFilter.label.lowercased()))
         .accessibilityLabel(typeFilter.label)
         .accessibilityAddTraits(isOn ? [.isButton, .isSelected] : .isButton)
     }
@@ -1012,17 +1012,17 @@ struct PanelContentView: View {
             if filter.isIdentity {
                 // Nothing filtered anything out, so the store really is empty.
                 ContentUnavailableView {
-                    Label("No Clips Yet", systemImage: "clipboard")
+                    Label(loc("No Clips Yet"), systemImage: "clipboard")
                 } description: {
-                    Text("Copy something anywhere in macOS and it will appear here.")
+                    Text(loc("Copy something anywhere in macOS and it will appear here."))
                 }
                 .frame(maxWidth: .infinity)
                 .frame(height: Design.Size.cardStripHeight)
             } else {
                 ContentUnavailableView {
-                    Label("No Matches", systemImage: "magnifyingglass")
+                    Label(loc("No Matches"), systemImage: "magnifyingglass")
                 } description: {
-                    Text("Try a different search or filter.")
+                    Text(loc("Try a different search or filter."))
                 }
                 .frame(maxWidth: .infinity)
                 .frame(height: Design.Size.cardStripHeight)
@@ -1109,14 +1109,14 @@ struct PanelContentView: View {
             // field; the source-app filter stays a menu because it is an
             // open-ended list.
             Menu {
-                Picker("Source App", selection: $filter.source) {
-                    Text("All Apps").tag(String?.none)
+                Picker(loc("Source App"), selection: $filter.source) {
+                    Text(loc("All Apps")).tag(String?.none)
                     ForEach(sourceAppNames, id: \.self) { name in
                         Text(name).tag(String?.some(name))
                     }
                 }
             } label: {
-                Label(filter.source ?? "All Apps", systemImage: "app.badge")
+                Label(filter.source ?? loc("All Apps"), systemImage: "app.badge")
                     .font(Design.Typography.footnote)
                     .lineLimit(1)
             }
@@ -1128,7 +1128,7 @@ struct PanelContentView: View {
             .layoutPriority(0)
 
             if uiState.isPaused {
-                Label("Capture paused", systemImage: "pause.circle.fill")
+                Label(loc("Capture paused"), systemImage: "pause.circle.fill")
                     .font(Design.Typography.footnote)
                     .foregroundStyle(Design.Palette.warning)
                     .lineLimit(1)
@@ -1138,32 +1138,32 @@ struct PanelContentView: View {
                 Button {
                     actions.pasteQueue()
                 } label: {
-                    Label("Paste \(queue.count)", systemImage: "list.number")
+                    Label(loc("Paste %d", queue.count), systemImage: "list.number")
                         .font(Design.Typography.footnote)
                 }
                 .buttonStyle(.borderless)
                 .disabled(queue.isPasting)
-                .help("Paste queued clips in order (⇧Q in vim normal mode)")
+                .help(loc("Paste queued clips in order (⇧Q in vim normal mode)"))
 
-                Button("Clear") { queue.clear() }
+                Button(loc("Clear")) { queue.clear() }
                     .buttonStyle(.borderless)
                     .font(Design.Typography.footnote)
-                    .help("Empty the paste queue")
+                    .help(loc("Empty the paste queue"))
             }
 
             Spacer(minLength: Design.Space.tight)
 
             // "200+" rather than a plain count: the list is paged, so the
             // number shown is what has been loaded, not the whole store.
-            Text(hasMorePages ? "\(visible.count)+ clips" : "\(visible.count) clips")
+            Text(hasMorePages ? loc("%d+ clips", visible.count) : loc("%d clips", visible.count))
                 .font(Design.Typography.footnote)
                 .monospacedDigit()
                 .foregroundStyle(Color(nsColor: .secondaryLabelColor))
                 .lineLimit(1)
                 .fixedSize()
                 .help(hasMorePages
-                      ? "Showing the newest \(visible.count) matches — scroll for more"
-                      : "All matching clips are shown")
+                      ? loc("Showing the newest %d matches — scroll for more", visible.count)
+                      : loc("All matching clips are shown"))
 
             Button(role: .destructive) {
                 showNukeConfirmation = true
@@ -1174,14 +1174,14 @@ struct PanelContentView: View {
                     .contentShape(Rectangle())
             }
             .buttonStyle(.borderless)
-            .help("Delete entire history")
+            .help(loc("Delete entire history"))
         }
         .confirmationDialog(
-            "Delete entire clipboard history?",
+            loc("Delete entire clipboard history?"),
             isPresented: $showNukeConfirmation,
             titleVisibility: .visible
         ) {
-            Button("Delete Everything", role: .destructive) {
+            Button(loc("Delete Everything"), role: .destructive) {
                 // A batch delete, not a loop over `items` — the query only
                 // holds the current page, and deleting that would leave the
                 // rest of the history behind.
@@ -1190,7 +1190,7 @@ struct PanelContentView: View {
                 sourceAppNames = []
             }
         } message: {
-            Text("This permanently removes all clips, including pinned ones.")
+            Text(loc("This permanently removes all clips, including pinned ones."))
         }
     }
 
@@ -1204,7 +1204,7 @@ struct PanelContentView: View {
     /// the highlight, so the selection has to be spoken explicitly.
     private func announceSelection() {
         guard let index = selectedIndex, let item = selectedItem else { return }
-        announce("\(index + 1) of \(visibleItems.count), \(item.announcementSummary)")
+        announce(loc("%d of %d, %@", index + 1, visibleItems.count, item.announcementSummary))
     }
 
     // MARK: Preview
@@ -1240,7 +1240,7 @@ struct PanelContentView: View {
         guard let item = selectedItem ?? visibleItems.first else { return }
         previewItem = item
         previewVisible = true
-        announce("Preview shown, \(item.announcementSummary)")
+        announce(loc("Preview shown, %@", item.announcementSummary))
     }
 
     /// Hand the panel's whole filtered list to Quick Look, positioned on the
@@ -1252,7 +1252,7 @@ struct PanelContentView: View {
     /// second Escape then closes the pane, so the way out retraces the way in.
     private func showQuickLook(from item: ClipItem) {
         guard let plan = QuickLook.plan(for: visibleItems, startingAt: item.uuid) else { return }
-        announce("Quick Look, \(item.announcementSummary)")
+        announce(loc("Quick Look, %@", item.announcementSummary))
         actions.quickLook(plan.items, plan.index) { uuid in
             // Quick Look leaves the panel on whichever clip the user landed
             // on, not the one they started from. A clip that was deleted or
@@ -1268,7 +1268,7 @@ struct PanelContentView: View {
         guard previewVisible else { return }
         previewVisible = false
         previewItem = nil
-        announce("Preview hidden")
+        announce(loc("Preview hidden"))
     }
 
     /// Keep the open preview in sync with the selection / visible items.
@@ -1546,9 +1546,9 @@ private struct PreviewResizeHandle: View {
                 }
         )
         .accessibilityElement()
-        .accessibilityLabel("Preview height")
-        .accessibilityValue("\(Int(height)) points")
-        .accessibilityHint("Drag up for a taller preview")
+        .accessibilityLabel(loc("Preview height"))
+        .accessibilityValue(loc("%d points", Int(height)))
+        .accessibilityHint(loc("Drag up for a taller preview"))
         .accessibilityAdjustableAction { direction in
             let step = Design.Space.vast
             let target = direction == .increment ? height + step : height - step

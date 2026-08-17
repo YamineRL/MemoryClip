@@ -69,7 +69,7 @@ final class QRWindowController: NSObject, NSWindowDelegate {
             backing: .buffered,
             defer: false
         )
-        panel.title = "QR Code"
+        panel.title = loc("QR Code")
         panel.isReleasedWhenClosed = false
         panel.isMovableByWindowBackground = true
         panel.level = .floating
@@ -82,7 +82,7 @@ final class QRWindowController: NSObject, NSWindowDelegate {
         imageView.imageScaling = .scaleProportionallyDown
         imageView.translatesAutoresizingMaskIntoConstraints = false
 
-        let copyButton = NSButton(title: "Copy Link", target: self, action: #selector(copyLink))
+        let copyButton = NSButton(title: loc("Copy Link"), target: self, action: #selector(copyLink))
         copyButton.bezelStyle = .rounded
         // Return copies the link; Esc closes the window (KeyablePanel's
         // cancelOperation override).

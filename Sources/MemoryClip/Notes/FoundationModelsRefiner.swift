@@ -138,17 +138,17 @@ struct FoundationModelsRefiner: NoteRefiner {
         case .unavailable(let reason):
             switch reason {
             case .deviceNotEligible:
-                return "This Mac doesn’t support Apple Intelligence. Notes are still saved, just without refinement."
+                return loc("This Mac doesn’t support Apple Intelligence. Notes are still saved, just without refinement.")
             case .appleIntelligenceNotEnabled:
-                return "Apple Intelligence is turned off. Turn it on in System Settings → Apple Intelligence & Siri to refine notes."
+                return loc("Apple Intelligence is turned off. Turn it on in System Settings → Apple Intelligence & Siri to refine notes.")
             case .modelNotReady:
-                return "The on-device model is still downloading. Refinement starts working once it finishes."
+                return loc("The on-device model is still downloading. Refinement starts working once it finishes.")
             @unknown default:
-                return "The on-device model isn’t available right now. Notes are still saved, just without refinement."
+                return loc("The on-device model isn’t available right now. Notes are still saved, just without refinement.")
             }
         }
         #else
-        return "This build of MemoryClip was made without Apple’s on-device model framework. Notes are still saved, just without refinement."
+        return loc("This build of MemoryClip was made without Apple’s on-device model framework. Notes are still saved, just without refinement.")
         #endif
     }
 

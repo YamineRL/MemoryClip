@@ -77,7 +77,7 @@ final class StatusController: NSObject, NSMenuDelegate {
         // a glance, and the brand mark dimmed or badged would say it far less
         // clearly than the system's own pause glyph. Running shows the logo.
         if watcher.isPaused {
-            let image = NSImage(systemSymbolName: "pause.circle", accessibilityDescription: "MemoryClip (paused)")
+            let image = NSImage(systemSymbolName: "pause.circle", accessibilityDescription: loc("MemoryClip (paused)"))
             image?.isTemplate = true
             button.image = image
         } else {
@@ -105,7 +105,7 @@ final class StatusController: NSObject, NSMenuDelegate {
         let redacted = !isUnlocked
         let recent = store.recent(limit: 5)
         if recent.isEmpty {
-            let placeholder = NSMenuItem(title: "No clips yet", action: nil, keyEquivalent: "")
+            let placeholder = NSMenuItem(title: loc("No clips yet"), action: nil, keyEquivalent: "")
             placeholder.isEnabled = false
             menu.addItem(placeholder)
         } else {
@@ -126,12 +126,12 @@ final class StatusController: NSObject, NSMenuDelegate {
 
         menu.addItem(.separator())
 
-        let openItem = NSMenuItem(title: "Open MemoryClip", action: #selector(openPanel), keyEquivalent: "")
+        let openItem = NSMenuItem(title: loc("Open MemoryClip"), action: #selector(openPanel), keyEquivalent: "")
         openItem.target = self
         menu.addItem(openItem)
 
         let pauseItem = NSMenuItem(
-            title: watcher.isPaused ? "Resume Capture" : "Pause Capture",
+            title: watcher.isPaused ? loc("Resume Capture") : loc("Pause Capture"),
             action: #selector(togglePause),
             keyEquivalent: ""
         )
@@ -139,17 +139,17 @@ final class StatusController: NSObject, NSMenuDelegate {
         pauseItem.state = watcher.isPaused ? .on : .off
         menu.addItem(pauseItem)
 
-        let nukeItem = NSMenuItem(title: "Clear All History…", action: #selector(nukeHistory), keyEquivalent: "")
+        let nukeItem = NSMenuItem(title: loc("Clear All History…"), action: #selector(nukeHistory), keyEquivalent: "")
         nukeItem.target = self
         menu.addItem(nukeItem)
 
         menu.addItem(.separator())
 
-        let settingsItem = NSMenuItem(title: "Settings…", action: #selector(openSettings), keyEquivalent: ",")
+        let settingsItem = NSMenuItem(title: loc("Settings…"), action: #selector(openSettings), keyEquivalent: ",")
         settingsItem.target = self
         menu.addItem(settingsItem)
 
-        let quitItem = NSMenuItem(title: "Quit MemoryClip", action: #selector(quit), keyEquivalent: "q")
+        let quitItem = NSMenuItem(title: loc("Quit MemoryClip"), action: #selector(quit), keyEquivalent: "q")
         quitItem.target = self
         menu.addItem(quitItem)
     }
@@ -162,12 +162,12 @@ final class StatusController: NSObject, NSMenuDelegate {
     static func menuTitle(for item: ClipItem, redacted: Bool = false) -> String {
         guard !redacted else {
             switch item.kind {
-            case .text: return "Text clip"
-            case .richText: return "Rich text clip"
-            case .link: return "Link"
-            case .image: return "Image"
-            case .file: return "File"
-            case .color: return "Color"
+            case .text: return loc("Text clip")
+            case .richText: return loc("Rich text clip")
+            case .link: return loc("Link")
+            case .image: return loc("Image")
+            case .file: return loc("File")
+            case .color: return loc("Color")
             }
         }
         switch item.kind {
@@ -177,18 +177,18 @@ final class StatusController: NSObject, NSMenuDelegate {
                 .replacingOccurrences(of: "\n", with: " ")
                 .replacingOccurrences(of: "\r", with: " ")
             let title = String(flattened.prefix(menuTitleLimit))
-            return title.isEmpty ? "Clip" : title
+            return title.isEmpty ? loc("Clip") : title
         case .image:
-            return "Image"
+            return loc("Image")
         case .file:
             // Through `ClipDisplay`, which decodes first: the dropdown is
             // where a screenshot's stored name is most visible, and taking
             // the last component off the raw `absoluteString` put
             // "Screenshot%202026-08-16%20at%2019.16.06.png" in the menu.
             let title = ClipDisplay.displayNames(item.fileURLStrings)
-            return title.isEmpty ? "File" : title
+            return title.isEmpty ? loc("File") : title
         case .color:
-            return "Color \(item.colorHex ?? "")"
+            return loc("Color %@", item.colorHex ?? "")
         }
     }
 
@@ -197,7 +197,7 @@ final class StatusController: NSObject, NSMenuDelegate {
     @objc private func pasteRecent(_ sender: NSMenuItem) {
         guard let uuid = sender.representedObject as? UUID else { return }
         let target = frontmostAtMenuOpen
-        gated(reason: "Unlock MemoryClip to paste a clip") { [weak self] in
+        gated(reason: loc("Unlock MemoryClip to paste a clip")) { [weak self] in
             self?.performPaste(uuid: uuid, target: target)
         }
     }
@@ -234,7 +234,7 @@ final class StatusController: NSObject, NSMenuDelegate {
     @objc private func nukeHistory() {
         NSApp.activate()
         // Destructive and irreversible — always behind the lock.
-        authenticating(reason: "Unlock MemoryClip to delete clipboard history") { [weak self] in
+        authenticating(reason: loc("Unlock MemoryClip to delete clipboard history")) { [weak self] in
             self?.confirmNuke()
         }
     }
@@ -243,10 +243,10 @@ final class StatusController: NSObject, NSMenuDelegate {
         NSApp.activate()
         let alert = NSAlert()
         alert.alertStyle = .warning
-        alert.messageText = "Delete entire clipboard history?"
-        alert.informativeText = "This permanently removes all clips, including pinned ones."
-        alert.addButton(withTitle: "Delete Everything")
-        alert.addButton(withTitle: "Cancel")
+        alert.messageText = loc("Delete entire clipboard history?")
+        alert.informativeText = loc("This permanently removes all clips, including pinned ones.")
+        alert.addButton(withTitle: loc("Delete Everything"))
+        alert.addButton(withTitle: loc("Cancel"))
         if alert.runModal() == .alertFirstButtonReturn {
             store.nukeAll()
         }

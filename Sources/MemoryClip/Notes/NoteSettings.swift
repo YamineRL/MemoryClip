@@ -112,9 +112,9 @@ enum NoteDestination: String, CaseIterable, Identifiable, Sendable {
 
     var title: String {
         switch self {
-        case .markdownVault: return "Markdown folder"
-        case .notesApp: return "Notes"
-        case .shortcut: return "Shortcut"
+        case .markdownVault: return loc("Markdown folder")
+        case .notesApp: return loc("Notes")
+        case .shortcut: return loc("Shortcut")
         }
     }
 
@@ -139,20 +139,20 @@ enum NoteError: LocalizedError, Equatable {
         switch self {
         case .noDestinationConfigured(let destination):
             switch destination {
-            case .markdownVault: return "Choose a folder for notes in Settings → Notes."
-            case .notesApp: return "Choose a Notes folder in Settings → Notes."
-            case .shortcut: return "Choose a Shortcut in Settings → Notes."
+            case .markdownVault: return loc("Choose a folder for notes in Settings → Notes.")
+            case .notesApp: return loc("Choose a Notes folder in Settings → Notes.")
+            case .shortcut: return loc("Choose a Shortcut in Settings → Notes.")
             }
         case .folderUnavailable(let path):
-            return "MemoryClip can no longer reach \(path). Pick the folder again in Settings → Notes."
+            return loc("MemoryClip can no longer reach %@. Pick the folder again in Settings → Notes.", path)
         case .writeFailed(let reason):
-            return "The note could not be written: \(reason)"
+            return loc("The note could not be written: %@", reason)
         case .automationDenied:
-            return "MemoryClip needs permission to control Notes. Allow it in System Settings → Privacy & Security → Automation."
+            return loc("MemoryClip needs permission to control Notes. Allow it in System Settings → Privacy & Security → Automation.")
         case .shortcutFailed(let reason):
-            return "The Shortcut did not finish: \(reason)"
+            return loc("The Shortcut did not finish: %@", reason)
         case .nothingToWrite:
-            return "There is no text in this clip to write to a note."
+            return loc("There is no text in this clip to write to a note.")
         }
     }
 

@@ -35,6 +35,20 @@ cp "$BIN" "$APP/Contents/MacOS/MemoryClip"
 cp "Resources/Info.plist" "$APP/Contents/Info.plist"
 cp "$ICON" "$APP/Contents/Resources/AppIcon.icns"
 
+# The string catalogue: Bundle.module resolves against Contents/Resources.
+BUNDLE="$(dirname "$BIN")/MemoryClip_MemoryClip.bundle"
+if [ ! -d "$BUNDLE" ]; then
+    echo "error: $BUNDLE not found; the localization catalogue would be missing" >&2
+    exit 1
+fi
+cp -R "$BUNDLE" "$APP/Contents/Resources/"
+
+# InfoPlist.strings, for the permission prompts macOS reads out of Info.plist.
+for lproj in Resources/*.lproj; do
+    [ -d "$lproj" ] || continue
+    cp -R "$lproj" "$APP/Contents/Resources/"
+done
+
 # Ad-hoc signature: no Developer ID, no notarisation (local/personal use).
 codesign --force --sign - "$APP"
 

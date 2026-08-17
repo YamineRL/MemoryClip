@@ -130,7 +130,7 @@ enum ClipDisplay {
             .joined(separator: " ")
         guard collapsed.count > limit else { return collapsed }
         let head = String(collapsed.prefix(limit)).trimmingCharacters(in: .whitespaces)
-        return "\(head)… \(collapsed.count) characters"
+        return loc("%@… %d characters", head, collapsed.count)
     }
 
     /// The preview body: at most `limit` characters, plus a note when the
@@ -138,7 +138,7 @@ enum ClipDisplay {
     static func previewBody(_ text: String, limit: Int = previewLimit) -> (text: String, notice: String?) {
         guard text.count > limit else { return (text, nil) }
         let shown = String(text.prefix(limit))
-        let notice = "Showing the first \(formatted(limit)) of \(formatted(text.count)) characters."
+        let notice = loc("Showing the first %@ of %@ characters.", formatted(limit), formatted(text.count))
         return (shown, notice)
     }
 
@@ -155,14 +155,14 @@ enum ClipDisplay {
     /// what it is — the whole point of the flag is that this one is a picture
     /// of their screen.
     static func kindLabel(_ kind: ClipKind, isScreenshot: Bool = false) -> String {
-        if isScreenshot { return "Screenshot" }
+        if isScreenshot { return loc("Screenshot") }
         switch kind {
-        case .text: return "Text"
-        case .richText: return "Rich text"
-        case .image: return "Image"
-        case .file: return "File"
-        case .link: return "Link"
-        case .color: return "Color"
+        case .text: return loc("Text")
+        case .richText: return loc("Rich text")
+        case .image: return loc("Image")
+        case .file: return loc("File")
+        case .link: return loc("Link")
+        case .color: return loc("Color")
         }
     }
 
@@ -187,13 +187,13 @@ enum ClipDisplay {
 
         let spoken = spokenSummary(summary)
         if !spoken.isEmpty { parts.append(spoken) }
-        if let calcResult { parts.append("equals \(calcResult)") }
-        if let appName, !appName.isEmpty { parts.append("from \(appName)") }
+        if let calcResult { parts.append(loc("equals %@", calcResult)) }
+        if let appName, !appName.isEmpty { parts.append(loc("from %@", appName)) }
         if !relativeTime.isEmpty { parts.append(relativeTime) }
-        if isPinned { parts.append("pinned") }
-        if let queuePosition { parts.append("queued position \(queuePosition)") }
-        if hasExtractedText { parts.append("contains extracted text") }
-        if hasNote { parts.append("saved as a note") }
+        if isPinned { parts.append(loc("pinned")) }
+        if let queuePosition { parts.append(loc("queued position %d", queuePosition)) }
+        if hasExtractedText { parts.append(loc("contains extracted text")) }
+        if hasNote { parts.append(loc("saved as a note")) }
 
         return parts.joined(separator: ", ")
     }

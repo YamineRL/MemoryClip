@@ -82,7 +82,7 @@ struct SettingsView: View {
             ideal: Design.Size.settingsSidebarWidth,
             max: Design.Size.settingsSidebarMaxWidth
         )
-        .accessibilityLabel("Settings panes")
+        .accessibilityLabel(loc("Settings panes"))
     }
 
     private func rows(of group: SettingsPaneGroup) -> some View {
@@ -208,35 +208,35 @@ private struct GeneralSettingsPane: View {
 
     var body: some View {
         Form {
-            Section("Startup") {
+            Section(loc("Startup")) {
                 LaunchAtLoginToggle()
             }
 
-            Section("Appearance") {
+            Section(loc("Appearance")) {
                 Picker(selection: $appearance) {
                     ForEach(AppearanceSetting.allCases) { option in
                         Text(option.title).tag(option)
                     }
                 } label: {
                     Label {
-                        Text("Theme")
+                        Text(loc("Theme"))
                     } icon: {
                         SettingsIcon(symbol: "circle.lefthalf.filled", tint: Color(nsColor: .systemIndigo))
                     }
                 }
                 .pickerStyle(.segmented)
-                SettingsHint("Applies to the clipboard panel and every MemoryClip window. \"System\" follows your macOS Appearance setting.")
+                SettingsHint(loc("Applies to the clipboard panel and every MemoryClip window. \"System\" follows your macOS Appearance setting."))
             }
 
-            Section("Pasting") {
+            Section(loc("Pasting")) {
                 Toggle(isOn: $autoPaste) {
                     Label {
-                        Text("Paste automatically after selecting a clip")
+                        Text(loc("Paste automatically after selecting a clip"))
                     } icon: {
                         SettingsIcon(symbol: "arrow.down.doc.fill", tint: Color(nsColor: .systemBlue))
                     }
                 }
-                SettingsHint("MemoryClip simulates ⌘V into the previous app. If macOS blocks the synthetic key event (Accessibility not granted), the clip is still on the clipboard — paste manually with ⌘V.")
+                SettingsHint(loc("MemoryClip simulates ⌘V into the previous app. If macOS blocks the synthetic key event (Accessibility not granted), the clip is still on the clipboard — paste manually with ⌘V."))
             }
         }
         .formStyle(.grouped)
@@ -256,31 +256,31 @@ private struct HistorySettingsPane: View {
 
     var body: some View {
         Form {
-            Section("Limits") {
+            Section(loc("Limits")) {
                 Stepper(value: $historyCap, in: 10...10_000, step: 50) {
                     Label {
-                        Text("Keep up to \(historyCap) clips")
+                        Text(loc("Keep up to %d clips", historyCap))
                     } icon: {
                         SettingsIcon(symbol: "tray.full.fill", tint: Color(nsColor: .systemTeal))
                     }
                 }
                 Picker(selection: $retentionDays) {
-                    Text("Forever").tag(0)
-                    Text("7 days").tag(7)
-                    Text("30 days").tag(30)
-                    Text("90 days").tag(90)
+                    Text(loc("Forever")).tag(0)
+                    Text(loc("7 days")).tag(7)
+                    Text(loc("30 days")).tag(30)
+                    Text(loc("90 days")).tag(90)
                 } label: {
                     Label {
-                        Text("Delete clips older than")
+                        Text(loc("Delete clips older than"))
                     } icon: {
                         SettingsIcon(symbol: "clock.arrow.circlepath", tint: Color(nsColor: .systemOrange))
                     }
                 }
-                SettingsHint("Pinned clips are exempt from both limits and are never deleted automatically.")
+                SettingsHint(loc("Pinned clips are exempt from both limits and are never deleted automatically."))
             }
 
-            Section("Storage") {
-                SettingsHint("History lives in a local SwiftData file on this Mac. Clear it any time from the menu-bar menu (\"Clear All History…\") or the panel's nuke button.")
+            Section(loc("Storage")) {
+                SettingsHint(loc("History lives in a local SwiftData file on this Mac. Clear it any time from the menu-bar menu (\"Clear All History…\") or the panel's nuke button."))
             }
 
             // Export sits in History rather than Privacy because it acts on
@@ -290,7 +290,7 @@ private struct HistorySettingsPane: View {
             // the first place. It was in the menu-bar dropdown until this
             // pane existed to hold it; a dropdown of the last five clips is
             // no place for an action that hands over every clip ever taken.
-            Section("Export") {
+            Section(loc("Export")) {
                 // A row per format, each the same `LabeledContent` shape the
                 // Screenshots pane's folder row uses, rather than one row with
                 // a pair of "JSON…"/"CSV…" buttons beside it. Two buttons in a
@@ -303,24 +303,24 @@ private struct HistorySettingsPane: View {
                 // One button per labelled row is the shape that is announced
                 // correctly, and it reads no worse.
                 LabeledContent {
-                    Button("Export…") { HistoryExportController.shared.exportHistory(asCSV: false) }
+                    Button(loc("Export…")) { HistoryExportController.shared.exportHistory(asCSV: false) }
                 } label: {
                     Label {
-                        Text("Every clip as JSON")
+                        Text(loc("Every clip as JSON"))
                     } icon: {
                         SettingsIcon(symbol: "curlybraces", tint: Color(nsColor: .systemBlue))
                     }
                 }
                 LabeledContent {
-                    Button("Export…") { HistoryExportController.shared.exportHistory(asCSV: true) }
+                    Button(loc("Export…")) { HistoryExportController.shared.exportHistory(asCSV: true) }
                 } label: {
                     Label {
-                        Text("Every clip as CSV")
+                        Text(loc("Every clip as CSV"))
                     } icon: {
                         SettingsIcon(symbol: "tablecells", tint: Color(nsColor: .systemGreen))
                     }
                 }
-                SettingsHint("Writes every clip to one unencrypted file, readable by your user account only. JSON carries images and rich text as Base64; CSV is text, source app and timestamps only. MemoryClip spells out what the file will contain before writing it, and — with the Touch ID lock on — asks you to authenticate every time, even if you unlocked it a moment ago.")
+                SettingsHint(loc("Writes every clip to one unencrypted file, readable by your user account only. JSON carries images and rich text as Base64; CSV is text, source app and timestamps only. MemoryClip spells out what the file will contain before writing it, and — with the Touch ID lock on — asks you to authenticate every time, even if you unlocked it a moment ago."))
             }
         }
         .formStyle(.grouped)
@@ -335,26 +335,26 @@ private struct PanelSettingsPane: View {
 
     var body: some View {
         Form {
-            Section("Search") {
+            Section(loc("Search")) {
                 Toggle(isOn: $ocrEnabled) {
                     Label {
-                        Text("Extract text from images (OCR)")
+                        Text(loc("Extract text from images (OCR)"))
                     } icon: {
                         SettingsIcon(symbol: "text.viewfinder", tint: Color(nsColor: .systemPurple))
                     }
                 }
-                SettingsHint("Runs on-device with the Vision framework, in the background, so image clips can be found by the text inside them.")
+                SettingsHint(loc("Runs on-device with the Vision framework, in the background, so image clips can be found by the text inside them."))
             }
 
-            Section("Navigation") {
+            Section(loc("Navigation")) {
                 Toggle(isOn: $vimMode) {
                     Label {
-                        Text("Vim navigation keys")
+                        Text(loc("Vim navigation keys"))
                     } icon: {
                         SettingsIcon(symbol: "keyboard.fill", tint: Color(nsColor: .systemGray))
                     }
                 }
-                SettingsHint("Gives the panel vim modes: it opens in NORMAL mode where j/k-style keys navigate, and / or i switches to INSERT mode for searching (Esc returns). The current mode is shown in the search bar. See the Shortcuts pane for the full list.")
+                SettingsHint(loc("Gives the panel vim modes: it opens in NORMAL mode where j/k-style keys navigate, and / or i switches to INSERT mode for searching (Esc returns). The current mode is shown in the search bar. See the Shortcuts pane for the full list."))
             }
         }
         .formStyle(.grouped)
@@ -366,32 +366,32 @@ private struct PanelSettingsPane: View {
 private struct PrivacySettingsPane: View {
     var body: some View {
         Form {
-            Section("Lock") {
+            Section(loc("Lock")) {
                 Toggle(isOn: appLockBinding) {
                     Label {
-                        Text("Require Touch ID to open the panel")
+                        Text(loc("Require Touch ID to open the panel"))
                     } icon: {
                         SettingsIcon(symbol: "touchid", tint: Color(nsColor: .systemPink))
                     }
                 }
                 SettingsHint(AppLockService.shared.isAvailable
-                     ? "Uses the system LocalAuthentication prompt, with a passcode fallback."
-                     : "No biometric hardware or enrollment detected — the lock fails open, so the panel still opens.")
+                     ? loc("Uses the system LocalAuthentication prompt, with a passcode fallback.")
+                     : loc("No biometric hardware or enrollment detected — the lock fails open, so the panel still opens."))
             }
 
-            Section("Capture") {
+            Section(loc("Capture")) {
                 Toggle(isOn: sensitiveFilterBinding) {
                     Label {
-                        Text("Skip capturing sensitive content")
+                        Text(loc("Skip capturing sensitive content"))
                     } icon: {
                         SettingsIcon(symbol: "eye.slash.fill", tint: Color(nsColor: .systemRed))
                     }
                 }
-                SettingsHint("Skips likely card numbers (Luhn-validated) and anything copied in a known password manager. Pasteboard opt-out markers (transient, auto-generated, concealed) are always respected.")
+                SettingsHint(loc("Skips likely card numbers (Luhn-validated) and anything copied in a known password manager. Pasteboard opt-out markers (transient, auto-generated, concealed) are always respected."))
             }
 
-            Section("Permissions") {
-                SettingsHint("Detection is based on the source app's identity — MemoryClip never reads window titles or the screen, so it needs no Screen Recording or Accessibility permission. Accessibility is optional and only affects the synthetic ⌘V used for auto-paste.")
+            Section(loc("Permissions")) {
+                SettingsHint(loc("Detection is based on the source app's identity — MemoryClip never reads window titles or the screen, so it needs no Screen Recording or Accessibility permission. Accessibility is optional and only affects the synthetic ⌘V used for auto-paste."))
             }
         }
         .formStyle(.grouped)
@@ -420,11 +420,11 @@ private struct PrivacySettingsPane: View {
 private struct ShortcutsSettingsPane: View {
     var body: some View {
         Form {
-            Section("Global") {
+            Section(loc("Global")) {
                 KeyboardShortcuts.Recorder(for: .togglePanel) {
-                    Text("Toggle panel:")
+                    Text(loc("Toggle panel:"))
                 }
-                SettingsHint("Works system-wide. Click the field and press the keys you want.")
+                SettingsHint(loc("Works system-wide. Click the field and press the keys you want."))
             }
 
             ForEach(ShortcutReference.groups) { group in
@@ -495,12 +495,12 @@ private struct AboutSettingsPane: View {
                     .padding(.vertical, Design.Space.tight)
                     .background(Capsule(style: .continuous).fill(Design.Palette.surface))
 
-                Text("A keyboard-first clipboard history for macOS, living in the menu bar.")
+                Text(loc("A keyboard-first clipboard history for macOS, living in the menu bar."))
                     .font(.body)
                     .multilineTextAlignment(.center)
                     .padding(.top, Design.Space.tight)
 
-                Text("Everything happens on this Mac: clips are stored in a local SwiftData file, and MemoryClip makes no network calls — no sync, no accounts, no analytics. It needs no Accessibility or Screen Recording permission to capture, search and copy clips; Accessibility is optional and only lets auto-paste send a synthetic ⌘V.")
+                Text(loc("Everything happens on this Mac: clips are stored in a local SwiftData file, and MemoryClip makes no network calls — no sync, no accounts, no analytics. It needs no Accessibility or Screen Recording permission to capture, search and copy clips; Accessibility is optional and only lets auto-paste send a synthetic ⌘V."))
                     .font(.caption)
                     .foregroundStyle(Color(nsColor: .secondaryLabelColor))
                     .multilineTextAlignment(.center)
@@ -511,13 +511,13 @@ private struct AboutSettingsPane: View {
                 Button {
                     OnboardingController.shared.show()
                 } label: {
-                    Label("Show Introduction Again", systemImage: "sparkles")
+                    Label(loc("Show Introduction Again"), systemImage: "sparkles")
                 }
                 .controlSize(.large)
                 .buttonStyle(.borderedProminent)
                 .padding(.top, Design.Space.roomy)
 
-                Text("Re-opens the first-run tour of the panel, shortcuts and privacy model, where the note destination and launch-at-login can also be set.")
+                Text(loc("Re-opens the first-run tour of the panel, shortcuts and privacy model, where the note destination and launch-at-login can also be set."))
                     .font(.caption)
                     .foregroundStyle(Color(nsColor: .secondaryLabelColor))
                     .multilineTextAlignment(.center)
@@ -550,24 +550,24 @@ private struct ScreenshotSettingsPane: View {
 
     var body: some View {
         Form {
-            Section("Capture") {
+            Section(loc("Capture")) {
                 Toggle(isOn: $captureEnabled) {
                     Label {
-                        Text("Keep screenshots in history")
+                        Text(loc("Keep screenshots in history"))
                     } icon: {
                         SettingsIcon(symbol: "camera.viewfinder", tint: Color(nsColor: .systemGreen))
                     }
                 }
-                SettingsHint("⇧⌘3 and ⇧⌘4 save a file and never touch the clipboard, so MemoryClip cannot see them otherwise. With this on, each new screenshot appears in your history.")
+                SettingsHint(loc("⇧⌘3 and ⇧⌘4 save a file and never touch the clipboard, so MemoryClip cannot see them otherwise. With this on, each new screenshot appears in your history."))
             }
 
-            Section("Folder") {
+            Section(loc("Folder")) {
                 LabeledContent {
-                    Button("Choose…") { chooseFolder() }
+                    Button(loc("Choose…")) { chooseFolder() }
                 } label: {
                     Label {
                         VStack(alignment: .leading, spacing: Design.Space.hair) {
-                            Text("Watching")
+                            Text(loc("Watching"))
                             Text(folderDisplayPath)
                                 .font(.caption)
                                 .foregroundStyle(Color(nsColor: .secondaryLabelColor))
@@ -578,19 +578,19 @@ private struct ScreenshotSettingsPane: View {
                         SettingsIcon(symbol: "folder.fill", tint: Color(nsColor: .systemBlue))
                     }
                 }
-                SettingsHint("Defaults to wherever macOS saves screenshots. MemoryClip needs your permission to read that folder, which is what choosing it here grants.")
+                SettingsHint(loc("Defaults to wherever macOS saves screenshots. MemoryClip needs your permission to read that folder, which is what choosing it here grants."))
             }
 
-            Section("What gets stored") {
-                SettingsHint("A link, not a copy: the clip points at the screenshot where it already is, plus a small thumbnail. Deleting a clip — or letting it expire — never deletes your file.")
+            Section(loc("What gets stored")) {
+                SettingsHint(loc("A link, not a copy: the clip points at the screenshot where it already is, plus a small thumbnail. Deleting a clip — or letting it expire — never deletes your file."))
                 Toggle(isOn: $ocrEnabled) {
                     Label {
-                        Text("Extract text from images (OCR)")
+                        Text(loc("Extract text from images (OCR)"))
                     } icon: {
                         SettingsIcon(symbol: "text.viewfinder", tint: Color(nsColor: .systemPurple))
                     }
                 }
-                SettingsHint("Reads the text in each screenshot on-device so you can search for it. The same setting as the one in the Panel pane; it is repeated here because it is what makes a screenshot findable.")
+                SettingsHint(loc("Reads the text in each screenshot on-device so you can search for it. The same setting as the one in the Panel pane; it is repeated here because it is what makes a screenshot findable."))
             }
         }
         .formStyle(.grouped)
@@ -604,8 +604,8 @@ private struct ScreenshotSettingsPane: View {
     private func chooseFolder() {
         let chosen = FolderBookmark.choose(
             key: NoteSettingsKeys.screenshotFolderBookmark,
-            title: "Choose Screenshot Folder",
-            message: "Pick the folder macOS saves your screenshots to. MemoryClip watches it for new files.",
+            title: loc("Choose Screenshot Folder"),
+            message: loc("Pick the folder macOS saves your screenshots to. MemoryClip watches it for new files."),
             startingAt: folder ?? ScreenshotDetector.configuredLocation()
         )
         guard let chosen else { return }
@@ -639,10 +639,10 @@ private struct TranslationSettingsPane: View {
 
     var body: some View {
         Form {
-            Section("Notes") {
+            Section(loc("Notes")) {
                 Toggle(isOn: $translateEnabled) {
                     Label {
-                        Text("Translate other languages into English")
+                        Text(loc("Translate other languages into English"))
                     } icon: {
                         SettingsIcon(symbol: "character.bubble.fill", tint: Color(nsColor: .systemPink))
                     }
@@ -650,13 +650,13 @@ private struct TranslationSettingsPane: View {
                 if translateEnabled {
                     TranslationLanguagePicker()
                 }
-                SettingsHint("When MemoryClip writes a note, a screenshot in Arabic, Japanese or Russian is read in its own language and the note carries both: the text exactly as it was on screen, and an English translation underneath it. Translation runs on this Mac. The title, summary and tags are written from the English, so the note is findable in a vault you search in English.\n\nTick as many languages as you like — those are the ones MemoryClip will translate, and ticking one downloads its assets if macOS does not have them yet. With none ticked it translates any language this Mac can already handle. The packs go into the store the whole system shares, so a language you fetch here is the one Translate and Safari use.")
+                SettingsHint(loc("When MemoryClip writes a note, a screenshot in Arabic, Japanese or Russian is read in its own language and the note carries both: the text exactly as it was on screen, and an English translation underneath it. Translation runs on this Mac. The title, summary and tags are written from the English, so the note is findable in a vault you search in English.\n\nTick as many languages as you like — those are the ones MemoryClip will translate, and ticking one downloads its assets if macOS does not have them yet. With none ticked it translates any language this Mac can already handle. The packs go into the store the whole system shares, so a language you fetch here is the one Translate and Safari use."))
             }
 
-            Section("Clip preview") {
+            Section(loc("Clip preview")) {
                 Toggle(isOn: $clipTranslateEnabled) {
                     Label {
-                        Text("Translate copied text in the preview")
+                        Text(loc("Translate copied text in the preview"))
                     } icon: {
                         SettingsIcon(symbol: "text.bubble.fill", tint: Color(nsColor: .systemTeal))
                     }
@@ -664,7 +664,7 @@ private struct TranslationSettingsPane: View {
                 if clipTranslateEnabled {
                     ClipTranslationTargetPicker()
                 }
-                SettingsHint("Nothing to do with notes: copy something in a language you do not read and the panel's preview shows it in yours, above the text as it was copied. It happens when you open the preview, not when you copy — a clipboard is mostly things nobody reads twice — and each clip is translated once and remembered.")
+                SettingsHint(loc("Nothing to do with notes: copy something in a language you do not read and the panel's preview shows it in yours, above the text as it was copied. It happens when you open the preview, not when you copy — a clipboard is mostly things nobody reads twice — and each clip is translated once and remembered."))
             }
         }
         .formStyle(.grouped)
@@ -788,7 +788,7 @@ private struct TranslationLanguagePicker: View {
             } label: {
                 Label {
                     VStack(alignment: .leading, spacing: Design.Space.hair) {
-                        Text("Languages")
+                        Text(loc("Languages"))
                         Text(summary)
                             .font(.caption)
                             .foregroundStyle(Color(nsColor: .secondaryLabelColor))
@@ -870,18 +870,18 @@ private struct TranslationLanguagePicker: View {
     /// know what it holds.
     private var summary: String {
         let names = store.menu.filter { selected.contains($0.id) }.map(\.name)
-        guard !names.isEmpty else { return "Any language this Mac can translate" }
+        guard !names.isEmpty else { return loc("Any language this Mac can translate") }
         if names.count <= 3 { return ListFormatter.localizedString(byJoining: names) }
-        return "\(names.count) languages"
+        return loc("%d languages", names.count)
     }
 
     private func status(of language: TranslationLanguage) -> String {
-        if queue.first?.id == language.id { return "Downloading…" }
-        if queue.contains(language) { return "Waiting…" }
+        if queue.first?.id == language.id { return loc("Downloading…") }
+        if queue.contains(language) { return loc("Waiting…") }
         switch store.readiness[language.id] {
-        case .ready: return "Downloaded"
-        case .needsDownload: return "Downloads when ticked"
-        case .unsupported: return "Unavailable"
+        case .ready: return loc("Downloaded")
+        case .needsDownload: return loc("Downloads when ticked")
+        case .unsupported: return loc("Unavailable")
         case nil: return ""
         }
     }
@@ -895,7 +895,7 @@ private struct TranslationLanguagePicker: View {
             .filter { !$0.isEmpty }
         guard !names.isEmpty else { return nil }
         let list = ListFormatter.localizedString(byJoining: names)
-        return "MemoryClip has already read a screenshot in \(list) and saved the note untranslated. Tick the language above to download it, then capture the screenshot again."
+        return loc("MemoryClip has already read a screenshot in %@ and saved the note untranslated. Tick the language above to download it, then capture the screenshot again.", list)
     }
 
     private func startNextDownload() {
@@ -930,7 +930,7 @@ private struct TranslationLanguagePicker: View {
             // Deliberately not the framework's own description: it is written
             // for a translation UI ("Unable to translate") and says nothing
             // about a download. The user needs the route that always works.
-            failure = "The download did not finish. You can also add languages in System Settings → General → Language & Region → Translation Languages."
+            failure = loc("The download did not finish. You can also add languages in System Settings → General → Language & Region → Translation Languages.")
         }
 
         // Whatever happened to that one, the rest of the queue still wants
@@ -963,7 +963,7 @@ private struct ClipTranslationTargetPicker: View {
             }
         } label: {
             Label {
-                Text("Into")
+                Text(loc("Into"))
             } icon: {
                 SettingsIcon(symbol: "globe", tint: Color(nsColor: .systemTeal))
             }
@@ -1048,10 +1048,10 @@ private struct NotesSettingsPane: View {
 
     var body: some View {
         Form {
-            Section("Local model") {
+            Section(loc("Local model")) {
                 Toggle(isOn: $refineEnabled) {
                     Label {
-                        Text("Clean up extracted text with the on-device model")
+                        Text(loc("Clean up extracted text with the on-device model"))
                     } icon: {
                         SettingsIcon(symbol: "wand.and.sparkles", tint: Color(nsColor: .systemIndigo))
                     }
@@ -1059,31 +1059,31 @@ private struct NotesSettingsPane: View {
                 if let unavailable = FoundationModelsRefiner.unavailabilityDescription() {
                     SettingsCallout(text: unavailable, symbol: "info.circle.fill", tint: Color(nsColor: .systemOrange))
                 }
-                SettingsHint("Apple's on-device model fixes OCR slips, rejoins wrapped lines and gives each note a title and summary. It runs on this Mac — nothing is uploaded. The raw extracted text is always kept alongside it, so nothing the model writes replaces what was actually on screen.")
+                SettingsHint(loc("Apple's on-device model fixes OCR slips, rejoins wrapped lines and gives each note a title and summary. It runs on this Mac — nothing is uploaded. The raw extracted text is always kept alongside it, so nothing the model writes replaces what was actually on screen."))
             }
 
             // The same view the first-run tour renders, so the folder a user
             // picked during the tour is the folder this pane shows.
-            Section("Destination") {
+            Section(loc("Destination")) {
                 NoteDestinationSetup()
             }
 
-            Section("When") {
+            Section(loc("When")) {
                 Toggle(isOn: $autoNoteEnabled) {
                     Label {
-                        Text("Write a note for every screenshot")
+                        Text(loc("Write a note for every screenshot"))
                     } icon: {
                         SettingsIcon(symbol: "bolt.fill", tint: Color(nsColor: .systemYellow))
                     }
                 }
                 if autoNoteEnabled {
                     Stepper(value: $minimumCharacters, in: 0...2000, step: 20) {
-                        Text("…with at least \(minimumCharacters) characters of text")
+                        Text(loc("…with at least %d characters of text", minimumCharacters))
                     }
                 }
                 SettingsHint(autoNoteEnabled
-                    ? "Off by default for a reason: a busy day of screenshots is a busy day of notes. The character threshold skips the ones with nothing worth keeping."
-                    : "Notes are written when you ask for one — select a clip in the panel and choose Save as Note. Turn this on to have every screenshot with enough text write itself.")
+                    ? loc("Off by default for a reason: a busy day of screenshots is a busy day of notes. The character threshold skips the ones with nothing worth keeping.")
+                    : loc("Notes are written when you ask for one — select a clip in the panel and choose Save as Note. Turn this on to have every screenshot with enough text write itself."))
             }
         }
         .formStyle(.grouped)

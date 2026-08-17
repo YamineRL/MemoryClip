@@ -99,7 +99,7 @@ final class OnboardingController: NSObject, NSWindowDelegate {
             backing: .buffered,
             defer: false
         )
-        window.title = "Welcome to MemoryClip"
+        window.title = loc("Welcome to MemoryClip")
         window.isReleasedWhenClosed = false
         window.isMovableByWindowBackground = true
         window.level = .normal

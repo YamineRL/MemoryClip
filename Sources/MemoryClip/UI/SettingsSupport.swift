@@ -30,15 +30,15 @@ enum SettingsPane: String, CaseIterable, Identifiable, Sendable {
 
     var title: String {
         switch self {
-        case .general: return "General"
-        case .shortcuts: return "Shortcuts"
-        case .history: return "History"
-        case .panel: return "Panel"
-        case .privacy: return "Privacy"
-        case .screenshots: return "Screenshots"
-        case .notes: return "Notes"
-        case .translation: return "Translation"
-        case .about: return "About"
+        case .general: return loc("General")
+        case .shortcuts: return loc("Shortcuts")
+        case .history: return loc("History")
+        case .panel: return loc("Panel")
+        case .privacy: return loc("Privacy")
+        case .screenshots: return loc("Screenshots")
+        case .notes: return loc("Notes")
+        case .translation: return loc("Translation")
+        case .about: return loc("About")
         }
     }
 
@@ -165,9 +165,9 @@ extension SettingsPane {
     ///   changes nothing, and inventing a category for a single identity pane
     ///   would add a word to read without adding a distinction.
     static let groups: [SettingsPaneGroup] = [
-        SettingsPaneGroup(title: "General", panes: [.general, .shortcuts, .translation]),
-        SettingsPaneGroup(title: "Clipboard", panes: [.history, .panel, .privacy]),
-        SettingsPaneGroup(title: "Screenshots", panes: [.screenshots, .notes]),
+        SettingsPaneGroup(title: loc("General"), panes: [.general, .shortcuts, .translation]),
+        SettingsPaneGroup(title: loc("Clipboard"), panes: [.history, .panel, .privacy]),
+        SettingsPaneGroup(title: loc("Screenshots"), panes: [.screenshots, .notes]),
         SettingsPaneGroup(title: nil, panes: [.about])
     ]
 }
@@ -213,8 +213,8 @@ struct AppVersionInfo: Equatable {
     /// except that two versions existed. The key stays in Info.plist because
     /// macOS uses it; the About pane just does not repeat it.
     var displayString: String {
-        guard isKnown else { return "Version \(Self.unknownVersion)" }
-        return "Version \(shortVersion)"
+        guard isKnown else { return loc("Version %@", Self.unknownVersion) }
+        return loc("Version %@", shortVersion)
     }
 
     private static func clean(_ value: String?) -> String? {
@@ -279,20 +279,20 @@ enum ShortcutReference {
     /// only to keep vim mode's catch-all from stealing them from the search
     /// field and the focus ring.
     static let panel = ShortcutGroup(
-        title: "Panel",
+        title: loc("Panel"),
         entries: [
-            ShortcutEntry(keys: "↑ ↓", detail: "Move the selection; hold to keep moving"),
-            ShortcutEntry(keys: "← →", detail: "Move along the strip; hold to keep moving (search field empty)"),
-            ShortcutEntry(keys: "Return", detail: "Paste the selected clip"),
-            ShortcutEntry(keys: "⇧Return", detail: "Paste as plain text"),
-            ShortcutEntry(keys: "⌘1…⌘9", detail: "Paste the first nine results"),
-            ShortcutEntry(keys: "⌘S", detail: "Save the selected clip as a note"),
+            ShortcutEntry(keys: "↑ ↓", detail: loc("Move the selection; hold to keep moving")),
+            ShortcutEntry(keys: "← →", detail: loc("Move along the strip; hold to keep moving (search field empty)")),
+            ShortcutEntry(keys: "Return", detail: loc("Paste the selected clip")),
+            ShortcutEntry(keys: "⇧Return", detail: loc("Paste as plain text")),
+            ShortcutEntry(keys: "⌘1…⌘9", detail: loc("Paste the first nine results")),
+            ShortcutEntry(keys: "⌘S", detail: loc("Save the selected clip as a note")),
             ShortcutEntry(
                 keys: "Space",
-                detail: "Open the preview; press again to Quick Look a screenshot, image or file, or to close the preview (search field empty)"
+                detail: loc("Open the preview; press again to Quick Look a screenshot, image or file, or to close the preview (search field empty)")
             ),
-            ShortcutEntry(keys: "Esc", detail: "Close Quick Look, then the preview, then the panel"),
-            ShortcutEntry(keys: "⌘W", detail: "Close the panel")
+            ShortcutEntry(keys: "Esc", detail: loc("Close Quick Look, then the preview, then the panel")),
+            ShortcutEntry(keys: "⌘W", detail: loc("Close the panel"))
         ]
     )
 
@@ -303,20 +303,20 @@ enum ShortcutReference {
     /// already has. A reader of this pane cannot tell the difference, and
     /// should not have to.
     static let vim = ShortcutGroup(
-        title: "Vim navigation",
-        note: "Only when vim mode is on. The panel opens in NORMAL mode (shown in the search bar) where these keys navigate; / or i switches to INSERT mode to type in the search field, and Esc switches back.",
+        title: loc("Vim navigation"),
+        note: loc("Only when vim mode is on. The panel opens in NORMAL mode (shown in the search bar) where these keys navigate; / or i switches to INSERT mode to type in the search field, and Esc switches back."),
         entries: [
-            ShortcutEntry(keys: "j / k", detail: "Move down / up; hold to keep moving"),
-            ShortcutEntry(keys: "h / l", detail: "Move back / forward along the strip; hold to keep moving"),
-            ShortcutEntry(keys: "gg / G", detail: "Jump to the top / bottom"),
-            ShortcutEntry(keys: "⌃d / ⌃u", detail: "Half-page down / up"),
-            ShortcutEntry(keys: "o / ⇧O", detail: "Paste / paste as plain text"),
-            ShortcutEntry(keys: "p", detail: "Pin or unpin the selected clip"),
-            ShortcutEntry(keys: "n", detail: "Save the selected clip as a note"),
-            ShortcutEntry(keys: "dd", detail: "Delete the selected clip (asks first)"),
-            ShortcutEntry(keys: "q / ⇧Q", detail: "Add to the queue / paste the queue"),
-            ShortcutEntry(keys: "/ or i", detail: "Search: / starts a fresh query, i edits the current one"),
-            ShortcutEntry(keys: "Esc", detail: "Abandon a half-typed sequence, or leave the search field")
+            ShortcutEntry(keys: "j / k", detail: loc("Move down / up; hold to keep moving")),
+            ShortcutEntry(keys: "h / l", detail: loc("Move back / forward along the strip; hold to keep moving")),
+            ShortcutEntry(keys: "gg / G", detail: loc("Jump to the top / bottom")),
+            ShortcutEntry(keys: "⌃d / ⌃u", detail: loc("Half-page down / up")),
+            ShortcutEntry(keys: "o / ⇧O", detail: loc("Paste / paste as plain text")),
+            ShortcutEntry(keys: "p", detail: loc("Pin or unpin the selected clip")),
+            ShortcutEntry(keys: "n", detail: loc("Save the selected clip as a note")),
+            ShortcutEntry(keys: "dd", detail: loc("Delete the selected clip (asks first)")),
+            ShortcutEntry(keys: "q / ⇧Q", detail: loc("Add to the queue / paste the queue")),
+            ShortcutEntry(keys: "/ or i", detail: loc("Search: / starts a fresh query, i edits the current one")),
+            ShortcutEntry(keys: "Esc", detail: loc("Abandon a half-typed sequence, or leave the search field"))
         ]
     )
 }

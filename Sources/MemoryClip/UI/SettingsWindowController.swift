@@ -16,7 +16,7 @@ final class SettingsWindowController {
 
     /// The window's title. Also applied from inside `SettingsView`, which is
     /// what stops `NavigationSplitView` retitling the window per pane.
-    static let windowTitle = "MemoryClip Settings"
+    static var windowTitle: String { loc("MemoryClip Settings") }
 
     private var window: NSWindow?
 

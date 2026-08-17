@@ -122,7 +122,7 @@ final class ClipDisplayTests: XCTestCase {
 
         XCTAssertLessThan(spoken.count, 200, "VoiceOver must not read 4000 characters")
         XCTAssertTrue(spoken.hasPrefix(String(repeating: "x", count: ClipDisplay.summaryLimit)))
-        XCTAssertTrue(spoken.hasSuffix("4000 characters"), spoken)
+        XCTAssertTrue(spoken.hasSuffix("4,000 characters"), spoken)
         XCTAssertTrue(spoken.contains("…"))
     }
 
@@ -278,7 +278,7 @@ final class ClipDisplayTests: XCTestCase {
             appName: "Notes",
             relativeTime: "now"
         )
-        XCTAssertTrue(label.contains("4000 characters"), label)
+        XCTAssertTrue(label.contains("4,000 characters"), label)
         XCTAssertLessThan(label.count, 250)
         XCTAssertTrue(label.hasSuffix("from Notes, now"))
     }

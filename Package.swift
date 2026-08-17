@@ -3,6 +3,7 @@ import PackageDescription
 
 let package = Package(
     name: "MemoryClip",
+    defaultLocalization: "en",
     platforms: [
         .macOS(.v26)
     ],
@@ -16,6 +17,9 @@ let package = Package(
                 .product(name: "KeyboardShortcuts", package: "KeyboardShortcuts")
             ],
             path: "Sources/MemoryClip",
+            resources: [
+                .process("Resources")
+            ],
             swiftSettings: [
                 .swiftLanguageMode(.v6)
             ]
