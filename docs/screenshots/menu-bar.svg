@@ -17,8 +17,8 @@
   <g fill="#c7c7cc" font-size="10.5"><text x="332" y="17">100%</text><text x="378" y="17">14:32</text></g>
 
   <!-- dropdown -->
-  <rect x="150" y="32" width="256" height="306" rx="10" fill="#1f1f22" opacity="0.98"/>
-  <rect x="150.5" y="32.5" width="255" height="305" rx="9.5" fill="none" stroke="#3a3a3d"/>
+  <rect x="150" y="32" width="256" height="318" rx="10" fill="#1f1f22" opacity="0.98"/>
+  <rect x="150.5" y="32.5" width="255" height="317" rx="9.5" fill="none" stroke="#3a3a3d"/>
 
   <text x="164" y="52" fill="#8e8e93" font-size="10" font-weight="600" letter-spacing="0.6">RECENT CLIPS</text>
   <g font-size="12.5" fill="#e8e8ea">
@@ -35,15 +35,18 @@
   <g font-size="12.5" fill="#e8e8ea">
     <text x="164" y="210">Open MemoryClip</text>
     <text x="164" y="234">Pause Capture</text>
-    <text x="164" y="258">Clear All History…</text>
   </g>
-  <line x1="156" y1="272" x2="400" y2="272" stroke="#3a3a3d"/>
+  <line x1="156" y1="248" x2="400" y2="248" stroke="#3a3a3d"/>
   <g font-size="12.5" fill="#e8e8ea">
-    <text x="164" y="294">Settings…</text>
-    <text x="164" y="318">Quit MemoryClip</text>
+    <text x="164" y="270">Settings…</text>
+    <text x="164" y="294">Clear All History…</text>
+  </g>
+  <line x1="156" y1="308" x2="400" y2="308" stroke="#3a3a3d"/>
+  <g font-size="12.5" fill="#e8e8ea">
+    <text x="164" y="330">Quit MemoryClip</text>
   </g>
   <g font-size="11.5" fill="#8e8e93" text-anchor="end">
-    <text x="396" y="294">⌘,</text>
-    <text x="396" y="318">⌘Q</text>
+    <text x="396" y="270">⌘,</text>
+    <text x="396" y="330">⌘Q</text>
   </g>
 </svg>

@@ -98,6 +98,13 @@ final class StatusController: NSObject, NSMenuDelegate {
 
         menu.removeAllItems()
 
+        // A header rather than a bare run of rows: without it the top of the
+        // menu is five lines of arbitrary text sitting directly above a list
+        // of commands, and nothing says the two halves are different kinds of
+        // thing. Shown even when the list is empty, so the menu keeps one
+        // shape and the placeholder underneath reads as an answer to it.
+        menu.addItem(.sectionHeader(title: loc("Recent Clips")))
+
         // When the app lock is on and the unlocked window has expired the
         // titles are redacted — the dropdown would otherwise show 48
         // characters of every recent clip (enough for a whole password) with
@@ -139,15 +146,23 @@ final class StatusController: NSObject, NSMenuDelegate {
         pauseItem.state = watcher.isPaused ? .on : .off
         menu.addItem(pauseItem)
 
-        let nukeItem = NSMenuItem(title: loc("Clear All History…"), action: #selector(nukeHistory), keyEquivalent: "")
-        nukeItem.target = self
-        menu.addItem(nukeItem)
-
         menu.addItem(.separator())
 
         let settingsItem = NSMenuItem(title: loc("Settings…"), action: #selector(openSettings), keyEquivalent: ",")
         settingsItem.target = self
         menu.addItem(settingsItem)
+
+        // Deleting the whole history is the one irreversible thing this menu
+        // does, so it is kept out of the run above: Pause Capture is the item
+        // people come here to click, and a destructive row directly beneath it
+        // is one slipped pointer away. Here it has a separator between itself
+        // and everything frequent, Settings above, and Quit across another
+        // separator below.
+        let nukeItem = NSMenuItem(title: loc("Clear All History…"), action: #selector(nukeHistory), keyEquivalent: "")
+        nukeItem.target = self
+        menu.addItem(nukeItem)
+
+        menu.addItem(.separator())
 
         let quitItem = NSMenuItem(title: loc("Quit MemoryClip"), action: #selector(quit), keyEquivalent: "q")
         quitItem.target = self
