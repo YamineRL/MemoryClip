@@ -44,18 +44,39 @@ final class EventKitSink: EventSink {
 
     // MARK: - EventSink
 
-    /// True exactly while the user has never been asked.
+    /// Whether a request would put a dialog on screen — which the automatic
+    /// path is not allowed to do.
     ///
-    /// `.notDetermined` is the one status whose `requestAccess` puts a dialog
-    /// on screen; every other status answers from what macOS already recorded,
-    /// which is why the denied and restricted cases below can be turned into
-    /// errors without a second prompt attempt.
+    /// This cannot be `authorizationStatus(for:) == .notDetermined` alone, and
+    /// the reason is worth recording because it costs an afternoon to find.
+    /// On an ad-hoc-signed build, `requestWriteOnlyAccessToEvents()` returns
+    /// **true** and the write genuinely succeeds, while
+    /// `authorizationStatus(for: .event)` goes on reporting `.notDetermined`
+    /// for the life of the process. Trusting the status alone therefore
+    /// produced a loop nobody could escape: every capture decided it had
+    /// never asked, declined, and left the user with a switch that was on and
+    /// a calendar that stayed empty — while the manual button, which asks the
+    /// store directly instead of consulting the status, worked the whole time.
     ///
-    /// `nonisolated` because `authorizationStatus(for:)` is a static read of
-    /// TCC state that touches nothing this class holds, and because the
-    /// protocol requirement it satisfies is not main-actor bound.
+    /// So the grant is remembered here as well. `false` once anything in this
+    /// process has been told yes, whatever TCC says afterwards; the rule that
+    /// matters — never raise the first prompt from a background capture — is
+    /// unaffected, since a run that has never asked still has the flag clear.
     nonisolated var wouldPromptForAccess: Bool {
-        EKEventStore.authorizationStatus(for: .event) == .notDetermined
+        guard !Self.grantedInThisRun.value else { return false }
+        return EKEventStore.authorizationStatus(for: .event) == .notDetermined
+    }
+
+    /// Set the moment any request comes back granted, and never cleared.
+    ///
+    /// Locked rather than `nonisolated(unsafe)` because it is written from the
+    /// settings pane and read from the capture path, and `nonisolated` so that
+    /// read needs no hop to the main actor.
+    private nonisolated static let grantedInThisRun = Flag()
+
+    /// Records that access has been granted, from wherever it was asked.
+    nonisolated static func noteAccessGranted() {
+        grantedInThisRun.set()
     }
 
     @MainActor
@@ -123,6 +144,7 @@ final class EventKitSink: EventSink {
             throw CalendarError.saveFailed(error.localizedDescription)
         }
         guard granted else { throw CalendarError.accessDenied }
+        Self.noteAccessGranted()
     }
 
     /// Raise the permission prompt now, from a place the user just clicked.
@@ -138,9 +160,20 @@ final class EventKitSink: EventSink {
     /// as `accessDenied` the first time the button is used, which is where
     /// the alert and its Open Settings button are.
     static func primeAccess() async {
-        guard EKEventStore.authorizationStatus(for: .event) == .notDetermined else { return }
+        // The remembered grant is checked first, and not only as an
+        // optimisation: the status can stay `.notDetermined` after a
+        // successful grant, so without this the pane would raise the dialog
+        // again every time it was opened.
+        guard !grantedInThisRun.value,
+              EKEventStore.authorizationStatus(for: .event) == .notDetermined
+        else { return }
+
         let granted = (try? await EKEventStore().requestWriteOnlyAccessToEvents()) ?? false
-        log.notice("Calendar access prompt answered: \(granted ? "granted" : "refused", privacy: .public)")
+        if granted { noteAccessGranted() }
+        log.notice("""
+            Calendar access prompt answered: \(granted ? "granted" : "refused", privacy: .public) \
+            (status now \(EKEventStore.authorizationStatus(for: .event).rawValue, privacy: .public))
+            """)
     }
 
     /// What the calendar grant is right now, in terms the settings UI can act
@@ -152,6 +185,12 @@ final class EventKitSink: EventSink {
     /// it". Somewhere has to say so out loud, and the pane holding the switch
     /// is the only place the user is looking.
     nonisolated static var access: CalendarAccess {
+        // The remembered grant outranks the status for the reason
+        // `wouldPromptForAccess` documents: the status can stay
+        // `.notDetermined` after a request that genuinely succeeded, and a
+        // warning telling someone to grant access they have already granted
+        // is worse than no warning at all.
+        if grantedInThisRun.value { return .granted }
         switch EKEventStore.authorizationStatus(for: .event) {
         case .notDetermined: return .notAsked
         case .restricted: return .restricted
@@ -219,5 +258,24 @@ final class EventKitSink: EventSink {
     /// `EKEventStore`, which is to say without calendar permission.
     static func inclusiveAllDayEnd(start: Date, halfOpenEnd: Date) -> Date {
         max(start, halfOpenEnd.addingTimeInterval(-1))
+    }
+}
+
+/// A set-once boolean that crosses actors. Smaller than an actor and usable
+/// from a `nonisolated` getter, which is what the access flag needs.
+private final class Flag: @unchecked Sendable {
+    private let lock = NSLock()
+    private var raised = false
+
+    var value: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return raised
+    }
+
+    func set() {
+        lock.lock()
+        raised = true
+        lock.unlock()
     }
 }
