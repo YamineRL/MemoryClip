@@ -125,9 +125,11 @@ final class OnboardingTests: XCTestCase {
     }
 
     /// The honest auto-paste framing must stay in the tour (it mirrors the
-    /// wording used in SettingsView / README).
+    /// wording used in SettingsView / README). Found by the control it
+    /// carries rather than by page id, so rewriting the page around the switch
+    /// is free and dropping the sentence is not.
     func testAutoPasteStepMentionsAccessibilityAndFallback() throws {
-        let step = try XCTUnwrap(OnboardingFlow.steps.first { $0.id == "autopaste" })
+        let step = try XCTUnwrap(OnboardingFlow.steps.first { $0.setup == .autoPaste })
         let text = step.bullets.joined(separator: " ")
         XCTAssertTrue(
             text.contains("Accessibility"),
@@ -136,6 +138,42 @@ final class OnboardingTests: XCTestCase {
         XCTAssertTrue(
             text.contains("⌘V"),
             "the auto-paste step must state the manual fallback: \(text)"
+        )
+    }
+
+    /// The calendar page is where the write-only grant is asked for, and the
+    /// automatic path may not raise that prompt itself — so the page has to
+    /// carry the switch, not merely mention that one exists.
+    func testCalendarStepOffersTheSwitchAndNamesItsKey() throws {
+        let step = try XCTUnwrap(OnboardingFlow.steps.first { $0.id == "calendar" })
+        XCTAssertEqual(step.setup, .calendarEvents)
+        let text = step.bullets.joined(separator: " ")
+        XCTAssertTrue(text.contains("⌘E"), "the page must name the panel key: \(text)")
+        XCTAssertTrue(
+            text.contains("Add to Calendar"),
+            "the page must name the action as ClipCardView spells it: \(text)"
+        )
+    }
+
+    /// A tour is read in the order it is written, so anything needing an
+    /// answer is asked before anything that only explains: a decision buried
+    /// past the last page anyone reaches is a decision nobody makes.
+    func testEveryPageWithAControlComesFirst() {
+        let carriesControl = OnboardingFlow.steps.map { $0.setup != nil }
+        let lastAsking = carriesControl.lastIndex(of: true) ?? -1
+        let firstTelling = carriesControl.firstIndex(of: false) ?? OnboardingFlow.count
+        XCTAssertLessThan(
+            lastAsking, firstTelling,
+            "a page that only explains sits above one that asks for a decision: \(OnboardingFlow.steps.map(\.id))"
+        )
+    }
+
+    /// The tour is finite on purpose. Nobody clicks Next eight times, and a
+    /// page nobody reaches carries a setting nobody sets.
+    func testTheTourStaysShortEnoughToBeRead() {
+        XCTAssertLessThanOrEqual(
+            OnboardingFlow.count, 6,
+            "the tour grew past what a first launch will sit through: \(OnboardingFlow.steps.map(\.id))"
         )
     }
 

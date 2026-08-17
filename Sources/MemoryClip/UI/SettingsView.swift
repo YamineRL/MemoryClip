@@ -204,7 +204,6 @@ private struct ShortcutCap: View {
 // MARK: - General
 
 private struct GeneralSettingsPane: View {
-    @AppStorage(SettingsKeys.autoPaste) private var autoPaste = true
     @AppStorage(SettingsKeys.appearance) private var appearance: AppearanceSetting = .system
 
     var body: some View {
@@ -230,14 +229,7 @@ private struct GeneralSettingsPane: View {
             }
 
             Section(loc("Pasting")) {
-                Toggle(isOn: $autoPaste) {
-                    Label {
-                        Text(loc("Paste automatically after selecting a clip"))
-                    } icon: {
-                        SettingsIcon(symbol: "arrow.down.doc.fill", tint: Color(nsColor: .systemBlue))
-                    }
-                }
-                SettingsHint(loc("MemoryClip simulates ⌘V into the previous app. If macOS blocks the synthetic key event (Accessibility not granted), the clip is still on the clipboard — paste manually with ⌘V."))
+                AutoPasteToggle()
             }
         }
         .formStyle(.grouped)
@@ -1105,52 +1097,12 @@ private struct NotesSettingsPane: View {
 /// happens automatically, so it is not a question to put to someone who has
 /// left automatic creation off.
 private struct CalendarSettingsPane: View {
-    @AppStorage(CalendarSettingsKeys.autoCreate) private var autoCreate = false
-    @AppStorage(CalendarSettingsKeys.notifyOnAutoCreate) private var notifyOnAutoCreate = true
     @AppStorage(CalendarSettingsKeys.eventDurationMinutes) private var durationMinutes = 60
-
-    /// Starts optimistic so the warning does not flash on every open before
-    /// `onAppear` has read the real status.
-    @State private var access: CalendarAccess = .granted
 
     var body: some View {
         Form {
             Section(loc("Adding events")) {
-                Toggle(isOn: $autoCreate) {
-                    Label {
-                        Text(loc("Add events automatically"))
-                    } icon: {
-                        SettingsIcon(symbol: "calendar.badge.plus", tint: Color(nsColor: .systemRed))
-                    }
-                }
-                .onChange(of: autoCreate) { _, isOn in
-                    // Ask for calendar access here, while the switch that
-                    // needs it is under the pointer. The automatic path will
-                    // not raise the prompt itself, so this is the only place
-                    // it can be asked with the reason on screen.
-                    guard isOn else { return }
-                    Task { await prime() }
-                }
-                SettingsHint(loc("An event is created on its own only when the clip names a time of day and either a meeting link or an address. A bare date — a deadline in a paragraph, an expiry notice, a headline — is left alone. Anything MemoryClip passes over you can still add yourself: select the clip in the panel and choose Add to Calendar."))
-
-                // The switch can be on while the grant it depends on is not,
-                // and nothing else would ever say so: automatic creation may
-                // not raise a prompt, so it just declines, clip after clip,
-                // looking exactly like a clipboard that never holds a date.
-                if autoCreate, !access.canCreateEvents {
-                    SettingsCallout(text: accessWarning, symbol: "calendar.badge.exclamationmark")
-                }
-
-                if autoCreate {
-                    Toggle(isOn: $notifyOnAutoCreate) {
-                        Label {
-                            Text(loc("Tell me when an event is added"))
-                        } icon: {
-                            SettingsIcon(symbol: "bell.badge.fill", tint: Color(nsColor: .systemBlue))
-                        }
-                    }
-                    SettingsHint(loc("The notification names the event and when it starts, and carries an Undo button that takes it straight back out of your calendar. Undo works while MemoryClip is running; after a quit, remove the event in Calendar like any other."))
-                }
+                CalendarAutoCreateSetup()
             }
 
             Section(loc("Events")) {
@@ -1171,33 +1123,6 @@ private struct CalendarSettingsPane: View {
             }
         }
         .formStyle(.grouped)
-        .onAppear {
-            // Opening this pane is itself a user action, so the prompt may be
-            // raised from here. It has to be: the switch persists across
-            // launches, and someone who turned it on before ever granting
-            // access would otherwise never be asked again — `onChange` only
-            // fires on a transition, and there is no transition to make.
-            Task { await prime() }
-        }
-    }
-
-    /// Refresh the known grant, asking for it first when the feature is on
-    /// and nobody has been asked yet.
-    private func prime() async {
-        if autoCreate { await EventKitSink.primeAccess() }
-        access = EventKitSink.access
-    }
-
-    /// Why automatic events are not happening, and what to do about it.
-    private var accessWarning: String {
-        switch access {
-        case .denied:
-            return loc("Automatic events are on, but permission to add them was refused. Allow MemoryClip in System Settings → Privacy & Security → Calendars; macOS will not ask a second time on its own.")
-        case .restricted:
-            return loc("Calendar access is turned off on this Mac by a profile or by Screen Time, so no event can be added.")
-        case .notAsked, .granted:
-            return loc("Automatic events are on, but MemoryClip has not been given calendar access yet, so nothing will be added. Switch this off and on again to be asked.")
-        }
     }
 }
 
