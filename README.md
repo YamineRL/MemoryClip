@@ -21,7 +21,8 @@ Shortcut.
 
 **Zero network calls**: no sync, no analytics, no accounts. Clips live in a local
 SwiftData store, and the models that read, tidy and translate run here too. The only files
-written anywhere else are the notes you asked for, in the folder you chose.
+written anywhere else are the notes you asked for, in the folder you chose, and the
+calendar events you asked for.
 
 Requires macOS 26 on Apple silicon.
 
@@ -46,7 +47,7 @@ Requires macOS 26 on Apple silicon.
     <td colspan="2" align="center"><img src="docs/screenshots/settings.svg" alt="The Settings window showing its sidebar of preference panes" width="620"></td>
   </tr>
   <tr>
-    <td colspan="2" align="center"><em>Settings — nine panes behind a sidebar, no Dock icon anywhere.</em></td>
+    <td colspan="2" align="center"><em>Settings — ten panes behind a sidebar, no Dock icon anywhere.</em></td>
   </tr>
 </table>
 
@@ -88,6 +89,7 @@ glyph gives the last five clips, Pause Capture, Clear All History, Settings and 
 | `⇧Return` | Paste it as **plain text**, dropping fonts and colours |
 | `⌘1`–`⌘9` | Paste any of the first nine results directly |
 | `⌘S` | Save the selected clip as a note, if it carries any text |
+| `⌘E` | Add the selected clip to the calendar, if it names a date |
 | `Space` | Open the preview pane; press it again on a picture or a file for full-size **Quick Look** |
 | `Esc` | Close Quick Look, then the preview, then the panel |
 
@@ -138,6 +140,7 @@ in the search bar. In NORMAL:
 | `dd` | Delete the clip, after a confirmation |
 | `q` `⇧Q` | Add to the queue / paste the whole queue |
 | `n` | Save the clip as a note (`⌘S` does the same in either mode) |
+| `c` | Add the clip to the calendar (`⌘E` does the same in either mode) |
 | `/` `i` | Fresh search / edit the existing query → INSERT |
 
 **Housekeeping.** The newest 200 clips are kept and anything older than 30 days is swept,
@@ -269,6 +272,30 @@ Bear, Craft, Notion and Things keep no files: use the **Shortcut** destination. 
 version of this list is in the app, under
 **Settings → Notes → Which apps can open these notes?**
 
+## Dates into events
+
+A clip that names a time — an invitation pasted out of an e-mail, a screenshot of a
+meeting request, a line someone sent you in chat — becomes an event in Calendar.
+Right-click → **Add to Calendar**, **⌘E**, or `c` in vim mode.
+
+What it reads is what macOS reads: the same detector that underlines "Thursday at 3" in
+Mail, so it understands the forms people actually send, in every language the system
+ships. Around that it looks for the two things that turn a date into an appointment — a
+video-call link (Zoom, Meet, Teams, Webex and the rest) and a postal address — and takes
+the title from the line above the details, which is where an invitation puts its subject.
+A date with no clock time becomes an all-day event rather than an hour at noon.
+
+Turn on **Add events automatically** in **Settings → Calendar** and a clip that is plainly
+an appointment is filed without being asked. *Plainly* is the whole of it: the text has to
+name a time of day **and** carry either a meeting link or an address. A bare date does not
+qualify, and that is deliberate — "Q3 ends September 30" is a date, a receipt has a date,
+an article has a date, and a clipboard manager that turned every one of them into a
+calendar entry would be something you switch off rather than something you rely on.
+Everything weaker still gets the button.
+
+An automatic event announces itself with a notification carrying **Undo**, which takes it
+back out again. Either way the clip row reads `· in calendar`.
+
 ## Privacy and security
 
 Everything happens on this Mac — a local SwiftData store, and no network calls at all.
@@ -301,12 +328,16 @@ Recording, no Input Monitoring, no network. Optional, and only with the matching
   pick. Each grant is kept as a *security-scoped bookmark* rather than a path, so it
   outlives a relaunch, and MemoryClip never reaches into a folder you did not point it at.
 - **Automation** — only when Apple Notes is your note destination.
+- **Calendars** — only to add an event you asked for. The grant requested is *write-only*:
+  it can create events and cannot read one. That is also why an event goes to your default
+  calendar and there is no picker — listing the others would need the read permission this
+  feature is deliberately not asking for.
 - **Accessibility** — only to auto-paste with a synthetic ⌘V. Without it the clip still
   reaches the clipboard.
 
 ## Settings
 
-Nine panes in a sidebar; ↑/↓ move between them, ⌘W closes the window, and it reopens
+Ten panes in a sidebar; ↑/↓ move between them, ⌘W closes the window, and it reopens
 where you left it.
 
 | Group | Pane | Contains |
@@ -317,6 +348,7 @@ where you left it.
 | Clipboard | **History** | History cap, retention window, export |
 | Clipboard | **Panel** | Image OCR, vim navigation |
 | Clipboard | **Privacy** | Touch ID lock, sensitive-content filtering, permission notes |
+| Clipboard | **Calendar** | Automatic events, their notification, how long an event runs |
 | Screenshots | **Screenshots** | Screenshot capture, the folder to watch, image OCR |
 | Screenshots | **Notes** | The on-device model, note destination, automatic notes |
 | — | **About** | Version, privacy summary, replay the welcome tour |
@@ -330,7 +362,7 @@ which is why its two halves are headed **Notes** and **Clip preview**.
 ./Scripts/make_app.sh    # release build + dist/MemoryClip.app (ad-hoc signed)
 ./Scripts/make_dmg.sh    # the above, plus dist/MemoryClip-<version>.dmg
 swift build && swift run # debug build, run from it
-swift test               # 725 unit tests (benchmarks skipped)
+swift test               # 843 unit tests (benchmarks skipped)
 ```
 
 `make_app.sh` regenerates `Resources/AppIcon.icns` if it is missing, so
@@ -367,6 +399,8 @@ Sources/MemoryClip/
 ├── Store/      ClipItem (SwiftData), ClipStore (insert/dedup/fetch, cap, retention)
 ├── Actions/    PasteService, TransformService, CalcEvaluator, QRService,
 │               ExportService, OCRService + OCRCoordinator
+├── Calendar/   EventDetector + DetectedEvent, EventSink + EventKitSink,
+│               CalendarCoordinator, EventNotifier
 ├── Notes/      NoteRefiner + FoundationModelsRefiner, NoteTranslator + AppleTranslator,
 │               ClipTranslation (the preview's own), NoteComposer,
 │               NoteSink (Markdown / Notes / Shortcut), NoteCoordinator
