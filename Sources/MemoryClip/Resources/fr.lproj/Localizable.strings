@@ -392,3 +392,6 @@
 "Added to your %@ calendar" = "Ajouté à votre calendrier %@";
 "%@ — %@" = "%@ — %@";
 "Open in Calendar" = "Ouvrir dans Calendrier";
+"Automatic events are on, but permission to add them was refused. Allow MemoryClip in System Settings → Privacy & Security → Calendars; macOS will not ask a second time on its own." = "Les évènements automatiques sont activés, mais l’autorisation de les ajouter a été refusée. Autorisez MemoryClip dans Réglages Système → Confidentialité et sécurité → Calendriers ; macOS ne le redemandera pas de lui-même.";
+"Calendar access is turned off on this Mac by a profile or by Screen Time, so no event can be added." = "L’accès au calendrier est désactivé sur ce Mac par un profil ou par Temps d’écran, aucun évènement ne peut donc être ajouté.";
+"Automatic events are on, but MemoryClip has not been given calendar access yet, so nothing will be added. Switch this off and on again to be asked." = "Les évènements automatiques sont activés, mais MemoryClip n’a pas encore reçu l’accès au calendrier : rien ne sera ajouté. Désactivez puis réactivez cette option pour que la question vous soit posée.";

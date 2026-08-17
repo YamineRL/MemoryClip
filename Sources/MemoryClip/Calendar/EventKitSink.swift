@@ -139,7 +139,26 @@ final class EventKitSink: EventSink {
     /// the alert and its Open Settings button are.
     static func primeAccess() async {
         guard EKEventStore.authorizationStatus(for: .event) == .notDetermined else { return }
-        _ = try? await EKEventStore().requestWriteOnlyAccessToEvents()
+        let granted = (try? await EKEventStore().requestWriteOnlyAccessToEvents()) ?? false
+        log.notice("Calendar access prompt answered: \(granted ? "granted" : "refused", privacy: .public)")
+    }
+
+    /// What the calendar grant is right now, in terms the settings UI can act
+    /// on without importing EventKit.
+    ///
+    /// This exists because the automatic path can only ever *decline* when
+    /// permission is missing — it must not raise a prompt of its own — and a
+    /// silent decline is indistinguishable from "that clip had no date in
+    /// it". Somewhere has to say so out loud, and the pane holding the switch
+    /// is the only place the user is looking.
+    nonisolated static var access: CalendarAccess {
+        switch EKEventStore.authorizationStatus(for: .event) {
+        case .notDetermined: return .notAsked
+        case .restricted: return .restricted
+        case .denied: return .denied
+        case .fullAccess, .writeOnly: return .granted
+        @unknown default: return .notAsked
+        }
     }
 
     // MARK: - Building the event
