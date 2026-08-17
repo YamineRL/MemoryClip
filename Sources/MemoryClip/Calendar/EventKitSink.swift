@@ -125,6 +125,23 @@ final class EventKitSink: EventSink {
         guard granted else { throw CalendarError.accessDenied }
     }
 
+    /// Raise the permission prompt now, from a place the user just clicked.
+    ///
+    /// Turning automatic creation on is the only moment this can be asked
+    /// well. The automatic path itself refuses to prompt — a dialog raised by
+    /// a background sweep arrives with nothing on screen to explain it — so
+    /// without this the switch would go on, nothing would ever happen, and
+    /// there would be no way to find out why: a decline while access is
+    /// `.notDetermined` looks exactly like a clip that named no date.
+    ///
+    /// Ignores its own outcome. A refusal is recorded by macOS and surfaces
+    /// as `accessDenied` the first time the button is used, which is where
+    /// the alert and its Open Settings button are.
+    static func primeAccess() async {
+        guard EKEventStore.authorizationStatus(for: .event) == .notDetermined else { return }
+        _ = try? await EKEventStore().requestWriteOnlyAccessToEvents()
+    }
+
     // MARK: - Building the event
 
     /// The `EKEvent` for a detected appointment.

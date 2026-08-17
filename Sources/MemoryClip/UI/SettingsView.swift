@@ -1119,6 +1119,14 @@ private struct CalendarSettingsPane: View {
                         SettingsIcon(symbol: "calendar.badge.plus", tint: Color(nsColor: .systemRed))
                     }
                 }
+                .onChange(of: autoCreate) { _, isOn in
+                    // Ask for calendar access here, while the switch that
+                    // needs it is under the pointer. The automatic path will
+                    // not raise the prompt itself, so this is the only place
+                    // it can be asked with the reason on screen.
+                    guard isOn else { return }
+                    Task { await EventKitSink.primeAccess() }
+                }
                 SettingsHint(loc("An event is created on its own only when the clip names a time of day and either a meeting link or an address. A bare date — a deadline in a paragraph, an expiry notice, a headline — is left alone. Anything MemoryClip passes over you can still add yourself: select the clip in the panel and choose Add to Calendar."))
 
                 if autoCreate {
