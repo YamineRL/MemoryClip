@@ -96,7 +96,7 @@
 <text x="500" y="165" font-size="12" fill="#f2f2f7">Booking confirmed — Hôtel</text>
 <text x="500" y="180" font-size="12" fill="#f2f2f7">Sainte-Anne, 2 nights from</text>
 <text x="500" y="195" font-size="12" fill="#f2f2f7">14 Sep. Ref 8FJ2QK.</text>
-<text x="500" y="287" font-size="10" fill="#98989d">72 characters</text>
+<text x="500" y="287" font-size="10" fill="#98989d">72 characters · in calendar</text>
 <rect x="655" y="276" width="21" height="14" rx="4" fill="#ffffff" fill-opacity="0.06"/>
 <rect x="655.5" y="276.5" width="20" height="13" rx="3.5" fill="none" stroke="#ffffff" stroke-opacity="0.1"/>
 <text x="665.5" y="287" font-size="10" fill="#98989d" font-weight="600" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">⌘3</text>
