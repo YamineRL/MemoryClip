@@ -63,11 +63,24 @@ struct AppleTranslator: NoteTranslator {
         await translate(text, from: language, to: NoteTranslation.target)
     }
 
-    /// The same, into a language the caller picked — what the preview pane
-    /// asks for. Every step below is target-independent except the
-    /// availability check and the session itself, which is why the note
-    /// pipeline's fixed English target is now just one caller of this.
+    /// The same, into a language the caller picked, waiting for the whole
+    /// thing — what the note pipeline asks for.
     func translate(_ text: String, from language: Locale.Language, to target: Locale.Language) async -> TranslatedText? {
+        await translate(text, from: language, to: target) { _ in }
+    }
+
+    /// The same again, reporting the translation so far as each chunk of it
+    /// lands — what the preview pane asks for.
+    ///
+    /// Every step below is target-independent except the availability check
+    /// and the session, which is why the note pipeline's fixed English target
+    /// is just one caller of this.
+    func translate(
+        _ text: String,
+        from language: Locale.Language,
+        to target: Locale.Language,
+        onProgress: @escaping @MainActor @Sendable (String) -> Void
+    ) async -> TranslatedText? {
         #if canImport(Translation)
         let identifier = LanguageDetector.identifier(for: language)
         let (sent, remainder) = NoteTranslation.bounded(text)
@@ -88,17 +101,13 @@ struct AppleTranslator: NoteTranslator {
             return nil
         }
 
-        // A new session per clip, for the same reason `FoundationModelsRefiner`
-        // builds a new `LanguageModelSession` each time: it is a one-shot
-        // transform, the source language changes from clip to clip, and the
-        // session is a reference type whose lifetime is easiest to reason
-        // about when it does not outlive the call.
-        let session = TranslationSession(installedSource: language, target: target)
-        defer { session.cancel() }
-
         do {
-            let response = try await session.translate(sent)
-            var translated = response.targetText.trimmingCharacters(in: .whitespacesAndNewlines)
+            var translated = try await TranslationSessions.shared.translate(
+                NoteTranslation.chunks(sent),
+                from: language,
+                to: target,
+                onProgress: onProgress
+            )
             guard !translated.isEmpty else { return nil }
             if !remainder.isEmpty {
                 translated += "\n\n\(NoteTranslation.truncationMarker)\n\n\(remainder)"
@@ -155,6 +164,168 @@ struct AppleTranslator: NoteTranslator {
     }
     #endif
 }
+
+// MARK: - Keeping a session
+
+/// The language pair a kept session is filed under.
+///
+/// Maximal identifiers, so the pairs the engine does not distinguish share one
+/// session: the note pipeline's "en-US" target and a preview pane set to "en"
+/// are one key.
+struct TranslationSessionKey: Hashable, Sendable {
+    let source: String
+    let target: String
+
+    init(from source: Locale.Language, to target: Locale.Language) {
+        self.source = source.maximalIdentifier
+        self.target = target.maximalIdentifier
+    }
+}
+
+/// Which sessions are being kept and when an unused one is let go.
+///
+/// Generic over the session, so the keying and the expiry are testable without
+/// the Translation framework.
+struct TranslationSessionRegistry<Session> {
+    /// How long a session is kept after its last chunk.
+    let idleTimeout: TimeInterval
+
+    private struct Entry {
+        var session: Session
+        var lastUsed: Date
+    }
+
+    private var entries: [TranslationSessionKey: Entry] = [:]
+
+    init(idleTimeout: TimeInterval = 90) {
+        self.idleTimeout = idleTimeout
+    }
+
+    var isEmpty: Bool { entries.isEmpty }
+    var count: Int { entries.count }
+
+    /// The session for `key`, marked as used at `now`.
+    mutating func session(for key: TranslationSessionKey, now: Date = .now) -> Session? {
+        guard let session = entries[key]?.session else { return nil }
+        entries[key]?.lastUsed = now
+        return session
+    }
+
+    mutating func insert(_ session: Session, for key: TranslationSessionKey, now: Date = .now) {
+        entries[key] = Entry(session: session, lastUsed: now)
+    }
+
+    mutating func touch(_ key: TranslationSessionKey, now: Date = .now) {
+        entries[key]?.lastUsed = now
+    }
+
+    mutating func remove(_ key: TranslationSessionKey) -> Session? {
+        entries.removeValue(forKey: key)?.session
+    }
+
+    /// Drop and hand back every session unused for `idleTimeout`.
+    mutating func removeExpired(now: Date = .now) -> [Session] {
+        let cutoff = now.addingTimeInterval(-idleTimeout)
+        let stale = entries.filter { $0.value.lastUsed <= cutoff }
+        for key in stale.keys { entries.removeValue(forKey: key) }
+        return stale.values.map(\.session)
+    }
+}
+
+#if canImport(Translation)
+/// The sessions themselves, kept between clips so the second clip of a page
+/// does not pay to build one again.
+///
+/// Keeping them changes nothing about which languages work: these are still
+/// `init(installedSource:target:)` sessions, still `canRequestDownloads ==
+/// false`, and `readiness(from:to:)` still runs before every call.
+actor TranslationSessions {
+    static let shared = TranslationSessions()
+
+    private var registry = TranslationSessionRegistry<TranslationSession>()
+    private var sweep: Task<Void, Never>?
+
+    /// Translate `chunks`, handing the text so far to `onProgress` as each one
+    /// arrives, and return the whole of it.
+    ///
+    /// Responses are placed by `clientIdentifier` and published as an unbroken
+    /// prefix, so what the pane shows only ever grows.
+    func translate(
+        _ chunks: [TranslationChunk],
+        from source: Locale.Language,
+        to target: Locale.Language,
+        onProgress: @escaping @MainActor @Sendable (String) -> Void
+    ) async throws -> String {
+        let key = TranslationSessionKey(from: source, to: target)
+        let session = registry.session(for: key) ?? make(for: key, from: source, to: target)
+        let batch = chunks.enumerated().map { index, chunk in
+            TranslationSession.Request(sourceText: chunk.text, clientIdentifier: String(index))
+        }
+
+        var arrived = [String?](repeating: nil, count: chunks.count)
+        var published = 0
+        var text = ""
+
+        do {
+            for try await response in session.translate(batch: batch) {
+                guard let index = response.clientIdentifier.flatMap(Int.init),
+                      arrived.indices.contains(index)
+                else { continue }
+                arrived[index] = response.targetText
+                while published < arrived.count, let part = arrived[published] {
+                    text += part + chunks[published].separator
+                    published += 1
+                }
+                registry.touch(key)
+
+                let sofar = text.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !sofar.isEmpty { await onProgress(sofar) }
+            }
+        } catch {
+            // The session that threw is dropped and cancelled rather than
+            // handed to the next clip.
+            registry.remove(key)?.cancel()
+            throw error
+        }
+
+        scheduleSweep()
+        // Short of the last chunk is not a finished translation, and only a
+        // finished one is returned to be cached on the clip.
+        guard published == chunks.count else {
+            log.error("Translation returned \(published, privacy: .public) of \(chunks.count, privacy: .public) chunks")
+            return ""
+        }
+        return text.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private func make(
+        for key: TranslationSessionKey,
+        from source: Locale.Language,
+        to target: Locale.Language
+    ) -> TranslationSession {
+        let session = TranslationSession(installedSource: source, target: target)
+        registry.insert(session, for: key)
+        return session
+    }
+
+    /// Watch for idle sessions until there are none left.
+    private func scheduleSweep() {
+        guard sweep == nil else { return }
+        sweep = Task {
+            repeat {
+                try? await Task.sleep(for: .seconds(registry.idleTimeout))
+            } while !expire()
+            sweep = nil
+        }
+    }
+
+    /// Cancel every session past the timeout; true once the registry is empty.
+    private func expire() -> Bool {
+        for session in registry.removeExpired() { session.cancel() }
+        return registry.isEmpty
+    }
+}
+#endif
 
 /// The no-translation translator: the floor the pipeline falls back to, and
 /// what tests inject so they never depend on which language assets happen to
