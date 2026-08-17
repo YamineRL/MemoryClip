@@ -363,3 +363,11 @@
 "URL Decode" = "URL Decode";
 "Sort Lines" = "Sort Lines";
 "Deduplicate Lines" = "Deduplicate Lines";
+"Event" = "Event";
+"There is no date in this clip to put in the calendar." = "There is no date in this clip to put in the calendar.";
+"MemoryClip needs permission to add events to your calendar. Allow it in System Settings → Privacy & Security → Calendars." = "MemoryClip needs permission to add events to your calendar. Allow it in System Settings → Privacy & Security → Calendars.";
+"Calendar access is turned off on this Mac by a profile or by Screen Time, so MemoryClip cannot add the event." = "Calendar access is turned off on this Mac by a profile or by Screen Time, so MemoryClip cannot add the event.";
+"There is no calendar to add the event to. Open Calendar and choose a default calendar for new events." = "There is no calendar to add the event to. Open Calendar and choose a default calendar for new events.";
+"The event could not be saved: %@" = "The event could not be saved: %@";
+"The event could not be removed: %@" = "The event could not be removed: %@";
+"Join: %@" = "Join: %@";

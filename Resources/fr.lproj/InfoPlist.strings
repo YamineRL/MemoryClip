@@ -1,4 +1,5 @@
 "CFBundleDisplayName" = "MemoryClip";
 "NSAppleEventsUsageDescription" = "MemoryClip a besoin de votre autorisation pour contrôler Notes afin d’enregistrer sous forme de note le texte d’une capture d’écran. Elle n’est utilisée que si vous choisissez Notes comme destination de vos notes.";
+"NSCalendarsWriteOnlyAccessUsageDescription" = "MemoryClip n’ajoute un événement à votre calendrier que lorsque vous le lui demandez, à partir d’un clip contenant une date. Son accès est limité à l’écriture : elle ne peut pas lire votre calendrier.";
 "NSDesktopFolderUsageDescription" = "MemoryClip surveille votre dossier de captures d’écran — le Bureau, sauf si vous l’avez changé — afin que les nouvelles captures soient conservées dans votre historique de presse-papiers.";
 "NSDocumentsFolderUsageDescription" = "MemoryClip écrit vos notes dans le dossier que vous choisissez, souvent situé dans Documents.";

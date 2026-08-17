@@ -577,6 +577,15 @@ final class ClipStore {
         save()
     }
 
+    /// Record the calendar event created from this clip, or clear it with nil
+    /// when the event has been undone. Non-nil is what marks the clip as
+    /// already scheduled.
+    func applyCalendarEvent(_ identifier: String?, toClipWith uuid: UUID) {
+        guard let item = item(withUUID: uuid) else { return }
+        item.calendarEventID = identifier
+        save()
+    }
+
     /// One clip by uuid — the indexed, limit-1 lookup the write-back paths
     /// share.
     func item(withUUID uuid: UUID) -> ClipItem? {
