@@ -49,7 +49,23 @@ enum EventDetector {
     static let meetingHosts = [
         "zoom.us", "meet.google.com", "teams.microsoft.com", "teams.live.com",
         "webex.com", "whereby.com", "meet.jit.si", "chime.aws",
-        "gotomeeting.com", "bluejeans.com", "around.co", "riverside.fm"
+        "gotomeeting.com", "bluejeans.com", "around.co", "riverside.fm",
+        "meet.proton.me", "facetime.apple.com", "skype.com", "8x8.vc"
+    ]
+
+    /// First DNS labels that announce a call whoever is hosting it —
+    /// `meet.proton.me`, `call.example.org`, a self-hosted `video.acme.co`.
+    ///
+    /// The named list above cannot keep up: every month there is another
+    /// service, and a list that has fallen behind fails *silently* — the
+    /// automatic setting simply does nothing, which reads as the feature
+    /// being broken rather than as a host it has not heard of. This is the
+    /// rule that generalises, and it is safe to be generous with because a
+    /// link alone never creates anything: `isStrongSignal` also demands a
+    /// clock time, so the worst a wrong guess here does is let a timed line
+    /// that already looked like an appointment become one.
+    static let meetingHostPrefixes: Set<String> = [
+        "meet", "call", "video", "conf", "conference", "join", "vc", "room", "live"
     ]
 
     /// The appointment in `text`, or nil when it names no date at all.
@@ -217,8 +233,34 @@ enum EventDetector {
         let furniture = CharacterSet(charactersIn: "-–—:,;·|@()[]{}<>\"'")
             .union(.whitespacesAndNewlines)
         let trimmed = stripLeadingLabel(line).trimmingCharacters(in: furniture)
-        guard trimmed.count >= 3, trimmed.contains(where: \.isLetter) else { return nil }
-        return String(trimmed.prefix(maxTitleCharacters))
+        let tidied = stripTrailingConnectors(trimmed)
+        guard tidied.count >= 3, tidied.contains(where: \.isLetter) else { return nil }
+        return String(tidied.prefix(maxTitleCharacters))
+    }
+
+    /// Words that introduce the date and are left stranded when it is struck
+    /// out. "Call with mehdi the 18 of Aug" matches its date at "18", so the
+    /// title would otherwise keep the article that was pointing at it.
+    ///
+    /// Only ever removed from the *end* — "Call with the design team" keeps
+    /// its "the", because there the word is inside the phrase rather than
+    /// dangling off it. Stripping runs to the last word rather than stopping
+    /// one short: a line that is nothing but connectors ("the", "on the")
+    /// said nothing about the event, and an empty result is what hands the
+    /// job to the caller's fallback title.
+    private static let trailingConnectors: Set<String> = [
+        "the", "a", "an", "on", "at", "in", "of", "for", "from", "to", "by",
+        "this", "that", "next", "starts", "starting", "is", "was", "be",
+        "le", "la", "les", "un", "une", "du", "de", "des", "à", "au", "aux",
+        "ce", "cet", "cette", "prochain", "prochaine", "est", "sera"
+    ]
+
+    private static func stripTrailingConnectors(_ title: String) -> String {
+        var words = title.split(separator: " ", omittingEmptySubsequences: true)
+        while let last = words.last, trailingConnectors.contains(last.lowercased()) {
+            words.removeLast()
+        }
+        return words.joined(separator: " ")
     }
 
     /// Drops a field label — "Subject:", "When:", "Objet :" — from the front
@@ -316,9 +358,16 @@ enum EventDetector {
     }
 
     /// Whether `url` is a video call rather than a web page.
+    ///
+    /// Either a known host, or one whose first label says so — see
+    /// `meetingHostPrefixes`. The prefix rule needs at least three labels so
+    /// that a bare `meet.com` style domain does not qualify on its own.
     static func isMeetingURL(_ url: URL) -> Bool {
         guard let host = url.host()?.lowercased() else { return false }
-        return meetingHosts.contains { host == $0 || host.hasSuffix("." + $0) }
+        if meetingHosts.contains(where: { host == $0 || host.hasSuffix("." + $0) }) { return true }
+        let labels = host.split(separator: ".")
+        guard labels.count >= 3, let first = labels.first else { return false }
+        return meetingHostPrefixes.contains(String(first))
     }
 
     // MARK: - Input
