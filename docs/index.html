@@ -138,6 +138,9 @@ h3 { font-size: 1.15rem; margin: 0 0 6px; }
   box-shadow: var(--shadow);
   background: var(--bg-raised);
 }
+/* The SVG mockups carry their drawn size as an attribute, which is narrower
+   than the column: without this they sit short of the right edge. */
+.shot img { width: 100%; }
 figure { margin: 0 0 28px; }
 figcaption { color: var(--ink-faint); font-size: .9rem; text-align: center; margin-top: 10px; }
 
@@ -284,8 +287,8 @@ footer a { margin: 0 10px; }
     <h2>A look at it</h2>
     <p class="lede">The panel opens over whatever you're doing and closes the moment you're done.</p>
     <figure>
-      <div class="shot"><img src="screenshots/panel.png" alt="The MemoryClip panel: a search field, filter chips, and a row of clip cards each showing a keyboard shortcut"></div>
-      <figcaption>Press ⇧⌘V from any app. Newest first, already focused.</figcaption>
+      <div class="shot"><img src="screenshots/panel.svg" alt="The MemoryClip panel floating over the desktop: a search field, filter chips, and a row of clip cards each showing a keyboard shortcut"></div>
+      <figcaption>Press ⇧⌘V from any app. Newest first, already focused. ⌘S saves one as a note.</figcaption>
     </figure>
     <figure>
       <div class="shot"><img src="screenshots/preview.svg" alt="The preview pane showing a Chinese clip with its English translation above it"></div>

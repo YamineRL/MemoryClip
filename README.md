@@ -29,7 +29,7 @@ Requires macOS 26 on Apple silicon.
 
 <table>
   <tr>
-    <td colspan="2"><img src="docs/screenshots/panel.png" alt="The clipboard panel: search field, filter chips and a row of clip cards with keyboard shortcuts"></td>
+    <td colspan="2"><img src="docs/screenshots/panel.svg" alt="The clipboard panel: search field, filter chips and a row of clip cards with keyboard shortcuts"></td>
   </tr>
   <tr>
     <td colspan="2" align="center"><em>The panel — <strong>⇧⌘V</strong> from anywhere.</em></td>
