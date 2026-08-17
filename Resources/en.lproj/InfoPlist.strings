@@ -1,0 +1,4 @@
+"CFBundleDisplayName" = "MemoryClip";
+"NSAppleEventsUsageDescription" = "MemoryClip needs permission to control Notes so it can save a screenshot's text as a note. It is only used when you choose Notes as your note destination.";
+"NSDesktopFolderUsageDescription" = "MemoryClip watches your screenshot folder — the Desktop, unless you changed it — so new screenshots can be kept in your clipboard history.";
+"NSDocumentsFolderUsageDescription" = "MemoryClip writes notes into the folder you choose, which is often inside Documents.";
