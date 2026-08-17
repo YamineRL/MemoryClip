@@ -344,17 +344,19 @@ where you left it.
 | --- | --- | --- |
 | General | **General** | Launch at login, theme, auto-paste |
 | General | **Shortcuts** | The global hotkey recorder (⇧⌘V is only the default), plus a key reference |
-| General | **Translation** | Both translators — the languages notes are read in, and the preview's own switch and target |
 | Clipboard | **History** | History cap, retention window, export |
+| Clipboard | **Screenshots** | Screenshot capture, the folder to watch, image OCR |
 | Clipboard | **Panel** | Image OCR, vim navigation |
 | Clipboard | **Privacy** | Touch ID lock, sensitive-content filtering, permission notes |
-| Clipboard | **Calendar** | Automatic events, their notification, how long an event runs |
-| Screenshots | **Screenshots** | Screenshot capture, the folder to watch, image OCR |
-| Screenshots | **Notes** | The on-device model, note destination, automatic notes |
+| Clip actions | **Notes** | The on-device model, note destination, automatic notes |
+| Clip actions | **Calendar** | Automatic events, their notification, how long an event runs |
+| Clip actions | **Translation** | Both translators — the languages notes are read in, and the preview's own switch and target |
 | — | **About** | Version, privacy summary, replay the welcome tour |
 
-Translation sits under General rather than beside either feature because it governs both,
-which is why its two halves are headed **Notes** and **Clip preview**.
+The groups follow a clip's life: the app itself, the clip arriving and being found again,
+then the three things it can turn into. Translation is one of those three — it governs
+notes and the panel's preview alike, which is why its two halves are headed **Notes** and
+**Clip preview**.
 
 ## Building from source
 

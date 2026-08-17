@@ -208,6 +208,7 @@
 "Translation" = "Traduction";
 "About" = "À propos";
 "Clipboard" = "Presse-papiers";
+"Clip actions" = "Actions sur les clips";
 "Version %@" = "Version %@";
 "Move the selection; hold to keep moving" = "Déplacer la sélection ; maintenir pour continuer";
 "Move along the strip; hold to keep moving (search field empty)" = "Se déplacer dans la liste ; maintenir pour continuer (champ de recherche vide)";

@@ -79,35 +79,38 @@ final class SettingsTests: XCTestCase {
         )
     }
 
-    /// Translation applies to notes *and* to the panel's preview, which is
-    /// the whole reason it stopped being a section of the Notes pane. Filing
-    /// it back under Clipboard or Screenshots would repeat the original
-    /// mistake in the other direction; General is where the rows that apply
-    /// to all of MemoryClip already live.
-    func testTranslationSitsUnderGeneral() throws {
+    /// Notes, Calendar and Translation each act on any clip whatever captured
+    /// it, and each send it somewhere outside MemoryClip. Filing any of them
+    /// under Clipboard (where clips arrive) or beside the screenshot capture
+    /// settings claims a loyalty they do not have.
+    func testTheThreeClipActionsShareOneGroup() throws {
         let group = try XCTUnwrap(
-            SettingsPane.groups.first { $0.panes.contains(.translation) },
-            "Translation is not in the sidebar at all"
+            SettingsPane.groups.first { $0.title == "Clip actions" },
+            "the Clip actions group is not in the sidebar at all"
         )
-        XCTAssertEqual(group.title, "General", "Translation belongs to the General category")
-        for other in SettingsPane.groups where other.title == "Clipboard" || other.title == "Screenshots" {
-            XCTAssertFalse(
-                other.panes.contains(.translation),
-                "Translation belongs to both feature groups, so it may live inside neither"
-            )
-        }
+        XCTAssertEqual(
+            group.panes, [.notes, .calendar, .translation],
+            "the two keystroke-invoked actions lead, and the automatic one follows"
+        )
     }
 
-    /// The calendar acts on any clip that reads as an appointment, copied or
-    /// screenshotted alike, so it is clipboard-wide and not part of the
-    /// screenshot pipeline the Screenshots group describes.
-    func testCalendarSitsUnderClipboard() throws {
+    /// The panes a clip passes through on its way in, in that order. Nothing
+    /// that writes a clip out belongs here.
+    func testClipboardGroupHoldsCaptureAndBrowsing() throws {
         let group = try XCTUnwrap(
-            SettingsPane.groups.first { $0.panes.contains(.calendar) },
-            "Calendar is not in the sidebar at all"
+            SettingsPane.groups.first { $0.title == "Clipboard" },
+            "the Clipboard group is not in the sidebar at all"
         )
-        XCTAssertEqual(group.title, "Clipboard", "Calendar belongs to the Clipboard category")
-        XCTAssertEqual(group.panes.last, .calendar, "Calendar goes after Privacy, at the end of the group")
+        XCTAssertEqual(group.panes, [.history, .screenshots, .panel, .privacy])
+    }
+
+    /// General is the app as an app: neither row is about a particular clip.
+    func testGeneralGroupHoldsOnlyTheAppItself() throws {
+        let group = try XCTUnwrap(
+            SettingsPane.groups.first { $0.title == "General" },
+            "the General group is not in the sidebar at all"
+        )
+        XCTAssertEqual(group.panes, [.general, .shortcuts])
     }
 
     /// Titles and symbols are what a row *is*: a blank one renders an

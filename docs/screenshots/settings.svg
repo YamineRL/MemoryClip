@@ -11,32 +11,32 @@
   <rect x="10" y="76" width="144" height="26" rx="6" fill="#3a3a3d"/>
   <g font-size="10" font-weight="600" fill="#98989d">
     <text x="18" y="64">General</text>
-    <text x="18" y="176">Clipboard</text>
-    <text x="18" y="316">Screenshots</text>
+    <text x="18" y="148">Clipboard</text>
+    <text x="18" y="288">Clip actions</text>
   </g>
   <g font-size="12" fill="#d6d6da">
     <text x="44" y="93" fill="#f2f2f7" font-weight="600">General</text>
     <text x="44" y="121">Shortcuts</text>
-    <text x="44" y="149">Translation</text>
-    <text x="44" y="205">History</text>
+    <text x="44" y="177">History</text>
+    <text x="44" y="205">Screenshots</text>
     <text x="44" y="233">Panel</text>
     <text x="44" y="261">Privacy</text>
-    <text x="44" y="289">Calendar</text>
-    <text x="44" y="345">Screenshots</text>
-    <text x="44" y="373">Notes</text>
+    <text x="44" y="317">Notes</text>
+    <text x="44" y="345">Calendar</text>
+    <text x="44" y="373">Translation</text>
     <text x="44" y="425">About</text>
   </g>
   <!-- sidebar glyph tiles -->
   <g>
     <rect x="18" y="80" width="18" height="18" rx="5" fill="#8e8e93"/>
     <rect x="18" y="108" width="18" height="18" rx="5" fill="#0a84ff"/>
-    <rect x="18" y="136" width="18" height="18" rx="5" fill="#ac8e68"/>
-    <rect x="18" y="192" width="18" height="18" rx="5" fill="#ff9f0a"/>
+    <rect x="18" y="164" width="18" height="18" rx="5" fill="#ff9f0a"/>
+    <rect x="18" y="192" width="18" height="18" rx="5" fill="#30d158"/>
     <rect x="18" y="220" width="18" height="18" rx="5" fill="#bf5af2"/>
     <rect x="18" y="248" width="18" height="18" rx="5" fill="#ff375f"/>
-    <rect x="18" y="276" width="18" height="18" rx="5" fill="#ff453a"/>
-    <rect x="18" y="332" width="18" height="18" rx="5" fill="#30d158"/>
-    <rect x="18" y="360" width="18" height="18" rx="5" fill="#40c8e0"/>
+    <rect x="18" y="304" width="18" height="18" rx="5" fill="#40c8e0"/>
+    <rect x="18" y="332" width="18" height="18" rx="5" fill="#ff453a"/>
+    <rect x="18" y="360" width="18" height="18" rx="5" fill="#ac8e68"/>
     <rect x="18" y="412" width="18" height="18" rx="5" fill="#5e5ce6"/>
   </g>
   <g fill="none" stroke="#ffffff" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round">
@@ -44,23 +44,29 @@
     <circle cx="27" cy="89" r="4"/><circle cx="27" cy="89" r="1.4"/>
     <!-- keyboard -->
     <rect x="21.5" y="113.2" width="11" height="7.6" rx="1.6"/><path d="M24.4 118.6 H29.6"/>
-    <!-- character.bubble -->
-    <rect x="21.4" y="139.6" width="11.2" height="7.6" rx="2.2"/><path d="M24.4 147.2 V150 L27.2 147.2"/>
-    <path d="M24.8 145.4 L27 140.9 L29.2 145.4"/><path d="M25.6 143.9 H28.4"/>
     <!-- clock.arrow.circlepath -->
-    <circle cx="27" cy="201" r="4.2"/><path d="M27 198.6 V201 H28.8"/>
+    <g transform="translate(0,-28)"><circle cx="27" cy="201" r="4.2"/><path d="M27 198.6 V201 H28.8"/></g>
+    <!-- camera.viewfinder -->
+    <g transform="translate(0,-140)">
+      <path d="M21.6 338.4 V336.8 H23.2"/><path d="M30.8 336.8 H32.4 V338.4"/><path d="M32.4 343.6 V345.2 H30.8"/><path d="M23.2 345.2 H21.6 V343.6"/>
+      <circle cx="27" cy="341" r="1.9"/>
+    </g>
     <!-- rectangle.on.rectangle -->
     <rect x="21.8" y="224.4" width="7.4" height="6" rx="1.2"/><rect x="24.8" y="227.6" width="7.4" height="6" rx="1.2"/>
     <!-- lock.shield -->
     <rect x="23.6" y="255.8" width="6.8" height="5.4" rx="1.2"/><path d="M25 255.8 V254.2 a2 2 0 0 1 4 0 V255.8"/>
-    <!-- calendar -->
-    <rect x="22.4" y="281.8" width="9.2" height="8.4" rx="1.6"/><path d="M22.4 284.6 H31.6"/>
-    <path d="M24.7 279.8 V281.8"/><path d="M29.3 279.8 V281.8"/>
-    <!-- camera.viewfinder -->
-    <path d="M21.6 338.4 V336.8 H23.2"/><path d="M30.8 336.8 H32.4 V338.4"/><path d="M32.4 343.6 V345.2 H30.8"/><path d="M23.2 345.2 H21.6 V343.6"/>
-    <circle cx="27" cy="341" r="1.9"/>
     <!-- note.text -->
-    <rect x="22.8" y="364.2" width="8.4" height="9.6" rx="1.5"/><path d="M25 367.4 H29"/><path d="M25 370.2 H29"/>
+    <g transform="translate(0,-56)"><rect x="22.8" y="364.2" width="8.4" height="9.6" rx="1.5"/><path d="M25 367.4 H29"/><path d="M25 370.2 H29"/></g>
+    <!-- calendar -->
+    <g transform="translate(0,56)">
+      <rect x="22.4" y="281.8" width="9.2" height="8.4" rx="1.6"/><path d="M22.4 284.6 H31.6"/>
+      <path d="M24.7 279.8 V281.8"/><path d="M29.3 279.8 V281.8"/>
+    </g>
+    <!-- character.bubble -->
+    <g transform="translate(0,224)">
+      <rect x="21.4" y="139.6" width="11.2" height="7.6" rx="2.2"/><path d="M24.4 147.2 V150 L27.2 147.2"/>
+      <path d="M24.8 145.4 L27 140.9 L29.2 145.4"/><path d="M25.6 143.9 H28.4"/>
+    </g>
     <!-- info.circle -->
     <circle cx="27" cy="421" r="4.2"/><path d="M27 418.7 v0.3"/><path d="M27 420.3 v3"/>
   </g>
