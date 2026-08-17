@@ -39,6 +39,8 @@ struct ClipCardView: View {
     let isSelected: Bool
     /// 1-based place in the paste queue, or nil when not queued.
     let queuePosition: Int?
+    /// True while this clip's note is being written.
+    let isSavingNote: Bool
     let onPaste: (Bool) -> Void
     let onCopyOnly: () -> Void
     let onCopyExtractedText: () -> Void
@@ -60,6 +62,7 @@ struct ClipCardView: View {
         index: Int,
         isSelected: Bool,
         queuePosition: Int? = nil,
+        isSavingNote: Bool = false,
         onPaste: @escaping (Bool) -> Void,
         onCopyOnly: @escaping () -> Void,
         onCopyExtractedText: @escaping () -> Void = {},
@@ -75,6 +78,7 @@ struct ClipCardView: View {
         self.index = index
         self.isSelected = isSelected
         self.queuePosition = queuePosition
+        self.isSavingNote = isSavingNote
         self.onPaste = onPaste
         self.onCopyOnly = onCopyOnly
         self.onCopyExtractedText = onCopyExtractedText
@@ -442,9 +446,11 @@ struct ClipCardView: View {
 
     /// The card's closing stat line — Deck's "66 characters".
     ///
-    /// "· noted" is the only confirmation ⌘S gets: the export runs off the
-    /// key press so the panel stays live, and only failure interrupts with an
-    /// alert. It is appended for every kind a note can be made from — not
+    /// "· saving…" and then "· noted" are the confirmation ⌘S gets: the
+    /// export runs off the key press so the panel stays live, and only
+    /// failure interrupts with an alert. The export can take seconds — a
+    /// model pass, then a write — and "saving…" is what says so while it
+    /// runs. Both are appended for every kind a note can be made from — not
     /// just screenshots, as it was — because the clip whose note went missing
     /// without a word was the pasted picture and the copied paragraph.
     ///
@@ -463,6 +469,7 @@ struct ClipCardView: View {
         // Checked before the kind switch: a screenshot IS a file clip, and
         // "1 file" is the least informative thing the row could say about it.
         if item.isScreenshot {
+            if isSavingNote { return loc("Screenshot · saving…") }
             if noted { return loc("Screenshot · noted") }
             if scheduled { return loc("Screenshot · in calendar") }
             if !(item.ocrText ?? "").isEmpty { return loc("Screenshot · text found") }
@@ -475,6 +482,7 @@ struct ClipCardView: View {
         case .color:
             return item.colorHex ?? loc("Color")
         case .image:
+            if isSavingNote { return loc("Image · saving…") }
             if noted { return loc("Image · noted") }
             if scheduled { return loc("Image · in calendar") }
             if let ocr = item.ocrText, !ocr.isEmpty {
@@ -486,6 +494,7 @@ struct ClipCardView: View {
             let characters = count == 1
                 ? loc("1 character")
                 : loc("%@ characters", count.formatted(.number.grouping(.automatic)))
+            if isSavingNote { return loc("%@ · saving…", characters) }
             if noted { return loc("%@ · noted", characters) }
             return scheduled ? loc("%@ · in calendar", characters) : characters
         }

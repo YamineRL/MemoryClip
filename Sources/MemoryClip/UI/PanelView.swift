@@ -1054,6 +1054,7 @@ struct PanelContentView: View {
                                 index: index,
                                 isSelected: index == selected,
                                 queuePosition: queue.position(of: item),
+                                isSavingNote: uiState.notesInFlight.contains(item.uuid),
                                 onPaste: { plain in actions.paste(item, plain) },
                                 onCopyOnly: { actions.copyOnly(item) },
                                 onCopyExtractedText: { actions.copyExtractedText(item) },

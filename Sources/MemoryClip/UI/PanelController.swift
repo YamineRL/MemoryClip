@@ -87,6 +87,8 @@ final class PanelUIState: ObservableObject {
     /// What the panel's screen allows `previewHeight` to reach. Written by
     /// `PanelController` every time the panel is placed.
     @Published var maxPreviewHeight = Design.Size.previewPaneHeight
+    /// Clips whose note export has started and not yet finished.
+    @Published var notesInFlight: Set<UUID> = []
 
     /// The stored height, falling back to the default when nothing (not even
     /// a registered default) has been written yet.
@@ -452,13 +454,17 @@ final class PanelController: NSObject, NSWindowDelegate {
     /// Write (or rewrite) the note for a clip, reporting the outcome.
     ///
     /// The export is awaited off this call — it may run a model pass and
-    /// then a subprocess — so the panel stays live while it happens. Only
-    /// failure interrupts the user: a note that was written is reported by
-    /// the row itself, which starts saying "noted".
+    /// then a subprocess — so the panel stays live while it happens. The row
+    /// says "saving…" until it returns, then "noted"; only failure interrupts
+    /// with an alert. A clip already being exported ignores a second request.
     private func saveNote(for item: ClipItem) {
+        let uuid = item.uuid
+        guard !uiState.notesInFlight.contains(uuid) else { return }
+        uiState.notesInFlight.insert(uuid)
         Task { @MainActor [weak self] in
             guard let self else { return }
             let result = await self.noteCoordinator.exportNote(for: item)
+            self.uiState.notesInFlight.remove(uuid)
             if case .failure(let error) = result {
                 self.presentNoteFailure(error)
             }
