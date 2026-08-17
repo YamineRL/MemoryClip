@@ -6,6 +6,8 @@
 
 <p align="center">Your clipboard, remembered. Locally.</p>
 
+<p align="center"><a href="https://yaminerl.github.io/MemoryClip/"><strong>Download and install →</strong></a></p>
+
 <p align="center">
   <a href="https://github.com/YamineRL/MemoryClip/actions/workflows/ci.yml"><img src="https://github.com/YamineRL/MemoryClip/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="https://www.paypal.com/donate/?hosted_button_id=H8XWE3HUPKCME"><img src="https://img.shields.io/badge/Donate-PayPal-00457C?logo=paypal&amp;logoColor=white" alt="Donate with PayPal"></a>
@@ -61,7 +63,8 @@ The tap line takes a URL because this repository *is* the tap
 not load third-party casks until you vouch for them. `brew upgrade`, `brew uninstall` and
 `--zap` work as usual after that.
 
-**By hand**: download the `.dmg` from
+**By hand**: the [install page](https://yaminerl.github.io/MemoryClip/#install) walks through this
+with screenshots. In short: download the `.dmg` from
 [Releases](https://github.com/yaminerl/MemoryClip/releases) and drag it to Applications.
 The app is **ad-hoc signed** — no Developer ID, no notarisation — so Gatekeeper blocks the
 first launch until you strip the quarantine flag, which is all the cask does for you:
