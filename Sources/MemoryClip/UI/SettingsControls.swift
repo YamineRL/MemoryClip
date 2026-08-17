@@ -554,8 +554,15 @@ struct CalendarAutoCreateSetup: View {
 
     /// Refresh the known grant, asking for it first when the feature is on and
     /// nobody has been asked yet.
+    ///
+    /// The window has to be won back whenever a dialog was actually raised:
+    /// answering a TCC prompt returns activation to whatever regular app held
+    /// it, and this switch lives in two windows an `.accessory` agent gives
+    /// the user no way to find again. See `WindowFocus`.
     private func prime() async {
-        if autoCreate { await EventKitSink.primeAccess() }
+        if autoCreate, await EventKitSink.primeAccess() {
+            WindowFocus.restoreAfterSystemPrompt()
+        }
         access = EventKitSink.access
     }
 

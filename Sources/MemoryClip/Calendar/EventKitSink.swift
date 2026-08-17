@@ -159,14 +159,20 @@ final class EventKitSink: EventSink {
     /// Ignores its own outcome. A refusal is recorded by macOS and surfaces
     /// as `accessDenied` the first time the button is used, which is where
     /// the alert and its Open Settings button are.
-    static func primeAccess() async {
+    ///
+    /// - Returns: whether a dialog was actually put on screen. The caller
+    ///   needs this to know whether it has a window to win back — see
+    ///   `WindowFocus` — and answering "no prompt was raised" is not the same
+    ///   as answering "the prompt was refused", which is what `access` is for.
+    @discardableResult
+    static func primeAccess() async -> Bool {
         // The remembered grant is checked first, and not only as an
         // optimisation: the status can stay `.notDetermined` after a
         // successful grant, so without this the pane would raise the dialog
         // again every time it was opened.
         guard !grantedInThisRun.value,
               EKEventStore.authorizationStatus(for: .event) == .notDetermined
-        else { return }
+        else { return false }
 
         let granted = (try? await EKEventStore().requestWriteOnlyAccessToEvents()) ?? false
         if granted { noteAccessGranted() }
@@ -174,6 +180,7 @@ final class EventKitSink: EventSink {
             Calendar access prompt answered: \(granted ? "granted" : "refused", privacy: .public) \
             (status now \(EKEventStore.authorizationStatus(for: .event).rawValue, privacy: .public))
             """)
+        return true
     }
 
     /// What the calendar grant is right now, in terms the settings UI can act
