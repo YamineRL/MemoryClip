@@ -113,6 +113,10 @@ enum Design {
         /// the pane is for — a translation that pushed it under the fold would
         /// have replaced the preview rather than added to it.
         static let previewTranslationHeight: CGFloat = 84
+        /// The share of a resized pane's extra height the translation may
+        /// take. The ceiling above is the height at `previewPaneHeight`; past
+        /// that, the room the drag added is split with the clip below.
+        static let previewTranslationGrowthShare: CGFloat = 0.5
         /// Floor under an image clip's picture, so it cannot be squeezed into
         /// a band by the text blocks sharing the pane with it.
         ///

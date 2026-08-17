@@ -13,6 +13,9 @@ struct PreviewView: View {
     /// Copy callback (wired by PanelView to `actions.copyText`). Falls back to
     /// a plain pasteboard write when absent.
     var onCopy: ((String) -> Void)? = nil
+    /// The height the pane was given, so the translation block can grow with
+    /// it. Nil holds the block at its default ceiling.
+    var paneHeight: CGFloat? = nil
 
     /// Detection/calc results are cached per content change rather than
     /// recomputed on every body pass — scanning a multi-megabyte clip on the
@@ -167,14 +170,24 @@ struct PreviewView: View {
         "\(contentKey)-\(item.ocrText?.count ?? 0)-\(item.refinedText?.count ?? 0)-\(translateEnabled)-\(translationTarget)"
     }
 
+    /// How tall the translated text may be: `previewTranslationHeight` at the
+    /// pane's default height, plus a share of whatever the drag handle added
+    /// past it.
+    private var translationCeiling: CGFloat {
+        let base = Design.Size.previewTranslationHeight
+        guard let paneHeight else { return base }
+        let extra = max(0, paneHeight - Design.Size.previewPaneHeight)
+        return base + extra * Design.Size.previewTranslationGrowthShare
+    }
+
     /// How tall the translated text is allowed to be: its own height, or the
     /// ceiling, whichever is smaller.
     ///
     /// The ceiling stands in until the first measurement arrives, so the
     /// block settles down to the text rather than growing into it.
     private var translationBodyHeight: CGFloat {
-        guard translationTextHeight > 0 else { return Design.Size.previewTranslationHeight }
-        return min(translationTextHeight.rounded(.up), Design.Size.previewTranslationHeight)
+        guard translationTextHeight > 0 else { return translationCeiling }
+        return min(translationTextHeight.rounded(.up), translationCeiling)
     }
 
     /// The translation, over the clip and inside its own pane.
