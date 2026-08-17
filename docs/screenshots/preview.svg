@@ -1,26 +1,41 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 300" width="720" height="300" font-family="-apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Helvetica Neue', Arial, sans-serif">
-  <defs>
-    <linearGradient id="pane" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#141416"/><stop offset="1" stop-color="#0d0d0f"/>
-    </linearGradient>
-  </defs>
-  <rect width="720" height="300" rx="28" fill="url(#pane)"/>
-  <rect x="0.5" y="0.5" width="719" height="299" rx="27.5" fill="none" stroke="#2c2c2e"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1160 330" width="1160" height="330" font-family="-apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Helvetica Neue', Arial, sans-serif">
+<defs>
+<linearGradient id="wall" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#141a33"/><stop offset="0.5" stop-color="#2a1c3f"/><stop offset="1" stop-color="#0d2630"/></linearGradient>
+<radialGradient id="g1" cx="0.16" cy="0.1" r="0.6"><stop offset="0" stop-color="#4c5cff" stop-opacity="0.4"/><stop offset="1" stop-color="#4c5cff" stop-opacity="0"/></radialGradient>
+<radialGradient id="g2" cx="0.88" cy="0.95" r="0.65"><stop offset="0" stop-color="#00b8a0" stop-opacity="0.34"/><stop offset="1" stop-color="#00b8a0" stop-opacity="0"/></radialGradient>
+<radialGradient id="g3" cx="0.68" cy="0.05" r="0.45"><stop offset="0" stop-color="#ff6fb5" stop-opacity="0.22"/><stop offset="1" stop-color="#ff6fb5" stop-opacity="0"/></radialGradient>
+<linearGradient id="glass" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffffff" stop-opacity="0.14"/><stop offset="0.55" stop-color="#ffffff" stop-opacity="0.06"/><stop offset="1" stop-color="#ffffff" stop-opacity="0.03"/></linearGradient>
+<linearGradient id="rim" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffffff" stop-opacity="0.4"/><stop offset="0.35" stop-color="#ffffff" stop-opacity="0.12"/><stop offset="1" stop-color="#ffffff" stop-opacity="0.07"/></linearGradient>
+<filter id="panelShadow" x="-15%" y="-25%" width="130%" height="170%"><feDropShadow dx="0" dy="16" stdDeviation="20" flood-color="#000" flood-opacity="0.5"/></filter>
+</defs>
 
-  <!-- translation, above the clip -->
-  <rect x="24" y="24" width="672" height="118" rx="16" fill="#1c1c1e"/>
-  <text x="44" y="54" fill="#8e8e93" font-size="12.5">Chinese, Simplified → English</text>
-  <g fill="#f2f2f7" font-size="13.5">
-    <text x="44" y="80">This product is covered by a twelve-month warranty from the date of purchase.</text>
-    <text x="44" y="102">The warranty does not cover accidental damage, water damage or unauthorised</text>
-    <text x="44" y="124">repairs. Keep your proof of purchase; you will need to show it to claim.</text>
-  </g>
+<rect width="1160" height="330" fill="url(#wall)"/>
+<rect width="1160" height="330" fill="url(#g1)"/>
+<rect width="1160" height="330" fill="url(#g2)"/>
+<rect width="1160" height="330" fill="url(#g3)"/>
 
-  <!-- the clip as it was copied -->
-  <rect x="24" y="154" width="672" height="122" rx="16" fill="#1c1c1e"/>
-  <g fill="#e8e8ea" font-size="14" font-family="'PingFang SC', 'Hiragino Sans GB', 'Heiti SC', 'Noto Sans SC', 'Source Han Sans SC', 'Microsoft YaHei', sans-serif">
-    <text x="44" y="188">本产品保修期为自购买之日起十二个月。</text>
-    <text x="44" y="218">保修不包括人为损坏、进水或未经授权的拆修。</text>
-    <text x="44" y="248">请保留购买凭证，办理保修时需要出示。</text>
-  </g>
+<g filter="url(#panelShadow)">
+  <rect x="40" y="40" width="1080" height="250" rx="28" fill="#0b0b10" fill-opacity="0.55"/>
+  <rect x="40" y="40" width="1080" height="250" rx="28" fill="url(#glass)"/>
+</g>
+
+<!-- the translation, over the clip -->
+<rect x="52" y="52" width="1056" height="76" rx="16" fill="#ffffff" fill-opacity="0.085"/>
+<rect x="52.5" y="52.5" width="1055" height="75" rx="15.5" fill="none" stroke="#ffffff" stroke-opacity="0.13"/>
+<text x="64" y="76" fill="#98989d" font-size="12.5">Chinese, Simplified → English</text>
+<g fill="#f2f2f7" font-size="13.5">
+  <text x="64" y="100">This product is covered by a twelve-month warranty from the date of purchase. The warranty does not cover accidental</text>
+  <text x="64" y="120">damage, water damage or unauthorised repairs. Keep your proof of purchase; you will need to show it to claim.</text>
+</g>
+
+<!-- the clip as it was copied -->
+<rect x="52" y="140" width="1056" height="138" rx="16" fill="#ffffff" fill-opacity="0.085"/>
+<rect x="52.5" y="140.5" width="1055" height="137" rx="15.5" fill="none" stroke="#ffffff" stroke-opacity="0.13"/>
+<g fill="#f2f2f7" font-size="14" font-family="'PingFang SC', 'Hiragino Sans GB', 'Heiti SC', 'Noto Sans SC', 'Source Han Sans SC', 'Microsoft YaHei', sans-serif">
+  <text x="64" y="172">本产品保修期为自购买之日起十二个月。</text>
+  <text x="64" y="202">保修不包括人为损坏、进水或未经授权的拆修。</text>
+  <text x="64" y="232">请保留购买凭证，办理保修时需要出示。</text>
+</g>
+
+<rect x="40.5" y="40.5" width="1079" height="249" rx="27.5" fill="none" stroke="url(#rim)"/>
 </svg>
