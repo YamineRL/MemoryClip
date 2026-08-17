@@ -97,6 +97,40 @@ final class ClipDisplayTests: XCTestCase {
         )
     }
 
+    // MARK: - Calendar gate (cheap on purpose: it runs per visible card)
+
+    func testClipWithADigitMightHaveAnEvent() {
+        XCTAssertTrue(ClipDisplay.mightHaveEvent(FakeClip(kind: .text, text: "Lunch on 12 March at 1pm")))
+        XCTAssertTrue(
+            ClipDisplay.mightHaveEvent(FakeClip(kind: .image, ocrText: "Standup 09:30")),
+            "a picture's recognised text is the text the detector would read"
+        )
+        XCTAssertTrue(
+            ClipDisplay.mightHaveEvent(FakeClip(kind: .file, ocrText: "Invoice due 3 April", isScreenshot: true)),
+            "a screenshot is a .file clip carrying pixels"
+        )
+    }
+
+    /// The gate only asks whether a date could be in there. Text with no digit
+    /// in it cannot hold one, and a clip with nothing to read holds nothing at
+    /// all — those are the ones the menu leaves the item off for.
+    func testClipWithNoDigitOrNoTextHasNoEventToOffer() {
+        XCTAssertFalse(ClipDisplay.mightHaveEvent(FakeClip(kind: .text, text: "lunch sometime soon")))
+        XCTAssertFalse(ClipDisplay.mightHaveEvent(FakeClip(kind: .color, colorHex: "#FF00AA")))
+        XCTAssertFalse(ClipDisplay.mightHaveEvent(FakeClip(kind: .text, text: " \n ")))
+        XCTAssertFalse(
+            ClipDisplay.mightHaveEvent(FakeClip(kind: .file, fileURLStrings: ["/tmp/2026-report.pdf"])),
+            "a copied file is a reference, not text — the digits are in its name"
+        )
+    }
+
+    /// Bounded like `TextDetector`'s own guard: the scan reads a prefix, so a
+    /// digit past it costs the menu item and nothing else.
+    func testCalendarGateOnlyReadsABoundedPrefix() {
+        let buried = String(repeating: "a", count: 5000) + " 14 May"
+        XCTAssertFalse(ClipDisplay.mightHaveEvent(FakeClip(kind: .text, text: buried)))
+    }
+
     func testExtractedTextIsTrimmedAndOnlyForPictures() {
         XCTAssertEqual(ClipDisplay.extractedText(for: FakeClip(kind: .image, ocrText: " hi \n")), "hi")
         XCTAssertEqual(
@@ -288,6 +322,27 @@ final class ClipDisplayTests: XCTestCase {
         XCTAssertEqual(ClipDisplay.kindLabel(.link), "Link")
         XCTAssertEqual(ClipDisplay.kindLabel(.color), "Color")
         XCTAssertEqual(ClipDisplay.kindLabel(.file), "File")
+    }
+
+    func testRowLabelSaysWhenTheClipIsInTheCalendar() {
+        let label = ClipDisplay.rowLabel(
+            kind: .text,
+            summary: "Lunch on 12 March",
+            appName: "Mail",
+            relativeTime: "now",
+            hasCalendarEvent: true
+        )
+        XCTAssertEqual(label, "Text, Lunch on 12 March, from Mail, now, added to the calendar")
+    }
+
+    func testRowLabelOmitsTheCalendarPhraseByDefault() {
+        let label = ClipDisplay.rowLabel(
+            kind: .text,
+            summary: "Lunch on 12 March",
+            appName: "Mail",
+            relativeTime: "now"
+        )
+        XCTAssertFalse(label.contains("calendar"))
     }
 
     func testUnpinnedUnqueuedRowLabelOmitsStateWords() {

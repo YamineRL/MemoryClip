@@ -60,6 +60,37 @@ enum ClipDisplay {
         return !(item.text ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
+    // MARK: - Calendar
+
+    /// Longest prefix of a clip's text the calendar gate reads.
+    ///
+    /// Bounded for the same reason `TextDetector.maxDetectableUTF8Bytes` is:
+    /// this runs on a SwiftUI body path for every visible card, so the work it
+    /// does has to be a constant rather than a function of clip size. A few
+    /// hundred characters is generous — an appointment that only names its
+    /// date past this point is one the menu misses, and the key still works.
+    private static let eventScanPrefix = 400
+
+    /// Whether this clip is worth offering "Add to Calendar" for.
+    ///
+    /// Deliberately NOT `EventDetector.detect`: that runs `NSDataDetector`
+    /// over the whole text, and this predicate sits beside `canSaveNote` on
+    /// the card's body path, once per visible row per render. The gate is
+    /// therefore the cheapest thing that can rule a clip out — it must have
+    /// text a note could be made of, and that text must contain a digit
+    /// within `eventScanPrefix` characters, because no date is written
+    /// without one.
+    ///
+    /// A false positive costs one menu item that reports "there is no date in
+    /// this clip" when it is pressed, which is the right trade against
+    /// scanning every row: full detection happens once, at action time, in
+    /// `CalendarCoordinator`.
+    static func mightHaveEvent(_ item: some ClipDisplayable) -> Bool {
+        guard canSaveNote(item) else { return false }
+        let text = extractedText(for: item) ?? item.text ?? ""
+        return text.prefix(eventScanPrefix).contains { $0.isNumber }
+    }
+
     // MARK: - File URLs
 
     /// A human-readable POSIX path for a stored file-URL string.
@@ -181,7 +212,8 @@ enum ClipDisplay {
         hasExtractedText: Bool = false,
         calcResult: String? = nil,
         isScreenshot: Bool = false,
-        hasNote: Bool = false
+        hasNote: Bool = false,
+        hasCalendarEvent: Bool = false
     ) -> String {
         var parts: [String] = [kindLabel(kind, isScreenshot: isScreenshot)]
 
@@ -194,6 +226,7 @@ enum ClipDisplay {
         if let queuePosition { parts.append(loc("queued position %d", queuePosition)) }
         if hasExtractedText { parts.append(loc("contains extracted text")) }
         if hasNote { parts.append(loc("saved as a note")) }
+        if hasCalendarEvent { parts.append(loc("added to the calendar")) }
 
         return parts.joined(separator: ", ")
     }

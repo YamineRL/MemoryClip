@@ -371,3 +371,11 @@
 "The event could not be saved: %@" = "L’événement n’a pas pu être enregistré : %@";
 "The event could not be removed: %@" = "L’événement n’a pas pu être supprimé : %@";
 "Join: %@" = "Rejoindre : %@";
+"Add to Calendar" = "Ajouter au calendrier";
+"Add to Calendar Again" = "Ajouter à nouveau au calendrier";
+"added to the calendar" = "ajouté au calendrier";
+"Screenshot · in calendar" = "Capture · dans le calendrier";
+"Image · in calendar" = "Image · dans le calendrier";
+"%@ · in calendar" = "%@ · dans le calendrier";
+"MemoryClip could not add the event." = "MemoryClip n’a pas pu ajouter l’événement.";
+"Add the selected clip to the calendar" = "Ajouter le clip sélectionné au calendrier";

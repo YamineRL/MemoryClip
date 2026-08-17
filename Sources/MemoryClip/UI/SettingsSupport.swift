@@ -287,6 +287,7 @@ enum ShortcutReference {
             ShortcutEntry(keys: "⇧Return", detail: loc("Paste as plain text")),
             ShortcutEntry(keys: "⌘1…⌘9", detail: loc("Paste the first nine results")),
             ShortcutEntry(keys: "⌘S", detail: loc("Save the selected clip as a note")),
+            ShortcutEntry(keys: "⌘E", detail: loc("Add the selected clip to the calendar")),
             ShortcutEntry(
                 keys: "Space",
                 detail: loc("Open the preview; press again to Quick Look a screenshot, image or file, or to close the preview (search field empty)")
@@ -313,6 +314,7 @@ enum ShortcutReference {
             ShortcutEntry(keys: "o / ⇧O", detail: loc("Paste / paste as plain text")),
             ShortcutEntry(keys: "p", detail: loc("Pin or unpin the selected clip")),
             ShortcutEntry(keys: "n", detail: loc("Save the selected clip as a note")),
+            ShortcutEntry(keys: "c", detail: loc("Add the selected clip to the calendar")),
             ShortcutEntry(keys: "dd", detail: loc("Delete the selected clip (asks first)")),
             ShortcutEntry(keys: "q / ⇧Q", detail: loc("Add to the queue / paste the queue")),
             ShortcutEntry(keys: "/ or i", detail: loc("Search: / starts a fresh query, i edits the current one")),

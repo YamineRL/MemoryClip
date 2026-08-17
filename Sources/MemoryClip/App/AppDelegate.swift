@@ -28,6 +28,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private(set) var ocrCoordinator: OCRCoordinator!
     private(set) var screenshotWatcher: ScreenshotWatcher!
     private(set) var noteCoordinator: NoteCoordinator!
+    private(set) var calendarCoordinator: CalendarCoordinator!
 
     /// Watches for the user picking a different screenshot folder in
     /// Settings, so the watcher re-points without a relaunch.
@@ -61,6 +62,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // writing (off).
         NoteSettingsKeys.registerDefaults()
 
+        // Calendar defaults: automatic creation (off) and its notification
+        // (on). Registered here because the notification default is read as
+        // false when its key was never registered, which would let an
+        // automatically created event appear without saying so.
+        CalendarSettingsKeys.registerDefaults()
+
         // Appearance override (System/Light/Dark), applied before any window
         // exists so the first paint is already in the chosen appearance.
         AppearanceSetting.registerDefaults()
@@ -86,11 +93,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         ocrCoordinator = OCRCoordinator(store: store)
         screenshotWatcher = ScreenshotWatcher(store: store)
         noteCoordinator = NoteCoordinator(store: store)
+        calendarCoordinator = CalendarCoordinator(store: store)
         panelController = PanelController(
             store: store,
             pasteService: pasteService,
             watcher: watcher,
-            noteCoordinator: noteCoordinator
+            noteCoordinator: noteCoordinator,
+            calendarCoordinator: calendarCoordinator
         )
         statusController = StatusController(
             store: store,
