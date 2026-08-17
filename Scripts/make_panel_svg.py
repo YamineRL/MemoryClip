@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
-"""Draw docs/screenshots/panel.svg — the MemoryClip panel, 1:1 with Design tokens.
+"""Draw the MemoryClip panel, 1:1 with Design tokens.
 
     python3 Scripts/make_panel_svg.py Scripts/panel-icons docs/screenshots/panel.svg
+    python3 Scripts/make_panel_svg.py Scripts/panel-icons docs/screenshots/preview.svg preview
 
 The panel and the dropdown show live clipboard contents and cannot be
 screenshotted for a public repo, so the illustration is drawn instead. Every
@@ -9,6 +10,13 @@ size here is the token PanelView and ClipCardView actually lay out with, from
 Sources/MemoryClip/UI/DesignSystem.swift: panel 1080x308, panelTopPadding 10,
 topBarHeight 44, card 200 square, cardSpace 16, loose 16, cardHeader 40,
 roomy 12, panelFooterHeight 34, Radius.panel 28, Radius.card 16.
+
+The `preview` variant is the same panel with the preview pane open, which is
+where the pane lives: PanelView stacks it between the card strip and the
+footer, behind a resize handle, so the panel grows by
+previewResizeHandleHeight + previewPaneHeight and the footer moves down.
+Inside it, PreviewView's own order — the translation over the clip, each on
+its own pane at Radius.pane with Space.roomy around and between them.
 
 The source-app icons in Scripts/panel-icons are the real ones, exported at 40px
 from the system apps with NSWorkspace.icon(forFile:) — the same call the card
@@ -18,19 +26,36 @@ import base64, os, sys
 
 ICONS = sys.argv[1] if len(sys.argv) > 1 else "Scripts/panel-icons"
 OUT = sys.argv[2] if len(sys.argv) > 2 else "docs/screenshots/panel.svg"
+PREVIEW = (sys.argv[3] if len(sys.argv) > 3 else "panel") == "preview"
 
 M = 40                      # wallpaper margin around the panel
-PW, PH = 1080, 308          # Design.Size.panelWidth / panelHeight
+PW = 1080                   # Design.Size.panelWidth
 PX, PY = M, M
-W, H = PW + 2 * M, PH + 2 * M
 
 TOP_PAD, TOPBAR = 10, 44    # panelTopPadding, topBarHeight
 CARD, GAP, PADH = 200, 16, 16
 HEADER = 40                 # cardHeader
 FOOTER_H = 34               # panelFooterHeight
+HANDLE_H, PANE_H = 10, 250  # previewResizeHandleHeight, previewPaneHeight
+GRIP_W = 36                 # previewResizeGripWidth
+ROOMY = 12                  # Space.roomy — the pane's padding, and its gutter
+PANE_R = 16                 # Radius.pane
+
+PH = 308 + (HANDLE_H + PANE_H if PREVIEW else 0)    # Design.Size.panelHeight
+W, H = PW + 2 * M, PH + 2 * M
 
 CARD_Y = PY + TOP_PAD + TOPBAR + 8          # + Space.normal top padding
+HANDLE_Y = CARD_Y + CARD + 12               # + cardBottomPadding
+PANE_Y = HANDLE_Y + HANDLE_H
 FOOTER_Y = PY + PH - FOOTER_H
+
+# The panes inside the preview take Palette.chrome over the panel, outlined
+# with Palette.hairline — the same pair designPane() applies.
+PANE_FILL, PANE_FILL_OP = "#ffffff", 0.035
+PANE_STROKE, PANE_STROKE_OP = "#ffffff", 0.10
+
+CJK = ("'PingFang SC', 'Hiragino Sans GB', 'Heiti SC', 'Noto Sans SC', "
+       "'Source Han Sans SC', sans-serif")
 
 # Colours sampled from the previous real capture, and from Design.Palette.
 HEADER_FILL = "#35353a"
@@ -42,6 +67,15 @@ LABEL = "#f2f2f7"
 SECOND = "#98989d"
 ACCENT = "#0a84ff"
 
+# The clip the preview is open on, and the three lines of it the card can
+# hold before its own text runs out of card.
+ZH = ["本产品保修期为自购买之日起十二个月。",
+      "保修不包括人为损坏、进水或未经授权的拆修。",
+      "请保留购买凭证，办理保修时需要出示。"]
+ZH_EN = ["This product is covered by a twelve-month warranty from the date of purchase.",
+         "The warranty does not cover accidental damage, water damage or unauthorised",
+         "repairs. Keep your proof of purchase; you will need to show it to claim."]
+
 CLIPS = [
     dict(app="Messages", icon="messages", time="2 minutes ago", selected=True,
          lines=["Dinner Saturday at 8, the", "little place on Rue Lepic.", "Booked under my name."],
@@ -52,12 +86,29 @@ CLIPS = [
          stat="118 characters · noted", key="⌘2"),
     dict(app="Mail", icon="mail", time="17 minutes ago", glyph="text",
          lines=["Booking confirmed — Hôtel", "Sainte-Anne, 2 nights from", "14 Sep. Ref 8FJ2QK."],
-         stat="72 characters", key="⌘3"),
+         stat="72 characters · in calendar", key="⌘3"),
     dict(app="Calculator", icon="calculator", time="24 minutes ago", glyph="text",
          lines=["86.40/4"], stat="7 characters", calc="= 21.6", key="⌘4"),
     dict(app="Screenshot", icon="screenshot", time="31 minutes ago", glyph="camera",
          receipt=True, stat="Screenshot · text found", key="⌘5"),
 ]
+
+# The preview is open on a clip in a language the user does not read, so that
+# is the selected card: the pane below is showing this one.
+if PREVIEW:
+    CLIPS = [
+        dict(app="Safari", icon="safari", time="2 minutes ago", selected=True,
+             lines=["本产品保修期为自购买之日起", "十二个月。保修不包括人为损",
+                    "坏、进水或未经授权的拆修。", "请保留购买凭证，办理保修时",
+                    "需要出示。"],
+             font=CJK, stat="59 characters", key="⌘1"),
+    ] + [c for c in CLIPS if c["app"] != "Safari"]
+    # The strip is newest first, so the clip that took the front of it takes
+    # the front of the clock too — the one it displaced moves down a slot.
+    CLIPS[1]["time"] = "9 minutes ago"
+    for n, clip in enumerate(CLIPS):
+        clip["selected"] = n == 0
+        clip["key"] = f"⌘{n + 1}"
 
 CHIPS = [("All", "#98989d", True), ("Text", "#0a84ff", False), ("Images", "#30d158", False),
          ("Links", "#40c8e0", False), ("Files", "#ff375f", False), ("Colors", "#ff9f0a", False)]
@@ -221,7 +272,8 @@ for i, clip in enumerate(CLIPS):
         out.append(text(rx_ + rw - 12, ry_ + 106, "12,00 €", 8.5, "#3a3a38", weight="700", anchor="end"))
     else:
         for n, line in enumerate(clip["lines"]):
-            out.append(text(x + 12, y + 63 + n * 15, line, 12, LABEL))
+            out.append(text(x + 12, y + 63 + n * 15, line, 12, LABEL,
+                            family=clip.get("font")))
 
     # card footer: stat line, calc result, keycap
     out.append(text(x + 12, y + 185, clip["stat"], 10, SECOND))
@@ -239,6 +291,42 @@ for i, clip in enumerate(CLIPS):
         out.append(f'<rect x="{x + 1}" y="{y + 1}" width="{CARD - 2}" height="{CARD - 2}" rx="15" '
                    f'fill="none" stroke="{SEL_BORDER}" stroke-width="2"/>')
     out.append('</g>')
+
+# ---- the preview pane, under a resize handle
+#
+# Sizes are PreviewView's own: the pane is padded by roomy, the translation
+# and the clip are panes of their own with roomy between them, and the clip
+# takes whatever the translation leaves — the translation is bounded, the
+# clip is what the preview is for.
+if PREVIEW:
+    grip_y = HANDLE_Y + HANDLE_H / 2 - 1
+    out.append(f'<rect x="{PX + PW / 2 - GRIP_W / 2}" y="{grip_y}" width="{GRIP_W}" height="2" '
+               f'rx="1" fill="#ffffff" fill-opacity="0.18"/>')
+
+    px_ = PX + ROOMY
+    pw_ = PW - 2 * ROOMY
+    tr_y = PANE_Y + ROOMY
+    tr_h = 96
+
+    def pane(x, y, w, h):
+        out.append(f'<rect x="{x}" y="{y}" width="{w}" height="{h}" rx="{PANE_R}" '
+                   f'fill="{PANE_FILL}" fill-opacity="{PANE_FILL_OP}"/>')
+        out.append(f'<rect x="{x + 0.5}" y="{y + 0.5}" width="{w - 1}" height="{h - 1}" '
+                   f'rx="{PANE_R - 0.5}" fill="none" stroke="{PANE_STROKE}" '
+                   f'stroke-opacity="{PANE_STROKE_OP}"/>')
+
+    # the translation, over the clip
+    pane(px_, tr_y, pw_, tr_h)
+    out.append(text(px_ + ROOMY, tr_y + 23, "Chinese, Simplified → English", 11, SECOND))
+    for n, line in enumerate(ZH_EN):
+        out.append(text(px_ + ROOMY, tr_y + 45 + n * 17.5, line, 13, LABEL))
+
+    # the clip as it was copied
+    cl_y = tr_y + tr_h + ROOMY
+    cl_h = PANE_H - 2 * ROOMY - tr_h - ROOMY
+    pane(px_, cl_y, pw_, cl_h)
+    for n, line in enumerate(ZH):
+        out.append(text(px_ + ROOMY, cl_y + 27 + n * 28, line, 13.5, LABEL, family=CJK))
 
 # ---- panel footer
 fy = FOOTER_Y + FOOTER_H / 2

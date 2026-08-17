@@ -40,18 +40,18 @@ Requires macOS 26 on Apple silicon.
     <td colspan="2" align="center"><em>The panel — <strong>⇧⌘V</strong> from anywhere.</em></td>
   </tr>
   <tr>
-    <td width="50%"><img src="docs/screenshots/preview.svg" alt="A Chinese clip open in the preview pane, with its English translation above it"></td>
-    <td width="50%"><img src="docs/screenshots/menu-bar.svg" alt="The menu-bar dropdown listing recent clips and app commands"></td>
+    <td colspan="2"><img src="docs/screenshots/preview.svg" alt="The panel with the preview pane open under the clip strip: a Chinese clip, with its English translation above it"></td>
   </tr>
   <tr>
-    <td align="center"><em>Preview pane — <code>Space</code> to open, again for Quick Look.</em></td>
+    <td colspan="2" align="center"><em>Preview pane — <code>Space</code> to open, again for Quick Look.</em></td>
+  </tr>
+  <tr>
+    <td width="50%" align="center"><img src="docs/screenshots/menu-bar.svg" alt="The menu-bar dropdown listing recent clips and app commands"></td>
+    <td width="50%" align="center"><img src="docs/screenshots/settings.svg" alt="The Settings window showing its sidebar of preference panes"></td>
+  </tr>
+  <tr>
     <td align="center"><em>Menu-bar dropdown — the last five clips.</em></td>
-  </tr>
-  <tr>
-    <td colspan="2" align="center"><img src="docs/screenshots/settings.svg" alt="The Settings window showing its sidebar of preference panes" width="620"></td>
-  </tr>
-  <tr>
-    <td colspan="2" align="center"><em>Settings — ten panes behind a sidebar, no Dock icon anywhere.</em></td>
+    <td align="center"><em>Settings — ten panes behind a sidebar, no Dock icon anywhere.</em></td>
   </tr>
 </table>
 
