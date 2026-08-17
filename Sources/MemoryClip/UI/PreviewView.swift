@@ -85,9 +85,23 @@ struct PreviewView: View {
             }
         }
         .padding(Design.Space.roomy)
+        // Full-bleed and hit-testable, so a right-click in the pane's empty
+        // space — padding, the room beside a short line — reaches the menu.
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .contentShape(Rectangle())
+        .contextMenu {
+            ForEach(copyOptions) { option in
+                Button(option.title) { PreviewCopy.perform(option, for: item) }
+            }
+        }
         .task(id: contentKey) { await refreshAnalysis() }
         .task(id: contentKey) { await loadFullImage() }
         .task(id: translationKey) { await refreshTranslation() }
+    }
+
+    /// What the right-click menu offers for this clip.
+    private var copyOptions: [PreviewCopyOption] {
+        PreviewCopy.options(for: item, translation: presenter.translation?.text)
     }
 
     // MARK: Cached analysis
@@ -186,10 +200,7 @@ struct PreviewView: View {
 
                 if let translation = presenter.translation {
                     ScrollView {
-                        Text(translation.text)
-                            .font(.system(size: bodyFontSize))
-                            .textSelection(.enabled)
-                            .frame(maxWidth: .infinity, alignment: .leading)
+                        SelectableText(text: translation.text, size: bodyFontSize)
                             // Measured from INSIDE the scroll view, which
                             // proposes no height to its content, so this is
                             // the text's own height rather than the one it
@@ -263,10 +274,7 @@ struct PreviewView: View {
         let body = ClipDisplay.previewBody(item.text ?? "")
         return ScrollView {
             VStack(alignment: .leading, spacing: Design.Space.normal) {
-                Text(body.text)
-                    .font(.system(size: bodyFontSize))
-                    .textSelection(.enabled)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                SelectableText(text: body.text, size: bodyFontSize)
                 if let notice = body.notice {
                     Text(notice)
                         .font(Design.Typography.meta)
@@ -341,10 +349,7 @@ struct PreviewView: View {
                 case .text(let value):
                     let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
                     if !trimmed.isEmpty {
-                        Text(trimmed)
-                            .font(.system(size: bodyFontSize))
-                            .textSelection(.enabled)
-                            .frame(maxWidth: .infinity, alignment: .leading)
+                        SelectableText(text: trimmed, size: bodyFontSize)
                     }
                 case .table(let table):
                     tableGrid(table)
@@ -471,5 +476,73 @@ struct PreviewView: View {
         let green = Int((srgb.greenComponent * 255).rounded())
         let blue = Int((srgb.blueComponent * 255).rounded())
         return "\(red), \(green), \(blue)"
+    }
+}
+
+// MARK: - Selectable body text
+
+/// Read-only text whose selectable region is the full width it is given, so a
+/// drag anywhere on a line selects that line.
+///
+/// A SwiftUI `Text` is laid out at the width of its own glyphs, and
+/// `.textSelection(.enabled)` covers exactly that — a `.frame(maxWidth:
+/// .infinity)` around it widens the view, not the selection.
+struct SelectableText: NSViewRepresentable {
+    let text: String
+    let size: CGFloat
+
+    func makeNSView(context _: Context) -> PreviewTextView {
+        let storage = NSTextStorage()
+        let layoutManager = NSLayoutManager()
+        let container = NSTextContainer(size: CGSize(width: 0, height: CGFloat.greatestFiniteMagnitude))
+        container.widthTracksTextView = true
+        container.lineFragmentPadding = 0
+        storage.addLayoutManager(layoutManager)
+        layoutManager.addTextContainer(container)
+
+        let view = PreviewTextView(frame: .zero, textContainer: container)
+        view.isEditable = false
+        view.isSelectable = true
+        view.isRichText = false
+        view.drawsBackground = false
+        view.textContainerInset = .zero
+        view.isHorizontallyResizable = false
+        view.isVerticallyResizable = false
+        // Drawn in the accent colour even though the view never takes focus.
+        view.selectedTextAttributes = [NSAttributedString.Key.backgroundColor: NSColor.selectedTextBackgroundColor]
+        return view
+    }
+
+    func updateNSView(_ view: PreviewTextView, context _: Context) {
+        if view.string != text { view.string = text }
+        // After `string`, which resets both.
+        view.font = NSFont.systemFont(ofSize: size)
+        view.textColor = .labelColor
+    }
+
+    func sizeThatFits(_ proposal: ProposedViewSize, nsView: PreviewTextView, context _: Context) -> CGSize? {
+        let proposed = proposal.width ?? nsView.bounds.width
+        let width = (proposed.isFinite && proposed > 0) ? proposed : nsView.bounds.width
+        guard width > 0 else { return nil }
+        return CGSize(width: width, height: nsView.height(forWidth: width))
+    }
+}
+
+/// The text view behind `SelectableText`.
+final class PreviewTextView: NSTextView {
+    /// Never becomes first responder, so the panel keeps the arrow keys,
+    /// Space and Escape while a preview is open.
+    override var acceptsFirstResponder: Bool { false }
+
+    /// No menu of its own: right-clicks fall through to the pane's
+    /// `.contextMenu`, so the same menu appears everywhere in the preview.
+    override func menu(for event: NSEvent) -> NSMenu? { nil }
+
+    /// Height the text lays out to at `width`.
+    func height(forWidth width: CGFloat) -> CGFloat {
+        guard let container = textContainer, let layoutManager else { return 0 }
+        container.size = CGSize(width: width, height: CGFloat.greatestFiniteMagnitude)
+        layoutManager.ensureLayout(for: container)
+        return layoutManager.usedRect(for: container).height.rounded(.up)
     }
 }
