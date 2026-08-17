@@ -34,6 +34,24 @@ enum CalendarSettingsKeys {
 
 /// Failures adding a clip to the calendar can hit that the user has to be told
 /// about.
+/// The calendar grant, as the settings UI needs to talk about it.
+///
+/// Deliberately not `EKAuthorizationStatus`: the UI only cares whether events
+/// can be written and, when they cannot, whether asking again would help.
+enum CalendarAccess: Sendable, Equatable {
+    /// Never asked. A prompt would appear, and only a user action may raise it.
+    case notAsked
+    /// Write-only or full access — either can create an event.
+    case granted
+    /// Refused. macOS will not prompt again; only System Settings can undo it.
+    case denied
+    /// Blocked by a profile or Screen Time. Nothing the user can do here.
+    case restricted
+
+    /// Whether automatic creation can actually happen.
+    var canCreateEvents: Bool { self == .granted }
+}
+
 enum CalendarError: LocalizedError, Equatable {
     case nothingToSchedule
     case accessDenied
