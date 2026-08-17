@@ -4,34 +4,109 @@
 <radialGradient id="g1" cx="0.16" cy="0.1" r="0.6"><stop offset="0" stop-color="#4c5cff" stop-opacity="0.4"/><stop offset="1" stop-color="#4c5cff" stop-opacity="0"/></radialGradient>
 <radialGradient id="g2" cx="0.88" cy="0.95" r="0.65"><stop offset="0" stop-color="#00b8a0" stop-opacity="0.34"/><stop offset="1" stop-color="#00b8a0" stop-opacity="0"/></radialGradient>
 <radialGradient id="g3" cx="0.68" cy="0.05" r="0.45"><stop offset="0" stop-color="#ff6fb5" stop-opacity="0.22"/><stop offset="1" stop-color="#ff6fb5" stop-opacity="0"/></radialGradient>
-<linearGradient id="glass" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffffff" stop-opacity="0.14"/><stop offset="0.55" stop-color="#ffffff" stop-opacity="0.06"/><stop offset="1" stop-color="#ffffff" stop-opacity="0.03"/></linearGradient>
-<linearGradient id="rim" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffffff" stop-opacity="0.4"/><stop offset="0.35" stop-color="#ffffff" stop-opacity="0.12"/><stop offset="1" stop-color="#ffffff" stop-opacity="0.07"/></linearGradient>
-<filter id="panelShadow" x="-15%" y="-25%" width="130%" height="170%"><feDropShadow dx="0" dy="16" stdDeviation="20" flood-color="#000" flood-opacity="0.5"/></filter>
+
+<!-- The wallpaper, as one reusable object.
+     It is drawn twice: once as the desktop behind the panel, and once more
+     inside the panel's clip, blurred. That second copy is what makes this
+     read as glass — the material is not a white film laid over the window,
+     it is the wall behind it, out of focus and more saturated than the
+     original. A flat wash cannot do that: it greys down whatever it covers,
+     so the panel ends up looking like plastic sitting on the picture rather
+     than a pane you are seeing the picture through. -->
+<g id="wallpaper">
+  <rect width="1160" height="330" fill="url(#wall)"/>
+  <rect width="1160" height="330" fill="url(#g1)"/>
+  <rect width="1160" height="330" fill="url(#g2)"/>
+  <rect width="1160" height="330" fill="url(#g3)"/>
+</g>
+
+<!-- Blur wide enough to lose all detail, then push saturation past 1.
+     Apple's materials are vibrant: colour comes *through* the glass
+     stronger than it went in, which is the cue that separates a real
+     backdrop from a translucent grey rectangle. -->
+<filter id="backdrop" x="-30%" y="-60%" width="160%" height="220%" color-interpolation-filters="sRGB">
+  <feGaussianBlur stdDeviation="34"/>
+  <feColorMatrix type="saturate" values="1.9"/>
+</filter>
+
+<!-- Same treatment, tighter, for the two cards resting on the panel. -->
+<filter id="backdropCard" x="-30%" y="-90%" width="160%" height="280%" color-interpolation-filters="sRGB">
+  <feGaussianBlur stdDeviation="18"/>
+  <feColorMatrix type="saturate" values="1.5"/>
+</filter>
+
+<!-- Specular top edge: bright at the very top, gone by a third of the way
+     down. On a real window this is the light source catching the bevel, and
+     its absence is most of why a plain 1px stroke looks flat. -->
+<linearGradient id="sheen" x1="0" y1="0" x2="0" y2="1">
+  <stop offset="0" stop-color="#ffffff" stop-opacity="0.20"/>
+  <stop offset="0.30" stop-color="#ffffff" stop-opacity="0.05"/>
+  <stop offset="1" stop-color="#ffffff" stop-opacity="0"/>
+</linearGradient>
+<linearGradient id="rim" x1="0" y1="0" x2="0" y2="1">
+  <stop offset="0" stop-color="#ffffff" stop-opacity="0.55"/>
+  <stop offset="0.30" stop-color="#ffffff" stop-opacity="0.14"/>
+  <stop offset="1" stop-color="#ffffff" stop-opacity="0.06"/>
+</linearGradient>
+<linearGradient id="cardRim" x1="0" y1="0" x2="0" y2="1">
+  <stop offset="0" stop-color="#ffffff" stop-opacity="0.26"/>
+  <stop offset="1" stop-color="#ffffff" stop-opacity="0.07"/>
+</linearGradient>
+
+<clipPath id="panelClip"><rect x="40" y="40" width="1080" height="250" rx="28"/></clipPath>
+<clipPath id="cardTop"><rect x="52" y="52" width="1056" height="76" rx="16"/></clipPath>
+<clipPath id="cardBody"><rect x="52" y="140" width="1056" height="138" rx="16"/></clipPath>
+
+<filter id="panelShadow" x="-15%" y="-25%" width="130%" height="170%"><feDropShadow dx="0" dy="16" stdDeviation="20" flood-color="#000" flood-opacity="0.55"/></filter>
+
+<!-- The shadow is cast by an opaque rectangle, which would otherwise block
+     the wallpaper the panel is meant to show. Masking the panel's own
+     footprint out of it keeps the halo and discards the slab: the glass
+     then sits over untouched desktop, and still has something under it to
+     lift it off the wall. -->
+<mask id="outsidePanel">
+  <rect width="1160" height="330" fill="#ffffff"/>
+  <rect x="40" y="40" width="1080" height="250" rx="28" fill="#000000"/>
+</mask>
 </defs>
 
-<rect width="1160" height="330" fill="url(#wall)"/>
-<rect width="1160" height="330" fill="url(#g1)"/>
-<rect width="1160" height="330" fill="url(#g2)"/>
-<rect width="1160" height="330" fill="url(#g3)"/>
+<!-- the desktop -->
+<use href="#wallpaper"/>
 
-<g filter="url(#panelShadow)">
-  <rect x="40" y="40" width="1080" height="250" rx="28" fill="#0b0b10" fill-opacity="0.55"/>
-  <rect x="40" y="40" width="1080" height="250" rx="28" fill="url(#glass)"/>
+<!-- the panel -->
+<g mask="url(#outsidePanel)">
+  <rect x="40" y="40" width="1080" height="250" rx="28" fill="#000000" filter="url(#panelShadow)"/>
+</g>
+<g clip-path="url(#panelClip)">
+  <use href="#wallpaper" filter="url(#backdrop)"/>
+  <!-- A dark scrim, not a white one: the panel has to stay a surface text
+       can sit on, and dimming preserves the colour the blur just amplified
+       where lightening would wash it out. -->
+  <rect x="40" y="40" width="1080" height="250" fill="#05060f" fill-opacity="0.46"/>
+  <rect x="40" y="40" width="1080" height="250" fill="url(#sheen)"/>
 </g>
 
 <!-- the translation, over the clip -->
-<rect x="52" y="52" width="1056" height="76" rx="16" fill="#ffffff" fill-opacity="0.085"/>
-<rect x="52.5" y="52.5" width="1055" height="75" rx="15.5" fill="none" stroke="#ffffff" stroke-opacity="0.13"/>
-<text x="64" y="76" fill="#98989d" font-size="12.5">Chinese, Simplified → English</text>
-<g fill="#f2f2f7" font-size="13.5">
+<g clip-path="url(#cardTop)">
+  <use href="#wallpaper" filter="url(#backdropCard)"/>
+  <rect x="52" y="52" width="1056" height="76" fill="#05060f" fill-opacity="0.34"/>
+  <rect x="52" y="52" width="1056" height="76" fill="#ffffff" fill-opacity="0.05"/>
+</g>
+<rect x="52.5" y="52.5" width="1055" height="75" rx="15.5" fill="none" stroke="url(#cardRim)"/>
+<text x="64" y="76" fill="#a8a8b0" font-size="12.5">Chinese, Simplified → English</text>
+<g fill="#f5f5f8" font-size="13.5">
   <text x="64" y="100">This product is covered by a twelve-month warranty from the date of purchase. The warranty does not cover accidental</text>
   <text x="64" y="120">damage, water damage or unauthorised repairs. Keep your proof of purchase; you will need to show it to claim.</text>
 </g>
 
 <!-- the clip as it was copied -->
-<rect x="52" y="140" width="1056" height="138" rx="16" fill="#ffffff" fill-opacity="0.085"/>
-<rect x="52.5" y="140.5" width="1055" height="137" rx="15.5" fill="none" stroke="#ffffff" stroke-opacity="0.13"/>
-<g fill="#f2f2f7" font-size="14" font-family="'PingFang SC', 'Hiragino Sans GB', 'Heiti SC', 'Noto Sans SC', 'Source Han Sans SC', 'Microsoft YaHei', sans-serif">
+<g clip-path="url(#cardBody)">
+  <use href="#wallpaper" filter="url(#backdropCard)"/>
+  <rect x="52" y="140" width="1056" height="138" fill="#05060f" fill-opacity="0.34"/>
+  <rect x="52" y="140" width="1056" height="138" fill="#ffffff" fill-opacity="0.05"/>
+</g>
+<rect x="52.5" y="140.5" width="1055" height="137" rx="15.5" fill="none" stroke="url(#cardRim)"/>
+<g fill="#f5f5f8" font-size="14" font-family="'PingFang SC', 'Hiragino Sans GB', 'Heiti SC', 'Noto Sans SC', 'Source Han Sans SC', 'Microsoft YaHei', sans-serif">
   <text x="64" y="172">本产品保修期为自购买之日起十二个月。</text>
   <text x="64" y="202">保修不包括人为损坏、进水或未经授权的拆修。</text>
   <text x="64" y="232">请保留购买凭证，办理保修时需要出示。</text>
