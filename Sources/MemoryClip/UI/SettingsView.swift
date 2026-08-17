@@ -510,7 +510,7 @@ private struct AboutSettingsPane: View {
                 .buttonStyle(.borderedProminent)
                 .padding(.top, Design.Space.roomy)
 
-                Text(loc("Re-opens the first-run tour of the panel, shortcuts and privacy model, where the note destination and launch-at-login can also be set."))
+                Text(loc("Re-opens the first-run tour of the panel, notes and calendar events, where launch at login, automatic paste, the note destination and automatic events can all be set."))
                     .font(.caption)
                     .foregroundStyle(Color(nsColor: .secondaryLabelColor))
                     .multilineTextAlignment(.center)
