@@ -191,6 +191,45 @@ struct LaunchAtLoginToggle: View {
     }
 }
 
+// MARK: - Automatic paste
+
+/// The auto-paste switch.
+///
+/// Shared with the tour because this is the one part of MemoryClip a macOS
+/// permission can defeat without saying so: the clip reaches the clipboard
+/// either way, so a synthetic ⌘V that Accessibility blocked looks exactly like
+/// nothing having happened. The page that explains pasting is the only place
+/// where that sentence lands before it is needed rather than after.
+///
+/// - Parameter showsHint: the tour spends a whole bullet on the Accessibility
+///   caveat, so it turns the line off rather than printing it twice on one
+///   page.
+struct AutoPasteToggle: View {
+    var showsHint: Bool = true
+
+    @AppStorage(SettingsKeys.autoPaste) private var autoPaste = true
+
+    var body: some View {
+        Group {
+            // Laid out like `LaunchAtLoginToggle`, and for the reason written
+            // there: the tour has no `Form` for a labelled Toggle to lean on.
+            HStack(spacing: Design.Space.normal) {
+                Label {
+                    Text(loc("Paste automatically after selecting a clip"))
+                } icon: {
+                    SettingsIcon(symbol: "arrow.down.doc.fill", tint: Color(nsColor: .systemBlue))
+                }
+                Spacer(minLength: Design.Space.normal)
+                Toggle(loc("Paste automatically after selecting a clip"), isOn: $autoPaste)
+                    .labelsHidden()
+            }
+            if showsHint {
+                SettingsHint(loc("MemoryClip simulates ⌘V into the previous app. If macOS blocks the synthetic key event (Accessibility not granted), the clip is still on the clipboard — paste manually with ⌘V."))
+            }
+        }
+    }
+}
+
 // MARK: - Note destination
 
 /// Where notes are written, and whatever the chosen destination still needs
@@ -435,4 +474,100 @@ private struct MarkdownCompatibilityGuide: View {
     ]
 
     private static let elsewhere = loc("Bear, Craft, Notion and Things do not keep notes as files. Use the Shortcut destination for those — MemoryClip hands the note to a Shortcut, which can put it anywhere Shortcuts reaches. For Apple Notes, use the Notes destination.")
+}
+
+// MARK: - Automatic calendar events
+
+/// The automatic-events switch, the permission it needs, and the notification
+/// that keeps it honest.
+///
+/// Shared with the tour for a reason the other controls do not have: this is
+/// the only switch in MemoryClip whose own permission prompt may not be raised
+/// from the code path that uses it. `CalendarCoordinator` refuses to prompt
+/// from a background capture — a TCC dialog with nothing on screen to explain
+/// it is a dialog people deny — so the grant has to be asked for wherever the
+/// switch is, and there are now two such places.
+///
+/// Hence `prime()` on both the change and the appearance. The change covers
+/// someone turning it on; the appearance covers someone who turned it on in an
+/// earlier run and was never asked, for whom there is no transition left to
+/// fire on. When neither has produced a grant the callout says so, because the
+/// alternative is a switch that is on and a calendar that silently stays empty.
+///
+/// - Parameter showsDetail: the Settings pane shows the explanation of what
+///   qualifies and the notification sub-switch; the tour shows the switch and
+///   the callout only, because a page of the tour that grows into the Calendar
+///   pane is a worse page than the one it replaced.
+struct CalendarAutoCreateSetup: View {
+    var showsDetail: Bool = true
+
+    @AppStorage(CalendarSettingsKeys.autoCreate) private var autoCreate = false
+    @AppStorage(CalendarSettingsKeys.notifyOnAutoCreate) private var notifyOnAutoCreate = true
+
+    /// Starts optimistic so the warning does not flash on every open before
+    /// the first `prime()` has read the real grant.
+    @State private var access: CalendarAccess = .granted
+
+    var body: some View {
+        Group {
+            HStack(spacing: Design.Space.normal) {
+                Label {
+                    Text(loc("Add events automatically"))
+                } icon: {
+                    SettingsIcon(symbol: "calendar.badge.plus", tint: Color(nsColor: .systemRed))
+                }
+                Spacer(minLength: Design.Space.normal)
+                Toggle(loc("Add events automatically"), isOn: $autoCreate)
+                    .labelsHidden()
+            }
+
+            if showsDetail {
+                SettingsHint(loc("An event is created on its own only when the clip names a time of day and either a meeting link or an address. A bare date — a deadline in a paragraph, an expiry notice, a headline — is left alone. Anything MemoryClip passes over you can still add yourself: select the clip in the panel and choose Add to Calendar."))
+            }
+
+            if autoCreate, !access.canCreateEvents {
+                SettingsCallout(text: accessWarning, symbol: "calendar.badge.exclamationmark")
+            }
+
+            if showsDetail, autoCreate {
+                HStack(spacing: Design.Space.normal) {
+                    Label {
+                        Text(loc("Tell me when an event is added"))
+                    } icon: {
+                        SettingsIcon(symbol: "bell.badge.fill", tint: Color(nsColor: .systemBlue))
+                    }
+                    Spacer(minLength: Design.Space.normal)
+                    Toggle(loc("Tell me when an event is added"), isOn: $notifyOnAutoCreate)
+                        .labelsHidden()
+                }
+                SettingsHint(loc("The notification names the event and when it starts, and carries an Undo button that takes it straight back out of your calendar. Undo works while MemoryClip is running; after a quit, remove the event in Calendar like any other."))
+            }
+        }
+        .onChange(of: autoCreate) { _, isOn in
+            guard isOn else { return }
+            Task { await prime() }
+        }
+        .onAppear {
+            Task { await prime() }
+        }
+    }
+
+    /// Refresh the known grant, asking for it first when the feature is on and
+    /// nobody has been asked yet.
+    private func prime() async {
+        if autoCreate { await EventKitSink.primeAccess() }
+        access = EventKitSink.access
+    }
+
+    /// Why automatic events are not happening, and what to do about it.
+    private var accessWarning: String {
+        switch access {
+        case .denied:
+            return loc("Automatic events are on, but permission to add them was refused. Allow MemoryClip in System Settings → Privacy & Security → Calendars; macOS will not ask a second time on its own.")
+        case .restricted:
+            return loc("Calendar access is turned off on this Mac by a profile or by Screen Time, so no event can be added.")
+        case .notAsked, .granted:
+            return loc("Automatic events are on, but MemoryClip has not been given calendar access yet, so nothing will be added. Switch this off and on again to be asked.")
+        }
+    }
 }
