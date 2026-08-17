@@ -39,6 +39,8 @@
 	<true/>
 	<key>NSAppleEventsUsageDescription</key>
 	<string>MemoryClip needs permission to control Notes so it can save a screenshot's text as a note. It is only used when you choose Notes as your note destination.</string>
+	<key>NSCalendarsWriteOnlyAccessUsageDescription</key>
+	<string>MemoryClip adds an event to your calendar only when you ask it to, from a clip that holds a date. It has write-only access, so it cannot read your calendar.</string>
 	<key>NSDesktopFolderUsageDescription</key>
 	<string>MemoryClip watches your screenshot folder — the Desktop, unless you changed it — so new screenshots can be kept in your clipboard history.</string>
 	<key>NSDocumentsFolderUsageDescription</key>

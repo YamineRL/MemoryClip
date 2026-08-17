@@ -140,6 +140,17 @@ final class ClipItem {
     var notePath: String?
     /// When the note was last written.
     var noteExportedAt: Date?
+    /// EventKit's identifier for the calendar event created from this clip.
+    /// Non-nil means "an event exists", which is what stops the panel offering
+    /// to create a second one for the same appointment.
+    ///
+    /// Recorded but never resolved: MemoryClip holds write-only calendar
+    /// access, so nothing can look the event up again — see `EventKitSink`.
+    ///
+    /// Optional, so an existing store migrates in place: SwiftData's
+    /// lightweight migration adds a nullable column to rows that predate it,
+    /// which a mandatory attribute without a default cannot.
+    var calendarEventID: String?
 
     var kind: ClipKind {
         get { ClipKind(rawValue: kindRaw) ?? .text }
@@ -176,7 +187,8 @@ final class ClipItem {
         clipTranslationSource: String? = nil,
         clipTranslationTarget: String? = nil,
         notePath: String? = nil,
-        noteExportedAt: Date? = nil
+        noteExportedAt: Date? = nil,
+        calendarEventID: String? = nil
     ) {
         self.uuid = uuid
         self.kindRaw = kind.rawValue
@@ -208,6 +220,7 @@ final class ClipItem {
         self.clipTranslationTarget = clipTranslationTarget
         self.notePath = notePath
         self.noteExportedAt = noteExportedAt
+        self.calendarEventID = calendarEventID
     }
 
     // MARK: - Image payloads
