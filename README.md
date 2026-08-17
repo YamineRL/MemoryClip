@@ -9,9 +9,9 @@
 <p align="center"><a href="https://yaminerl.github.io/MemoryClip/"><strong>Download and install →</strong></a></p>
 
 <p align="center">
-  <a href="https://www.producthunt.com/products/memoryclip?embed=true&amp;utm_source=badge-featured&amp;utm_medium=badge&amp;utm_campaign=badge-memoryclip"><img src="https://img.shields.io/badge/Product%20Hunt-Featured-DA552F?logo=producthunt&amp;logoColor=white" alt="Featured on Product Hunt"></a>
+  <a href="https://www.producthunt.com/products/memoryclip?embed=true&amp;utm_source=badge-featured&amp;utm_medium=badge&amp;utm_campaign=badge-memoryclip"><img src="https://img.shields.io/badge/Product%20Hunt-Featured-4c4f56?logo=producthunt&amp;logoColor=white" alt="Featured on Product Hunt"></a>
   <a href="https://github.com/YamineRL/MemoryClip/actions/workflows/ci.yml"><img src="https://github.com/YamineRL/MemoryClip/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
-  <a href="https://www.paypal.com/donate/?hosted_button_id=H8XWE3HUPKCME"><img src="https://img.shields.io/badge/Donate-PayPal-00457C?logo=paypal&amp;logoColor=white" alt="Donate with PayPal"></a>
+  <a href="https://www.paypal.com/donate/?hosted_button_id=H8XWE3HUPKCME"><img src="https://img.shields.io/badge/Donate-PayPal-fe7d37?logo=paypal&amp;logoColor=white" alt="Donate with PayPal"></a>
 </p>
 
 A local-first menu-bar clipboard manager for macOS: keyboard-first history of everything
