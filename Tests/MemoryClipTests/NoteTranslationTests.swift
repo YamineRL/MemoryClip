@@ -426,6 +426,195 @@ final class NoteTranslationBoundsTests: XCTestCase {
     }
 }
 
+// MARK: - Chunks
+
+private enum ChunkFixture {
+    /// One whole sentence, 89 characters, so a handful of them cross a chunk.
+    static let line = "La réunion de mardi porte sur le budget, le calendrier et les nouvelles règles du service."
+    /// Six paragraphs of two lines each, blank line between.
+    static let paragraphs = (0..<6).map { "Paragraphe \($0).\n\(line)" }.joined(separator: "\n\n")
+}
+
+/// How a clip is cut up for the engine, which is what lets the preview pane
+/// fill in instead of staying blank until the last word arrives.
+final class TranslationChunkTests: XCTestCase {
+    /// The ordinary clip is one piece, exactly as it was before there were
+    /// pieces at all.
+    func testShortTextIsOneChunk() throws {
+        let text = "Bonjour à tous.\nLa réunion est mardi."
+        let chunks = NoteTranslation.chunks(text)
+
+        XCTAssertEqual(chunks.count, 1)
+        let chunk = try XCTUnwrap(chunks.first)
+        XCTAssertEqual(chunk.text, text)
+        XCTAssertEqual(chunk.separator, "")
+    }
+
+    func testTextWithNothingInItHasNoChunks() {
+        XCTAssertTrue(NoteTranslation.chunks("").isEmpty)
+        XCTAssertTrue(NoteTranslation.chunks("\n\n\n").isEmpty)
+    }
+
+    /// The invariant the rest of this rests on: the pieces, put back together,
+    /// are the text the engine would have been handed whole.
+    func testChunksReassembleIntoTheOriginal() {
+        let rebuilt = NoteTranslation.chunks(ChunkFixture.paragraphs)
+            .map { $0.text + $0.separator }
+            .joined()
+        XCTAssertEqual(rebuilt, ChunkFixture.paragraphs)
+    }
+
+    /// Cut between lines, never inside one: half a sentence translates as half
+    /// a sentence.
+    func testChunksAreCutOnLineBoundaries() {
+        let lines = ChunkFixture.paragraphs.split(separator: "\n").map(String.init)
+        for chunk in NoteTranslation.chunks(ChunkFixture.paragraphs) {
+            for line in chunk.text.split(separator: "\n") {
+                XCTAssertTrue(lines.contains(String(line)), "\(line) is not a whole line of the original")
+            }
+        }
+    }
+
+    /// A chunk holds back at the budget, so the pane gets its next piece at a
+    /// predictable interval rather than whenever a paragraph happens to end.
+    func testChunksStayInsideTheBudget() {
+        let chunks = NoteTranslation.chunks(ChunkFixture.paragraphs)
+        XCTAssertGreaterThan(chunks.count, 1)
+        for chunk in chunks {
+            XCTAssertLessThanOrEqual(chunk.text.count, NoteTranslation.chunkBudget)
+        }
+    }
+
+    /// A line with no boundary inside it goes whole: the budget is where to
+    /// cut, not permission to cut anywhere.
+    func testALineLongerThanTheBudgetIsSentWhole() throws {
+        let line = String(repeating: "un mot de plus ", count: 40)
+        let chunks = NoteTranslation.chunks(line)
+
+        XCTAssertEqual(chunks.count, 1)
+        XCTAssertEqual(try XCTUnwrap(chunks.first).text, line)
+        XCTAssertGreaterThan(line.count, NoteTranslation.chunkBudget)
+    }
+
+    /// The blank line between two paragraphs travels with the piece it
+    /// followed, so the translation reads in the paragraphs the clip had.
+    func testTheBreakBetweenParagraphsIsCarried() {
+        let text = (0..<4).map { "Paragraphe \($0). \(ChunkFixture.line)" }.joined(separator: "\n\n")
+        let chunks = NoteTranslation.chunks(text)
+
+        XCTAssertGreaterThan(chunks.count, 1)
+        XCTAssertTrue(chunks.dropLast().allSatisfy { $0.separator == "\n\n" })
+        XCTAssertEqual(chunks.last?.separator, "")
+        XCTAssertEqual(chunks.map { $0.text + $0.separator }.joined(), text)
+    }
+
+    /// Chunking is inside the character budget, not a way around it: the
+    /// remainder and the marker over it are still `bounded`'s business, and
+    /// nothing the engine sees mentions either.
+    func testChunkingHappensWithinTheCharacterBudget() {
+        let text = String(repeating: ChunkFixture.line + "\n", count: 80)
+        let (sent, remainder) = NoteTranslation.bounded(text)
+        let chunks = NoteTranslation.chunks(sent)
+
+        XCTAssertFalse(remainder.isEmpty)
+        XCTAssertEqual(chunks.map { $0.text + $0.separator }.joined(), sent)
+        XCTAssertLessThanOrEqual(chunks.map(\.text.count).reduce(0, +), NoteTranslation.characterBudget)
+        XCTAssertFalse(chunks.contains { $0.text.contains(NoteTranslation.truncationMarker) })
+    }
+}
+
+// MARK: - Kept sessions
+
+/// Which translation session a request lands on, and when an unused one goes.
+final class TranslationSessionRegistryTests: XCTestCase {
+    private let french = Locale.Language(identifier: "fr")
+    private let english = Locale.Language(identifier: "en")
+    private let german = Locale.Language(identifier: "de")
+
+    private func key(_ source: Locale.Language, _ target: Locale.Language) -> TranslationSessionKey {
+        TranslationSessionKey(from: source, to: target)
+    }
+
+    /// The point of the whole thing: the second clip of a French page finds
+    /// the session the first one paid to build.
+    func testASecondClipInTheSamePairFindsTheSessionAgain() {
+        var registry = TranslationSessionRegistry<String>()
+        registry.insert("fr-en", for: key(french, english))
+        XCTAssertEqual(registry.session(for: key(french, english)), "fr-en")
+    }
+
+    /// Both halves of the pair are the key. A session is built for one
+    /// direction of one pair and is no use for any other.
+    func testEachPairHasItsOwnSession() {
+        var registry = TranslationSessionRegistry<String>()
+        registry.insert("fr-en", for: key(french, english))
+
+        XCTAssertNil(registry.session(for: key(french, german)))
+        XCTAssertNil(registry.session(for: key(german, english)))
+        XCTAssertNil(registry.session(for: key(english, french)))
+    }
+
+    /// The note pipeline translates into "en-US" and a preview pane set to
+    /// English asks for "en"; the engine does not tell them apart, so neither
+    /// does the key.
+    func testARegionOnTheTargetIsNotASecondSession() {
+        var registry = TranslationSessionRegistry<String>()
+        registry.insert("fr-en", for: key(french, NoteTranslation.target))
+        XCTAssertEqual(registry.session(for: key(french, english)), "fr-en")
+    }
+
+    /// Scripts that mean different languages still do.
+    func testScriptIsPartOfTheKey() {
+        var registry = TranslationSessionRegistry<String>()
+        let simplified = Locale.Language(identifier: "zh-Hans")
+        let traditional = Locale.Language(identifier: "zh-Hant")
+
+        registry.insert("zh-Hans-en", for: key(simplified, english))
+        XCTAssertNil(registry.session(for: key(traditional, english)))
+    }
+
+    /// A session nobody has used for the timeout is let go; one used inside it
+    /// is kept.
+    func testAnIdleSessionExpiresAndABusyOneDoesNot() {
+        var registry = TranslationSessionRegistry<String>(idleTimeout: 60)
+        let start = Date(timeIntervalSince1970: 0)
+        registry.insert("fr-en", for: key(french, english), now: start)
+        registry.insert("de-en", for: key(german, english), now: start)
+
+        registry.touch(key(german, english), now: start.addingTimeInterval(50))
+        let dropped = registry.removeExpired(now: start.addingTimeInterval(70))
+
+        XCTAssertEqual(dropped, ["fr-en"])
+        XCTAssertEqual(registry.count, 1)
+        XCTAssertEqual(registry.session(for: key(german, english), now: start.addingTimeInterval(70)), "de-en")
+    }
+
+    /// Finding a session is using it: a clip that joins one restarts its
+    /// clock, so a chunk arriving keeps the session alive for the next.
+    func testFindingASessionRestartsItsClock() {
+        var registry = TranslationSessionRegistry<String>(idleTimeout: 60)
+        let start = Date(timeIntervalSince1970: 0)
+        registry.insert("fr-en", for: key(french, english), now: start)
+
+        _ = registry.session(for: key(french, english), now: start.addingTimeInterval(59))
+
+        XCTAssertTrue(registry.removeExpired(now: start.addingTimeInterval(100)).isEmpty)
+        XCTAssertEqual(registry.removeExpired(now: start.addingTimeInterval(130)), ["fr-en"])
+        XCTAssertTrue(registry.isEmpty)
+    }
+
+    /// What the failure path does: the session that threw is taken out and
+    /// handed back to be cancelled, so nothing else is given a dead one.
+    func testRemovingASessionTakesItOut() {
+        var registry = TranslationSessionRegistry<String>()
+        registry.insert("fr-en", for: key(french, english))
+
+        XCTAssertEqual(registry.remove(key(french, english)), "fr-en")
+        XCTAssertNil(registry.remove(key(french, english)))
+        XCTAssertTrue(registry.isEmpty)
+    }
+}
+
 // MARK: - Composition
 
 final class TranslatedNoteCompositionTests: XCTestCase {

@@ -49,6 +49,15 @@ struct TranslatedText: Sendable, Equatable {
     var sourceLanguage: String
 }
 
+/// A piece of a longer text, translated on its own and put back in order.
+struct TranslationChunk: Sendable, Equatable {
+    /// The text handed to the engine.
+    var text: String
+    /// The line breaks that followed `text` in the original, written back
+    /// after its translation.
+    var separator: String
+}
+
 /// Anything that can turn foreign-language text into English.
 protocol NoteTranslator: Sendable {
     /// Every language this Mac can translate, downloaded or not — as a source
@@ -78,6 +87,15 @@ protocol NoteTranslator: Sendable {
     /// Translate into a chosen language. Same contract: nil rather than a
     /// throw, and the caller shows the original.
     func translate(_ text: String, from source: Locale.Language, to target: Locale.Language) async -> TranslatedText?
+
+    /// The same, calling `onProgress` with the translation so far each time a
+    /// piece of it lands. The finished string is still returned.
+    func translate(
+        _ text: String,
+        from source: Locale.Language,
+        to target: Locale.Language,
+        onProgress: @escaping @MainActor @Sendable (String) -> Void
+    ) async -> TranslatedText?
 }
 
 /// The pair-aware calls, for a translator that only knows one target.
@@ -93,6 +111,17 @@ extension NoteTranslator {
 
     func translate(_ text: String, from source: Locale.Language, to target: Locale.Language) async -> TranslatedText? {
         await translate(text, from: source)
+    }
+
+    /// For a translator that has no pieces to report: nothing is called on the
+    /// way, and the whole translation is returned.
+    func translate(
+        _ text: String,
+        from source: Locale.Language,
+        to target: Locale.Language,
+        onProgress: @escaping @MainActor @Sendable (String) -> Void
+    ) async -> TranslatedText? {
+        await translate(text, from: source, to: target)
     }
 }
 
@@ -174,6 +203,50 @@ enum NoteTranslation {
             String(text[..<cut]).trimmingCharacters(in: .whitespacesAndNewlines),
             String(text[cut...]).trimmingCharacters(in: .whitespacesAndNewlines)
         )
+    }
+
+    /// How much text goes to the engine at a time, in characters.
+    ///
+    /// From the same measurement `characterBudget` cites: the engine runs at
+    /// roughly 125 characters a second, so 250 is about two seconds of work.
+    /// A target rather than a cap — chunks are cut on line boundaries, and a
+    /// single line longer than this is sent whole.
+    static let chunkBudget = 250
+
+    /// Split `text` into the pieces the engine is given, in order.
+    ///
+    /// Whole lines, grouped up to `chunkBudget`, each piece carrying the line
+    /// breaks that followed it so the paragraphs of the original survive being
+    /// translated a piece at a time: `chunks(text)` concatenated back together
+    /// is `text` again, minus any blank lines it started with.
+    static func chunks(_ text: String) -> [TranslationChunk] {
+        // Non-empty lines with the newlines that trail them; a blank line is
+        // an extra newline on the line before it.
+        var lines: [(body: String, separator: String)] = []
+        let split = text.split(separator: "\n", omittingEmptySubsequences: false)
+        for (index, line) in split.enumerated() {
+            let trailing = index < split.count - 1 ? "\n" : ""
+            if line.isEmpty {
+                if !lines.isEmpty { lines[lines.count - 1].separator += trailing }
+            } else {
+                lines.append((String(line), trailing))
+            }
+        }
+
+        var chunks: [TranslationChunk] = []
+        var body = ""
+        var separator = ""
+        for line in lines {
+            if !body.isEmpty, body.count + separator.count + line.body.count > chunkBudget {
+                chunks.append(TranslationChunk(text: body, separator: separator))
+                body = line.body
+            } else {
+                body += separator + line.body
+            }
+            separator = line.separator
+        }
+        if !body.isEmpty { chunks.append(TranslationChunk(text: body, separator: separator)) }
+        return chunks
     }
 
     /// The languages the user picked to have detected and translated, as
