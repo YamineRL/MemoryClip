@@ -7,32 +7,20 @@
   <rect width="720" height="300" rx="28" fill="url(#pane)"/>
   <rect x="0.5" y="0.5" width="719" height="299" rx="27.5" fill="none" stroke="#2c2c2e"/>
 
-  <!-- header -->
-  <rect x="24" y="24" width="26" height="26" rx="6" fill="#1d6bf0"/>
-  <path d="M31 37 l4 4 l8 -9" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
-  <text x="60" y="36" fill="#f2f2f7" font-size="15" font-weight="600">Xcode</text>
-  <text x="60" y="52" fill="#8e8e93" font-size="12.5">21 minutes ago · 74 characters</text>
-
-  <!-- content -->
-  <rect x="24" y="68" width="672" height="150" rx="16" fill="#1c1c1e"/>
-  <g font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="13">
-    <text x="44" y="96" fill="#8e8e93">{</text>
-    <text x="60" y="118" fill="#7ec8ff">"id"</text><text x="92" y="118" fill="#8e8e93">:</text><text x="102" y="118" fill="#ffd479">4821</text><text x="136" y="118" fill="#8e8e93">,</text>
-    <text x="60" y="140" fill="#7ec8ff">"name"</text><text x="108" y="140" fill="#8e8e93">:</text><text x="118" y="140" fill="#a8e6a1">"Ada Lovelace"</text><text x="230" y="140" fill="#8e8e93">,</text>
-    <text x="60" y="162" fill="#7ec8ff">"roles"</text><text x="116" y="162" fill="#8e8e93">: [</text><text x="140" y="162" fill="#a8e6a1">"admin"</text><text x="196" y="162" fill="#8e8e93">,</text><text x="206" y="162" fill="#a8e6a1">"author"</text><text x="270" y="162" fill="#8e8e93">],</text>
-    <text x="60" y="184" fill="#7ec8ff">"active"</text><text x="124" y="184" fill="#8e8e93">:</text><text x="134" y="184" fill="#ff8b8b">true</text>
-    <text x="44" y="206" fill="#8e8e93">}</text>
+  <!-- translation, above the clip -->
+  <rect x="24" y="24" width="672" height="118" rx="16" fill="#1c1c1e"/>
+  <text x="44" y="54" fill="#8e8e93" font-size="12.5">Chinese, Simplified → English</text>
+  <g fill="#f2f2f7" font-size="13.5">
+    <text x="44" y="80">This product is covered by a twelve-month warranty from the date of purchase.</text>
+    <text x="44" y="102">The warranty does not cover accidental damage, water damage or unauthorised</text>
+    <text x="44" y="124">repairs. Keep your proof of purchase; you will need to show it to claim.</text>
   </g>
 
-  <!-- detection chip and transforms: one row, chips left, buttons right -->
-  <g font-size="11.5" font-weight="500">
-    <rect x="24" y="242" width="52" height="22" rx="11" fill="#1c1c1e" stroke="#3a3a3d"/>
-    <text x="50" y="257" fill="#8e8e93" text-anchor="middle">JSON</text>
-  </g>
-  <g font-size="12.5" font-weight="500">
-    <rect x="488" y="238" width="104" height="30" rx="10" fill="#2c2c2e"/>
-    <text x="540" y="257" fill="#e8e8ea" text-anchor="middle">Format JSON</text>
-    <rect x="600" y="238" width="96" height="30" rx="10" fill="#2c2c2e"/>
-    <text x="648" y="257" fill="#e8e8ea" text-anchor="middle">Minify JSON</text>
+  <!-- the clip as it was copied -->
+  <rect x="24" y="154" width="672" height="122" rx="16" fill="#1c1c1e"/>
+  <g fill="#e8e8ea" font-size="14" font-family="'PingFang SC', 'Hiragino Sans GB', 'Heiti SC', 'Noto Sans SC', 'Source Han Sans SC', 'Microsoft YaHei', sans-serif">
+    <text x="44" y="188">本产品保修期为自购买之日起十二个月。</text>
+    <text x="44" y="218">保修不包括人为损坏、进水或未经授权的拆修。</text>
+    <text x="44" y="248">请保留购买凭证，办理保修时需要出示。</text>
   </g>
 </svg>
