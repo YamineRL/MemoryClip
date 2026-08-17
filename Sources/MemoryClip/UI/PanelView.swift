@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 import SwiftData
 
@@ -469,6 +470,9 @@ struct PanelActions {
     /// Copy an image clip's OCR text (Phase 3 made it searchable; this makes
     /// it reachable).
     var copyExtractedText: (ClipItem) -> Void
+    /// Copy an arbitrary string derived from a clip (the preview pane's
+    /// right-click menu).
+    var copyText: (ClipItem, String) -> Void
     var close: () -> Void
     var applyTransform: (ClipItem, Transform) -> Void
     var showQR: (ClipItem) -> Void
@@ -541,6 +545,8 @@ struct PanelContentView: View {
     private let actions: PanelActions
 
     @AppStorage(SettingsKeys.vimMode) private var vimModeEnabled = false
+    @AppStorage(NoteSettingsKeys.previewPaneHeight)
+    private var storedPreviewHeight = Double(Design.Size.previewPaneHeight)
 
     @State private var selection = ClipSelection()
     @State private var inputMode: PanelInputMode = .normal
@@ -612,6 +618,14 @@ struct PanelContentView: View {
         vimModeEnabled && inputMode.readsVimKeys
     }
 
+    /// The stored preview height, held to what the panel's screen allows.
+    private var resolvedPreviewHeight: CGFloat {
+        PanelGeometry.clampPreviewHeight(
+            CGFloat(storedPreviewHeight),
+            ceiling: uiState.maxPreviewHeight
+        )
+    }
+
     // MARK: Paging
 
     /// Widen the page. Called when the user reaches the end of the list, and
@@ -675,11 +689,19 @@ struct PanelContentView: View {
                 cardStrip(visible)
 
                 if previewVisible, let item = previewItem, !item.isDeleted {
-                    Divider().opacity(0.5)
-                    PreviewView(item: item) { transform in
-                        actions.applyTransform(item, transform)
+                    PreviewResizeHandle(
+                        height: resolvedPreviewHeight,
+                        ceiling: uiState.maxPreviewHeight
+                    ) { height in
+                        storedPreviewHeight = Double(height)
+                        uiState.previewHeight = height
                     }
-                    .frame(height: Design.Size.previewPaneHeight)
+                    PreviewView(
+                        item: item,
+                        onTransform: { actions.applyTransform(item, $0) },
+                        onCopy: { actions.copyText(item, $0) }
+                    )
+                    .frame(height: resolvedPreviewHeight)
                 }
 
                 footer(visible)
@@ -1464,5 +1486,62 @@ struct PanelContentView: View {
         let visible = visibleItems
         guard digit >= 1, digit <= visible.count else { return }
         actions.paste(visible[digit - 1], false)
+    }
+}
+
+/// The divider between the card strip and the preview pane, as a drag target:
+/// up makes the pane taller, down shorter.
+///
+/// Its own view so hover and drag state do not re-render the panel around it.
+private struct PreviewResizeHandle: View {
+    let height: CGFloat
+    let ceiling: CGFloat
+    let onResize: (CGFloat) -> Void
+
+    /// The height the current drag started from; nil between drags.
+    @State private var startHeight: CGFloat?
+    @State private var isHovering = false
+
+    var body: some View {
+        ZStack {
+            Divider().opacity(0.5)
+            Capsule(style: .continuous)
+                .fill(Color(nsColor: .tertiaryLabelColor))
+                .frame(width: Design.Size.previewResizeGripWidth, height: Design.Space.hair)
+                .opacity(isHovering ? 1 : 0.6)
+        }
+        .frame(height: Design.Size.previewResizeHandleHeight)
+        .contentShape(Rectangle())
+        .onHover { hovering in
+            guard hovering != isHovering else { return }
+            isHovering = hovering
+            hovering ? NSCursor.resizeUpDown.push() : NSCursor.pop()
+        }
+        .onDisappear {
+            guard isHovering else { return }
+            isHovering = false
+            NSCursor.pop()
+        }
+        .gesture(
+            DragGesture(minimumDistance: 1)
+                .onChanged { value in
+                    let start = startHeight ?? height
+                    startHeight = start
+                    onResize(PanelGeometry.clampPreviewHeight(
+                        start - value.translation.height,
+                        ceiling: ceiling
+                    ))
+                }
+                .onEnded { _ in startHeight = nil }
+        )
+        .accessibilityElement()
+        .accessibilityLabel("Preview height")
+        .accessibilityValue("\(Int(height)) points")
+        .accessibilityHint("Drag up for a taller preview")
+        .accessibilityAdjustableAction { direction in
+            let step = Design.Space.vast
+            let target = direction == .increment ? height + step : height - step
+            onResize(PanelGeometry.clampPreviewHeight(target, ceiling: ceiling))
+        }
     }
 }

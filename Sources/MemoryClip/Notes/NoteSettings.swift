@@ -39,6 +39,12 @@ enum NoteSettingsKeys {
     /// identifier. Defaulted to whatever this Mac is set to read.
     static let clipTranslationTarget = "clipTranslationTarget"
 
+    // Panel
+    /// Height of the clip preview pane, in points, set by dragging the handle
+    /// above it. Clamped to what the panel's screen allows — see
+    /// `PanelGeometry.clampPreviewHeight`.
+    static let previewPaneHeight = "previewPaneHeight"
+
     // Notes
     static let autoNoteEnabled = "autoNoteEnabled"
     static let autoNoteMinimumCharacters = "autoNoteMinimumCharacters"
@@ -78,6 +84,7 @@ enum NoteSettingsKeys {
             translateEnabled: true,
             clipTranslateEnabled: false,
             clipTranslationTarget: ClipTranslation.defaultTargetIdentifier,
+            previewPaneHeight: Double(Design.Size.previewPaneHeight),
             autoNoteEnabled: false,
             autoNoteMinimumCharacters: 80,
             destination: NoteDestination.markdownVault.rawValue,
