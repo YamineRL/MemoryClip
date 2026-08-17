@@ -138,6 +138,9 @@ h3 { font-size: 1.15rem; margin: 0 0 6px; }
   box-shadow: var(--shadow);
   background: var(--bg-raised);
 }
+/* The SVG mockups carry their drawn size as an attribute, which is narrower
+   than the column: without this they sit short of the right edge. */
+.shot img { width: 100%; }
 figure { margin: 0 0 28px; }
 figcaption { color: var(--ink-faint); font-size: .9rem; text-align: center; margin-top: 10px; }
 
