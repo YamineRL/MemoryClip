@@ -1,5 +1,6 @@
 import CoreGraphics
 import Foundation
+import ImageIO
 import Vision
 
 /// On-device text extraction from image clips (Phase 3).
@@ -73,6 +74,9 @@ enum OCRService {
     /// request, and Vision serializes what it must internally.
     static func recognizeText(in imageData: Data) async -> String? {
         guard !imageData.isEmpty else { return nil }
+        let options: [CFString: Any] = [kCGImageSourceShouldCache: false]
+        guard hasPixels(CGImageSourceCreateWithData(imageData as CFData, options as CFDictionary))
+        else { return nil }
         return await recognize { try await $0.perform(on: imageData) }
     }
 
@@ -84,6 +88,9 @@ enum OCRService {
     /// `Data` entry point, plus a file that has been moved or deleted since
     /// it was captured.
     static func recognizeText(inFileAt url: URL) async -> String? {
+        let options: [CFString: Any] = [kCGImageSourceShouldCache: false]
+        guard hasPixels(CGImageSourceCreateWithURL(url as CFURL, options as CFDictionary))
+        else { return nil }
         return await recognize { try await $0.perform(on: url) }
     }
 
@@ -93,6 +100,30 @@ enum OCRService {
         case .data(let data): return await recognizeText(in: data)
         case .fileURL(let url): return await recognizeText(inFileAt: url)
         }
+    }
+
+    /// Whether there is an image here with actual pixels in it — asked
+    /// before the request rather than left for Vision to answer.
+    ///
+    /// Vision refuses a zero-dimensioned image, and it refuses it loudly: the
+    /// request fails with `invalidImage("Zero-dimensioned image (0.0 x 0.0")`
+    /// and Vision logs that failure itself, on its own thread, where the
+    /// `catch` in `recognize` cannot keep it out of the console. Bytes that
+    /// never decode are not an anomaly worth a log line — a truncated
+    /// screenshot, a row written by an older build, anything the pasteboard
+    /// claimed was an image and was not — and the defined answer for all of
+    /// them is already nil, so the request is not worth making.
+    ///
+    /// ImageIO answers from the header (`kCGImageSourceShouldCache: false`
+    /// decodes no bitmap), which is a few hundred bytes against the ~670 ms
+    /// of recognition it guards.
+    private static func hasPixels(_ source: CGImageSource?) -> Bool {
+        guard let source, CGImageSourceGetCount(source) > 0,
+              let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
+              let width = properties[kCGImagePropertyPixelWidth] as? Int,
+              let height = properties[kCGImagePropertyPixelHeight] as? Int
+        else { return false }
+        return width > 0 && height > 0
     }
 
     /// Shared body of the entry points above: build a request, run the
