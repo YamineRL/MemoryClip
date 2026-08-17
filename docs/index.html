@@ -1,0 +1,426 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MemoryClip — Your clipboard, remembered. Locally.</title>
+<meta name="description" content="A free clipboard manager for macOS. Everything you copy, searchable. Reads the text out of your screenshots. Nothing ever leaves your Mac.">
+<link rel="icon" href="logo.png">
+<meta property="og:title" content="MemoryClip">
+<meta property="og:description" content="Your clipboard, remembered. Locally.">
+<meta property="og:image" content="https://yaminerl.github.io/MemoryClip/logo.png">
+<meta property="og:type" content="website">
+<style>
+:root {
+  --bg: #fbfbfd;
+  --bg-raised: #ffffff;
+  --bg-sunken: #f2f2f6;
+  --ink: #1c1c22;
+  --ink-soft: #55555f;
+  --ink-faint: #8a8a95;
+  --line: #e3e3ea;
+  --accent: #3f5bd9;
+  --accent-ink: #ffffff;
+  --warn-bg: #fff8e6;
+  --warn-line: #f0d69a;
+  --warn-ink: #6b4e07;
+  --shadow: 0 1px 2px rgba(0,0,0,.05), 0 12px 32px rgba(20,20,40,.08);
+  --radius: 14px;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f0f13;
+    --bg-raised: #17171d;
+    --bg-sunken: #1d1d25;
+    --ink: #f2f2f6;
+    --ink-soft: #b4b4c0;
+    --ink-faint: #7e7e8c;
+    --line: #2a2a34;
+    --accent: #7f97ff;
+    --accent-ink: #0f0f13;
+    --warn-bg: #2a2313;
+    --warn-line: #4d4225;
+    --warn-ink: #f0d69a;
+    --shadow: 0 1px 2px rgba(0,0,0,.4), 0 12px 32px rgba(0,0,0,.45);
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0f0f13;
+  --bg-raised: #17171d;
+  --bg-sunken: #1d1d25;
+  --ink: #f2f2f6;
+  --ink-soft: #b4b4c0;
+  --ink-faint: #7e7e8c;
+  --line: #2a2a34;
+  --accent: #7f97ff;
+  --accent-ink: #0f0f13;
+  --warn-bg: #2a2313;
+  --warn-line: #4d4225;
+  --warn-ink: #f0d69a;
+  --shadow: 0 1px 2px rgba(0,0,0,.4), 0 12px 32px rgba(0,0,0,.45);
+}
+
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font: 17px/1.65 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+img { max-width: 100%; height: auto; display: block; }
+a { color: var(--accent); }
+code, kbd {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: .92em;
+}
+kbd {
+  background: var(--bg-sunken);
+  border: 1px solid var(--line);
+  border-bottom-width: 2px;
+  border-radius: 6px;
+  padding: 1px 7px;
+  white-space: nowrap;
+}
+
+.wrap { width: 100%; max-width: 920px; margin: 0 auto; padding: 0 24px; }
+
+/* ---------- hero ---------- */
+.hero { text-align: center; padding: 76px 0 8px; }
+.hero img.logo { width: 104px; height: 104px; margin: 0 auto 22px; border-radius: 22px; }
+.hero h1 { font-size: 3rem; letter-spacing: -.025em; margin: 0 0 10px; line-height: 1.1; }
+.hero .tagline { font-size: 1.3rem; color: var(--ink-soft); margin: 0 0 34px; }
+
+.cta { display: flex; flex-wrap: wrap; gap: 12px; justify-content: center; align-items: center; }
+.btn {
+  display: inline-block;
+  background: var(--accent);
+  color: var(--accent-ink);
+  text-decoration: none;
+  font-weight: 600;
+  font-size: 1.05rem;
+  padding: 14px 30px;
+  border-radius: 11px;
+  box-shadow: var(--shadow);
+}
+.btn:hover { filter: brightness(1.08); }
+.btn.ghost {
+  background: transparent;
+  color: var(--ink-soft);
+  box-shadow: none;
+  border: 1px solid var(--line);
+  font-weight: 500;
+}
+.meta { margin-top: 18px; color: var(--ink-faint); font-size: .92rem; }
+
+/* ---------- sections ---------- */
+section { padding: 60px 0; }
+section.sunken { background: var(--bg-sunken); border-block: 1px solid var(--line); }
+h2 { font-size: 1.85rem; letter-spacing: -.02em; margin: 0 0 8px; }
+h2 + .lede { color: var(--ink-soft); margin: 0 0 32px; font-size: 1.08rem; }
+h3 { font-size: 1.15rem; margin: 0 0 6px; }
+
+.grid { display: grid; gap: 18px; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); }
+.card {
+  background: var(--bg-raised);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 22px;
+}
+.card p { margin: 0; color: var(--ink-soft); font-size: .97rem; }
+.card .icon { font-size: 1.5rem; line-height: 1; margin-bottom: 12px; }
+
+.shot {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  overflow: hidden;
+  box-shadow: var(--shadow);
+  background: var(--bg-raised);
+}
+figure { margin: 0 0 28px; }
+figcaption { color: var(--ink-faint); font-size: .9rem; text-align: center; margin-top: 10px; }
+
+/* ---------- steps ---------- */
+ol.steps { list-style: none; counter-reset: step; margin: 0; padding: 0; }
+ol.steps > li {
+  counter-increment: step;
+  position: relative;
+  padding: 0 0 26px 52px;
+  border-left: 2px solid var(--line);
+  margin-left: 15px;
+}
+ol.steps > li:last-child { border-left-color: transparent; padding-bottom: 0; }
+ol.steps > li::before {
+  content: counter(step);
+  position: absolute;
+  left: -16px;
+  top: -2px;
+  width: 32px; height: 32px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-weight: 700;
+  font-size: .95rem;
+  display: grid;
+  place-items: center;
+}
+ol.steps h3 { margin-top: 0; }
+ol.steps p { margin: 0; color: var(--ink-soft); }
+
+.note {
+  background: var(--warn-bg);
+  border: 1px solid var(--warn-line);
+  color: var(--warn-ink);
+  border-radius: var(--radius);
+  padding: 18px 20px;
+  margin: 26px 0;
+  font-size: .97rem;
+}
+.note strong { color: inherit; }
+
+pre {
+  background: var(--bg-sunken);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 14px 16px;
+  overflow-x: auto;
+  margin: 14px 0;
+  font-size: .9rem;
+  line-height: 1.6;
+}
+:where(section.sunken) pre { background: var(--bg); }
+
+table { width: 100%; border-collapse: collapse; font-size: .97rem; }
+th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--line); }
+th { color: var(--ink-faint); font-weight: 600; font-size: .85rem; text-transform: uppercase; letter-spacing: .04em; }
+td:first-child { width: 132px; white-space: nowrap; }
+.scroller { overflow-x: auto; }
+
+details {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 0 18px;
+  background: var(--bg-raised);
+  margin-top: 16px;
+}
+summary { cursor: pointer; font-weight: 600; padding: 16px 0; }
+details[open] summary { border-bottom: 1px solid var(--line); margin-bottom: 14px; }
+details > :last-child { margin-bottom: 16px; }
+
+footer {
+  padding: 44px 0 60px;
+  text-align: center;
+  color: var(--ink-faint);
+  font-size: .93rem;
+  border-top: 1px solid var(--line);
+}
+footer a { margin: 0 10px; }
+
+@media (max-width: 600px) {
+  .hero { padding-top: 52px; }
+  .hero h1 { font-size: 2.3rem; }
+  .hero .tagline { font-size: 1.1rem; }
+  td:first-child { width: auto; }
+}
+</style>
+</head>
+<body>
+
+<header class="hero">
+  <div class="wrap">
+    <img class="logo" src="logo.png" alt="">
+    <h1>MemoryClip</h1>
+    <p class="tagline">Your clipboard, remembered. Locally.</p>
+    <div class="cta">
+      <a class="btn" id="download" href="https://github.com/YamineRL/MemoryClip/releases/latest">Download for Mac</a>
+      <a class="btn ghost" href="#install">Installation help</a>
+    </div>
+    <p class="meta" id="meta">Free and open source · Requires macOS 26 on Apple silicon</p>
+  </div>
+</header>
+
+<section>
+  <div class="wrap">
+    <h2>Everything you copy, kept</h2>
+    <p class="lede">Your Mac forgets a copied thing the moment you copy the next one. MemoryClip doesn't.</p>
+    <div class="grid">
+      <div class="card">
+        <div class="icon">📋</div>
+        <h3>A searchable history</h3>
+        <p>Press <kbd>⇧⌘V</kbd> anywhere and every recent copy is there — text, links, images, files, colours. Type to find one, press Return to paste it.</p>
+      </div>
+      <div class="card">
+        <div class="icon">🔍</div>
+        <h3>It reads your screenshots</h3>
+        <p>Take a screenshot and MemoryClip pulls the text out of it, in 30 languages, so you can search for a picture by what it said.</p>
+      </div>
+      <div class="card">
+        <div class="icon">🌍</div>
+        <h3>Translates as you look</h3>
+        <p>Copy something in a language you don't read — or screenshot it — and the preview shows it in one you do.</p>
+      </div>
+      <div class="card">
+        <div class="icon">📝</div>
+        <h3>Turns a screenshot into a note</h3>
+        <p>One key sends it to Obsidian, a folder of Markdown files, Apple Notes or a Shortcut — with the picture and the text it found.</p>
+      </div>
+      <div class="card">
+        <div class="icon">🔒</div>
+        <h3>Nothing leaves your Mac</h3>
+        <p>No sync, no accounts, no analytics, no network calls at all. Everything runs on your machine, including the language models.</p>
+      </div>
+      <div class="card">
+        <div class="icon">⌨️</div>
+        <h3>Made for the keyboard</h3>
+        <p>Open, search, preview and paste without touching the mouse. Optional vim keys if that's how your hands work.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="sunken">
+  <div class="wrap">
+    <h2>A look at it</h2>
+    <p class="lede">The panel opens over whatever you're doing and closes the moment you're done.</p>
+    <figure>
+      <div class="shot"><img src="screenshots/panel.png" alt="The MemoryClip panel: a search field, filter chips, and a row of clip cards each showing a keyboard shortcut"></div>
+      <figcaption>Press ⇧⌘V from any app. Newest first, already focused.</figcaption>
+    </figure>
+    <figure>
+      <div class="shot"><img src="screenshots/preview.svg" alt="The preview pane showing a clip's full text with transform actions"></div>
+      <figcaption>Space opens a preview. Space again on a picture opens it full size.</figcaption>
+    </figure>
+  </div>
+</section>
+
+<section id="install">
+  <div class="wrap">
+    <h2>Installing it</h2>
+    <p class="lede">Five minutes, and one screen that will try to stop you. Here's how to get past it.</p>
+
+    <ol class="steps">
+      <li>
+        <h3>Download the app</h3>
+        <p>Use the <a href="https://github.com/YamineRL/MemoryClip/releases/latest" id="download2">Download for Mac</a> button — it gives you a file ending in <code>.dmg</code>, in your Downloads folder.</p>
+      </li>
+      <li>
+        <h3>Drag it into Applications</h3>
+        <p>Double-click the downloaded file. A window opens with the MemoryClip icon and an Applications folder. Drag the icon onto the folder, then close the window.</p>
+      </li>
+      <li>
+        <h3>Try to open it — and let macOS refuse</h3>
+        <p>Open your Applications folder and double-click MemoryClip. macOS will say it cannot be opened because it is not from an identified developer. This is expected. Click <strong>Done</strong>.</p>
+      </li>
+      <li>
+        <h3>Tell macOS you meant it</h3>
+        <p>Open <strong>System Settings → Privacy &amp; Security</strong>, scroll down to the Security section, and you'll see a line about MemoryClip being blocked. Click <strong>Open Anyway</strong>, then confirm with Touch ID or your password.</p>
+      </li>
+      <li>
+        <h3>That's it — press <kbd>⇧⌘V</kbd></h3>
+        <p>Copy a few things, then press <kbd>⇧⌘V</kbd> from any app. Everything you copied is there, waiting.</p>
+      </li>
+    </ol>
+
+    <div class="note">
+      <strong>Why does macOS block it?</strong>
+      Apple charges developers $99 a year to sign apps in a way that opens without a warning. MemoryClip is free and unsigned, so macOS treats it as unknown rather than unsafe — it has no idea what the app is, and says so. Every line of its source is public on GitHub if you or someone you trust would like to look before installing.
+    </div>
+
+    <details>
+      <summary>Comfortable with Terminal? Use Homebrew instead</summary>
+      <p>Two commands, and <code>brew upgrade</code> keeps it current afterwards. The trust line is Homebrew's own check on third-party sources.</p>
+<pre><code>brew tap yaminerl/memoryclip https://github.com/YamineRL/MemoryClip
+brew trust yaminerl/memoryclip &amp;&amp; brew install --cask memoryclip</code></pre>
+      <p>This handles the Gatekeeper step for you, so steps 3 and 4 above don't apply.</p>
+    </details>
+
+    <details>
+      <summary>Removing it</summary>
+      <p>Drag MemoryClip from your Applications folder to the Trash — or <code>brew uninstall --cask memoryclip</code> if you installed it that way. Your clip history lives in your user Library folder and goes with the app if you add <code>--zap</code> to the Homebrew command.</p>
+    </details>
+  </div>
+</section>
+
+<section class="sunken">
+  <div class="wrap">
+    <h2>The keys worth knowing</h2>
+    <p class="lede">There are more, but these are the ones you'll use every day.</p>
+    <div class="scroller">
+      <table>
+        <thead><tr><th>Key</th><th>Does</th></tr></thead>
+        <tbody>
+          <tr><td><kbd>⇧⌘V</kbd></td><td>Open the panel from any app</td></tr>
+          <tr><td><kbd>↑</kbd> <kbd>↓</kbd></td><td>Move through the list</td></tr>
+          <tr><td><kbd>Return</kbd></td><td>Paste the selected clip</td></tr>
+          <tr><td><kbd>⇧Return</kbd></td><td>Paste it as plain text, dropping fonts and colours</td></tr>
+          <tr><td><kbd>⌘1</kbd>–<kbd>⌘9</kbd></td><td>Paste any of the first nine directly</td></tr>
+          <tr><td><kbd>Space</kbd></td><td>Preview the clip; again on a picture for full size</td></tr>
+          <tr><td><kbd>⌘S</kbd></td><td>Save the clip as a note</td></tr>
+          <tr><td><kbd>Esc</kbd></td><td>Back out, one layer at a time</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <h2>What it does with your data</h2>
+    <p class="lede">Short version: nothing you didn't ask for.</p>
+    <div class="grid">
+      <div class="card">
+        <h3>It never phones home</h3>
+        <p>No sync service, no accounts, no analytics, no crash reporting. The app makes no network requests of any kind — the text recognition and translation run on your Mac.</p>
+      </div>
+      <div class="card">
+        <h3>It skips your passwords</h3>
+        <p>Copies marked confidential by password managers are ignored, and card numbers are filtered out of what it reads. You can lock the whole history behind Touch ID.</p>
+      </div>
+      <div class="card">
+        <h3>It asks for almost nothing</h3>
+        <p>No Screen Recording, no Input Monitoring. Folder access only for the screenshot folder and the notes folder you choose, and only if you use those features.</p>
+      </div>
+      <div class="card">
+        <h3>It forgets on a schedule</h3>
+        <p>The newest 200 clips are kept and anything older than 30 days is swept away. Both numbers are yours to change, and Clear All History is one menu item.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <p>
+      <a href="https://github.com/YamineRL/MemoryClip">Source on GitHub</a>
+      <a href="https://github.com/YamineRL/MemoryClip/releases">All releases</a>
+      <a href="https://github.com/YamineRL/MemoryClip/issues">Report a problem</a>
+      <a href="https://www.paypal.com/donate/?hosted_button_id=H8XWE3HUPKCME">Donate</a>
+    </p>
+    <p>Made for macOS 26 on Apple silicon.</p>
+  </div>
+</footer>
+
+<script>
+// Point the download buttons at the newest release's .dmg. Falls back to the
+// releases page if the API is unreachable.
+(async function () {
+  const buttons = [document.getElementById('download'), document.getElementById('download2')];
+  const meta = document.getElementById('meta');
+  try {
+    const res = await fetch('https://api.github.com/repos/YamineRL/MemoryClip/releases/latest');
+    if (!res.ok) return;
+    const release = await res.json();
+    const dmg = (release.assets || []).find(a => a.name.endsWith('.dmg'));
+    if (!dmg) return;
+    for (const b of buttons) if (b) b.href = dmg.browser_download_url;
+    const mb = (dmg.size / 1048576).toFixed(1);
+    meta.textContent = `Version ${release.tag_name.replace(/^v/, '')} · ${mb} MB · Free and open source · Requires macOS 26 on Apple silicon`;
+  } catch (e) {
+    /* keep the releases-page fallback */
+  }
+})();
+</script>
+
+</body>
+</html>
