@@ -362,7 +362,7 @@ which is why its two halves are headed **Notes** and **Clip preview**.
 ./Scripts/make_app.sh    # release build + dist/MemoryClip.app (ad-hoc signed)
 ./Scripts/make_dmg.sh    # the above, plus dist/MemoryClip-<version>.dmg
 swift build && swift run # debug build, run from it
-swift test               # 843 unit tests (benchmarks skipped)
+swift test               # 849 unit tests (benchmarks skipped)
 ```
 
 `make_app.sh` regenerates `Resources/AppIcon.icns` if it is missing, so
