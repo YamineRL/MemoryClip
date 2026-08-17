@@ -80,7 +80,9 @@ bar. **Launch at login** is in **Settings → General**.
 ## Using it
 
 ⇧⌘V opens the panel from any app, newest clip first, list already focused. The menu-bar
-glyph gives the last five clips, Pause Capture, Clear All History, Settings and Quit.
+glyph gives the last five clips under a **Recent Clips** header, then Open MemoryClip and
+Pause Capture, then Settings and Clear All History, then Quit — the irreversible one kept
+a separator away from the item people actually come to click.
 
 | Key | Does |
 | --- | --- |

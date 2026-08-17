@@ -312,6 +312,7 @@
 "MemoryClip Settings" = "Réglages MemoryClip";
 "MemoryClip (paused)" = "MemoryClip (en pause)";
 "No clips yet" = "Aucun clip pour l’instant";
+"Recent Clips" = "Clips récents";
 "Open MemoryClip" = "Ouvrir MemoryClip";
 "Resume Capture" = "Reprendre la capture";
 "Pause Capture" = "Suspendre la capture";
