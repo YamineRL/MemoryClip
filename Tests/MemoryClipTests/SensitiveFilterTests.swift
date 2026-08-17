@@ -396,20 +396,31 @@ final class SensitiveFilterTests: XCTestCase {
         let oldRate = Double(oldHits) / Double(samples.count)
         let newRate = Double(newHits) / Double(samples.count)
 
-        // Threshold: 6%. A uniformly random digit string is not merely
-        // "not a card" — roughly 3% of random 16-digit strings genuinely do
-        // carry a real issuer prefix AND pass Luhn (about 30% of the prefix
-        // space is assigned, times the 1-in-10 Luhn chance), and no checksum
-        // filter can tell those from a real card. That ~3% is the floor;
-        // 6% leaves headroom for the grouped-reference shape, which offers
-        // several group-aligned candidates per sample.
-        XCTAssertLessThan(
-            newRate, 0.06,
-            "false-positive rate \(newRate) (was \(oldRate) under the sliding-window rule)"
+        // Ceiling: 2%. The rate is the share of a user's non-card clips the
+        // filter silently drops, so 2% is one clip in fifty lost from history —
+        // the most this rule is allowed to cost. The floor is not zero: a
+        // random group-aligned run that carries an assigned issuer prefix at a
+        // length that issuer uses and passes Luhn is indistinguishable from a
+        // card, and the grouped-reference shape offers several such candidates
+        // per sample. The measured rate is 1.3%, so 2% absorbs corpus churn
+        // while still failing on any regression that doubles the loss.
+        XCTAssertLessThanOrEqual(
+            newRate, 0.02,
+            "false-positive rate \(newRate) is over the 2% ceiling (old rule: \(oldRate))"
         )
-        // And it must be a large improvement, not a rounding difference.
-        XCTAssertLessThan(newRate, oldRate / 5.0, "old \(oldRate) -> new \(newRate)")
-        print("card-number FP rate: old \(oldRate), new \(newRate)")
+        // The ceiling only means something on a corpus the old rule flunks;
+        // samples that stopped being card-shaped would pass it for free.
+        XCTAssertGreaterThan(
+            oldRate, 0.4,
+            "corpus no longer stresses the rule: sliding-window rate is only \(oldRate)"
+        )
+        // 20x. The measured gap is 44x, and the difference between the rules is
+        // structural (boundary + IIN + length), not a tuned constant — anything
+        // near a single order of magnitude means a requirement stopped biting.
+        XCTAssertLessThan(
+            newRate, oldRate / 20.0,
+            "less than a 20x improvement: old \(oldRate) -> new \(newRate)"
+        )
     }
 
     // MARK: - Non-cards the boundary and IIN rules now let through
