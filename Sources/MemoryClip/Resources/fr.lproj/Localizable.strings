@@ -54,7 +54,7 @@
 "Welcome to MemoryClip" = "Bienvenue dans MemoryClip";
 "A menu-bar clipboard history for macOS." = "Un historique de presse-papiers pour macOS, dans la barre des menus.";
 "Everything you copy — text, rich text, images, files, links, hex colors — is kept in a local history." = "Tout ce que vous copiez — texte, texte enrichi, images, fichiers, liens, couleurs hexadécimales — est conservé dans un historique local.";
-"MemoryClip lives in the menu bar (no Dock icon) and starts capturing as soon as it launches." = "MemoryClip vit dans la barre des menus (sans icône dans le Dock) et commence à capturer dès son lancement.";
+"MemoryClip lives in the menu bar (no Dock icon) and starts capturing as soon as it launches." = "MemoryClip se loge dans la barre des menus (sans icône dans le Dock) et commence à capturer dès son lancement.";
 "Identical re-copies are deduplicated; old clips age out by count and by age (Settings → History)." = "Les copies identiques sont dédoublonnées ; les anciens éléments disparaissent selon leur nombre et leur ancienneté (Réglages → Historique).";
 "Open the panel with ⇧⌘V" = "Ouvrir le panneau avec ⇧⌘V";
 "The global hotkey is the main way in." = "Le raccourci global est la porte d’entrée principale.";
@@ -161,7 +161,7 @@
 "Equals %@" = "Égale %@";
 "Format JSON" = "Formater le JSON";
 "Minify JSON" = "Minifier le JSON";
-"Translating…" = "Traduction…";
+"Translating…" = "Traduction en cours…";
 "Translating this clip" = "Traduction de cet élément en cours";
 "Extracted Text" = "Texte extrait";
 "RGB %@" = "RVB %@";
@@ -170,9 +170,9 @@
 "Phone" = "Téléphone";
 "QR Code" = "Code QR";
 "Copy Link" = "Copier le lien";
-"Launch at login" = "Se lancer à l’ouverture de session";
+"Launch at login" = "Lancer au démarrage";
 "MemoryClip runs as a menu-bar app: no Dock icon, no window until you open the panel." = "MemoryClip est une app de la barre des menus : pas d’icône dans le Dock, pas de fenêtre tant que vous n’ouvrez pas le panneau.";
-"Launch at login needs MemoryClip in your Applications folder. Move MemoryClip.app there, reopen it, and try again." = "Le lancement à l’ouverture de session exige que MemoryClip se trouve dans votre dossier Applications. Déplacez-y MemoryClip.app, rouvrez l’app, puis réessayez.";
+"Launch at login needs MemoryClip in your Applications folder. Move MemoryClip.app there, reopen it, and try again." = "Le lancement au démarrage nécessite que MemoryClip se trouve dans votre dossier Applications. Déplacez-y MemoryClip.app, rouvrez l’app, puis réessayez.";
 "Write notes to" = "Écrire les notes dans";
 "Folder" = "Dossier";
 "Not chosen yet" = "Pas encore choisi";
@@ -210,7 +210,7 @@
 "Clipboard" = "Presse-papiers";
 "Version %@" = "Version %@";
 "Move the selection; hold to keep moving" = "Déplacer la sélection ; maintenir pour continuer";
-"Move along the strip; hold to keep moving (search field empty)" = "Se déplacer le long de la bande ; maintenir pour continuer (champ de recherche vide)";
+"Move along the strip; hold to keep moving (search field empty)" = "Se déplacer dans la liste ; maintenir pour continuer (champ de recherche vide)";
 "Paste the selected clip" = "Coller l’élément sélectionné";
 "Paste as plain text" = "Coller en texte brut";
 "Paste the first nine results" = "Coller les neuf premiers résultats";
@@ -221,7 +221,7 @@
 "Vim navigation" = "Navigation vim";
 "Only when vim mode is on. The panel opens in NORMAL mode (shown in the search bar) where these keys navigate; / or i switches to INSERT mode to type in the search field, and Esc switches back." = "Uniquement lorsque le mode vim est activé. Le panneau s’ouvre en mode NORMAL (indiqué dans la barre de recherche), où ces touches servent à naviguer ; / ou i passe en mode INSERT pour taper dans le champ de recherche, et Échap revient en arrière.";
 "Move down / up; hold to keep moving" = "Descendre / monter ; maintenir pour continuer";
-"Move back / forward along the strip; hold to keep moving" = "Reculer / avancer le long de la bande ; maintenir pour continuer";
+"Move back / forward along the strip; hold to keep moving" = "Reculer / avancer dans la liste ; maintenir pour continuer";
 "Jump to the top / bottom" = "Aller au début / à la fin";
 "Half-page down / up" = "Une demi-page vers le bas / vers le haut";
 "Paste / paste as plain text" = "Coller / coller en texte brut";
@@ -273,7 +273,7 @@
 "A keyboard-first clipboard history for macOS, living in the menu bar." = "Un historique de presse-papiers pour macOS, pensé pour le clavier et logé dans la barre des menus.";
 "Everything happens on this Mac: clips are stored in a local SwiftData file, and MemoryClip makes no network calls — no sync, no accounts, no analytics. It needs no Accessibility or Screen Recording permission to capture, search and copy clips; Accessibility is optional and only lets auto-paste send a synthetic ⌘V." = "Tout se passe sur ce Mac : les éléments sont stockés dans un fichier SwiftData local, et MemoryClip n’effectue aucun appel réseau — pas de synchronisation, pas de compte, pas de statistiques. Aucune autorisation d’Accessibilité ou d’Enregistrement de l’écran n’est nécessaire pour capturer, chercher et copier des éléments ; l’Accessibilité est facultative et permet seulement au collage automatique d’envoyer un ⌘V simulé.";
 "Show Introduction Again" = "Revoir la présentation";
-"Re-opens the first-run tour of the panel, shortcuts and privacy model, where the note destination and launch-at-login can also be set." = "Rouvre la visite guidée du panneau, des raccourcis et du modèle de confidentialité, où l’on peut aussi régler la destination des notes et le lancement à l’ouverture de session.";
+"Re-opens the first-run tour of the panel, shortcuts and privacy model, where the note destination and launch-at-login can also be set." = "Rouvre la visite guidée du panneau, des raccourcis et du modèle de confidentialité, où l’on peut aussi régler la destination des notes et le lancement au démarrage.";
 "Keep screenshots in history" = "Conserver les captures d’écran dans l’historique";
 "⇧⌘3 and ⇧⌘4 save a file and never touch the clipboard, so MemoryClip cannot see them otherwise. With this on, each new screenshot appears in your history." = "⇧⌘3 et ⇧⌘4 enregistrent un fichier sans jamais toucher au presse-papiers : MemoryClip ne peut donc pas les voir autrement. Avec cette option activée, chaque nouvelle capture d’écran apparaît dans votre historique.";
 "Watching" = "Dossier surveillé";
@@ -294,7 +294,7 @@
 "Downloading…" = "Téléchargement…";
 "Waiting…" = "En attente…";
 "Downloaded" = "Téléchargée";
-"Downloads when ticked" = "Se télécharge si cochée";
+"Downloads when ticked" = "Téléchargée si vous la cochez";
 "Unavailable" = "Indisponible";
 "MemoryClip has already read a screenshot in %@ and saved the note untranslated. Tick the language above to download it, then capture the screenshot again." = "MemoryClip a déjà lu une capture d’écran en %@ et enregistré la note sans la traduire. Cochez la langue ci-dessus pour la télécharger, puis reprenez la capture d’écran.";
 "The download did not finish. You can also add languages in System Settings → General → Language & Region → Translation Languages." = "Le téléchargement ne s’est pas terminé. Vous pouvez aussi ajouter des langues dans Réglages Système → Général → Langue et région → Langues de traduction.";
@@ -356,7 +356,7 @@
 "The Shortcut did not finish: %@" = "Le raccourci ne s’est pas terminé : %@";
 "There is no text in this clip to write to a note." = "Cet élément ne contient aucun texte à écrire dans une note.";
 "Choose" = "Choisir";
-"Title Case" = "Casse de titre";
+"Title Case" = "Majuscule à chaque mot";
 "Base64 Encode" = "Encoder en Base64";
 "Base64 Decode" = "Décoder le Base64";
 "URL Encode" = "Encoder l’URL";

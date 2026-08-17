@@ -49,7 +49,7 @@ final class LocalizationTests: XCTestCase {
             "Privacy": "Confidentialité",
             "Search clips": "Rechercher un élément",
             "Reveal in Finder": "Afficher dans le Finder",
-            "Launch at login": "Se lancer à l’ouverture de session",
+            "Launch at login": "Lancer au démarrage",
             "Delete entire clipboard history?": "Supprimer tout l’historique du presse-papiers\u{00A0}?",
         ]
         for (key, value) in expected {
