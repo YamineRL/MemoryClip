@@ -208,6 +208,7 @@
 "Translation" = "Translation";
 "About" = "About";
 "Clipboard" = "Clipboard";
+"Clip actions" = "Clip actions";
 "Version %@" = "Version %@";
 "Move the selection; hold to keep moving" = "Move the selection; hold to keep moving";
 "Move along the strip; hold to keep moving (search field empty)" = "Move along the strip; hold to keep moving (search field empty)";

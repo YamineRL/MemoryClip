@@ -86,9 +86,9 @@ enum SettingsPane: String, CaseIterable, Identifiable, Sendable {
     /// them. What was actually left is red, yellow, brown, mint and cyan, and
     /// only brown survives the two tests that matter at 20 points. Mint and
     /// cyan sit inside the green–teal–blue run that Screenshots, Notes and
-    /// Shortcuts already occupy, and Translation lands next to Screenshots and
-    /// Notes in the sidebar, which is the worst possible place to put a fourth
-    /// shade of the same family. Red is the colour `SettingsCallout` uses for
+    /// Shortcuts already occupy, and Translation shares its group with Notes,
+    /// which is the worst possible place to put a fourth shade of the same
+    /// family. Red is the colour `SettingsCallout` uses for
     /// "something went wrong", and this pane shows two of those. Yellow is
     /// distinct enough but it is the one system colour a white glyph does not
     /// hold up against, and every tile here is a white glyph.
@@ -149,44 +149,33 @@ extension SettingsPane {
     /// The sidebar, grouped.
     ///
     /// Ten flat rows is a list you read top to bottom every time; grouped,
-    /// you only read the group you are in. The split is by *what the user came
-    /// to change*, not by which subsystem implements it:
+    /// you only read the group you are in. The split follows the life of a
+    /// clip — the app that holds it, the clip arriving, the clip leaving —
+    /// because that is the order a user asks their questions in:
     ///
     /// - **General** — the app as an app: whether it starts with the Mac, how
-    ///   it looks, and the keys that summon it. Nothing here is about a
-    ///   particular clip.
-    ///   Translation sits here too, last in the group. It began as a section
-    ///   of the Notes pane, back when it did one thing: render a foreign
-    ///   screenshot's recognised text into English for the note being
-    ///   written. It has since grown a second job — translating what you
-    ///   copy, shown in the panel's preview — so it now spans the clipboard
-    ///   and the screenshot pipeline alike. Filing it under either one would
-    ///   state a loyalty it does not have, and a headerless row of its own
-    ///   says "uncategorised" when the truth is "applies to all of it" —
-    ///   which is what General already means for the rows beside it. It goes
-    ///   last because the two above it are about the app itself, and this one
-    ///   is about the clips.
-    /// - **Clipboard** — the core loop: what gets captured and for how long
-    ///   (History), how the panel behaves while you browse it (Panel), and
-    ///   what MemoryClip refuses to capture or requires Touch ID for
-    ///   (Privacy). Privacy sits here rather than beside About because both
-    ///   its switches are capture policy — they change what lands in history.
-    ///   Calendar closes the group: it acts on any clip that reads as an
-    ///   appointment, whether it was copied or screenshotted, so it is not the
-    ///   screenshot pipeline's business. It goes after Privacy because the
-    ///   three before it are about clips arriving and this one is about a clip
-    ///   leaving for somewhere else.
-    /// - **Screenshots** — the screenshot → text → note pipeline, which is one
-    ///   feature with an input (the watched folder) and an output (where notes
-    ///   are written). Split across the sidebar it reads as two unrelated
-    ///   panes; together, the order is the order the data flows.
+    ///   it looks, whether it pastes for you, and the keys that summon it.
+    ///   Nothing here is about a particular clip.
+    /// - **Clipboard** — a clip arriving and being found again: what is
+    ///   captured and for how long (History), the second source that captures
+    ///   without a copy (Screenshots), how the panel behaves while you browse
+    ///   (Panel), and what MemoryClip refuses to capture or asks Touch ID for
+    ///   (Privacy). Screenshots sits second because a watched folder is a
+    ///   capture setting, not a pipeline of its own; Privacy closes the group
+    ///   because both its switches are capture policy.
+    /// - **Clip actions** — the three things a clip can turn into, all of
+    ///   which send it somewhere outside MemoryClip: a note (⌘S), a calendar
+    ///   event (⌘E), and its own text in another language. Each applies to any
+    ///   clip whatever captured it, which is what keeps all three out of the
+    ///   groups above. Notes and Calendar lead because a keystroke invokes
+    ///   them; Translation follows because it happens on its own.
     /// - About stands alone at the bottom, headerless. It is the one row that
     ///   changes nothing, and inventing a category for a single identity pane
     ///   would add a word to read without adding a distinction.
     static let groups: [SettingsPaneGroup] = [
-        SettingsPaneGroup(title: loc("General"), panes: [.general, .shortcuts, .translation]),
-        SettingsPaneGroup(title: loc("Clipboard"), panes: [.history, .panel, .privacy, .calendar]),
-        SettingsPaneGroup(title: loc("Screenshots"), panes: [.screenshots, .notes]),
+        SettingsPaneGroup(title: loc("General"), panes: [.general, .shortcuts]),
+        SettingsPaneGroup(title: loc("Clipboard"), panes: [.history, .screenshots, .panel, .privacy]),
+        SettingsPaneGroup(title: loc("Clip actions"), panes: [.notes, .calendar, .translation]),
         SettingsPaneGroup(title: nil, panes: [.about])
     ]
 }
