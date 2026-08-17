@@ -10,6 +10,9 @@ struct PreviewView: View {
     /// Optional transform callback (wired by PanelView to
     /// `actions.applyTransform`); transform buttons are hidden when absent.
     var onTransform: ((Transform) -> Void)? = nil
+    /// Copy callback (wired by PanelView to `actions.copyText`). Falls back to
+    /// a plain pasteboard write when absent.
+    var onCopy: ((String) -> Void)? = nil
 
     /// Detection/calc results are cached per content change rather than
     /// recomputed on every body pass — scanning a multi-megabyte clip on the
@@ -91,7 +94,7 @@ struct PreviewView: View {
         .contentShape(Rectangle())
         .contextMenu {
             ForEach(copyOptions) { option in
-                Button(option.title) { PreviewCopy.perform(option, for: item) }
+                Button(option.title) { PreviewCopy.perform(option, using: onCopy) }
             }
         }
         .task(id: contentKey) { await refreshAnalysis() }

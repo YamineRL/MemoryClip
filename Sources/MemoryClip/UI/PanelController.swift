@@ -388,6 +388,11 @@ final class PanelController: NSObject, NSWindowDelegate {
                 self.watcher.noteOwnWrite()
                 self.store.markUsed(item)
             },
+            copyText: { [weak self] item, text in
+                guard let self, self.pasteService.writeText(text) else { return }
+                self.watcher.noteOwnWrite()
+                self.store.markUsed(item)
+            },
             close: { [weak self] in
                 self?.hide(restorePrevious: true)
             },

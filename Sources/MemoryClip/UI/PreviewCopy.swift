@@ -69,23 +69,15 @@ enum PreviewCopy {
         return text
     }
 
-    /// Put an option's text on the pasteboard on the app's own copy path, so
-    /// the write is not read back as a new clip.
+    /// Put an option's text on the pasteboard through `onCopy`, which routes
+    /// to the app's own copy path so the write is not read back as a new clip.
     ///
-    /// Falls back to a plain pasteboard write when the services are not up
-    /// (SwiftUI previews, tests).
-    @MainActor
-    static func perform(_ option: PreviewCopyOption, for item: ClipItem) {
-        guard let delegate = NSApp.delegate as? AppDelegate,
-              let pasteService = delegate.pasteService,
-              let watcher = delegate.watcher,
-              let store = delegate.store
-        else {
+    /// Writes the pasteboard directly when absent (SwiftUI previews, tests).
+    static func perform(_ option: PreviewCopyOption, using onCopy: ((String) -> Void)?) {
+        guard let onCopy else {
             PasteService.Payload(entries: [.string(.string, option.text)]).apply(to: .general)
             return
         }
-        guard pasteService.writeText(option.text) else { return }
-        watcher.noteOwnWrite()
-        store.markUsed(item)
+        onCopy(option.text)
     }
 }

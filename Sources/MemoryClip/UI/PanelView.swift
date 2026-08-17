@@ -470,6 +470,9 @@ struct PanelActions {
     /// Copy an image clip's OCR text (Phase 3 made it searchable; this makes
     /// it reachable).
     var copyExtractedText: (ClipItem) -> Void
+    /// Copy an arbitrary string derived from a clip (the preview pane's
+    /// right-click menu).
+    var copyText: (ClipItem, String) -> Void
     var close: () -> Void
     var applyTransform: (ClipItem, Transform) -> Void
     var showQR: (ClipItem) -> Void
@@ -693,9 +696,11 @@ struct PanelContentView: View {
                         storedPreviewHeight = Double(height)
                         uiState.previewHeight = height
                     }
-                    PreviewView(item: item) { transform in
-                        actions.applyTransform(item, transform)
-                    }
+                    PreviewView(
+                        item: item,
+                        onTransform: { actions.applyTransform(item, $0) },
+                        onCopy: { actions.copyText(item, $0) }
+                    )
                     .frame(height: resolvedPreviewHeight)
                 }
 
