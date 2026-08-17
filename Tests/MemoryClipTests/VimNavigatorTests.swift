@@ -43,6 +43,29 @@ final class VimNavigatorTests: XCTestCase {
         XCTAssertFalse(PanelInputMode.insert.readsVimKeys, "typing `n` must reach the search field")
     }
 
+    /// `c` opens vim's change operator, which needs a motion or a text object
+    /// to act on — neither of which a list of clips has. It is a single
+    /// keystroke here, so it must fire on its own rather than arm a sequence
+    /// the way `g` and `d` do.
+    func testAddToCalendarKeyIsBoundAndNotASequence() {
+        var vim = VimNavigator()
+        XCTAssertEqual(vim.command(for: "c"), .addToCalendar)
+        XCTAssertFalse(vim.hasPending)
+    }
+
+    func testAddToCalendarKeyLeavesTheTwoKeySequencesAlone() {
+        var vim = VimNavigator()
+        _ = vim.command(for: "d")
+        XCTAssertNil(vim.command(for: "c"), "d followed by c is not a binding")
+        XCTAssertFalse(vim.hasPending)
+        XCTAssertNil(vim.command(for: "d"))
+        XCTAssertEqual(vim.command(for: "d"), .delete)
+
+        _ = vim.command(for: "g")
+        XCTAssertNil(vim.command(for: "c"), "g followed by c is not a binding")
+        XCTAssertEqual(vim.command(for: "c"), .addToCalendar, "the aborted sequence is over")
+    }
+
     func testUnboundKeyReturnsNilAndLeavesNoPending() {
         var vim = VimNavigator()
         XCTAssertNil(vim.command(for: "z"))

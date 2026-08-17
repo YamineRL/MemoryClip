@@ -17,6 +17,7 @@ enum VimCommand: Equatable {
     case enterSearch  // / — start a fresh search (clears the query)
     case enterInsert  // i — edit the existing query
     case saveNote     // n
+    case addToCalendar // c
 }
 
 /// Modifier state relevant to vim keys.
@@ -92,6 +93,13 @@ struct VimNavigator {
         // "next match" to jump to. That leaves the letter free, and it reads
         // as the first letter of the thing it does.
         case "n": return .saveNote
+        // `c` in vim is the change operator, which waits for a motion or a
+        // text object — and this panel has neither: there is nothing to change
+        // in a list of clips. So the letter is free here too, and it reads as
+        // the first letter of Calendar the way `n` does of Note. It fires on
+        // the keystroke rather than arming a sequence, since there is no
+        // second key that could complete it.
+        case "c": return .addToCalendar
         default: return nil
         }
     }

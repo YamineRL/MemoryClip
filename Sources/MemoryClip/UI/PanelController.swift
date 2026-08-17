@@ -165,6 +165,7 @@ final class PanelController: NSObject, NSWindowDelegate {
     private let qrController: QRWindowController
     private let queueService: QueueService
     private let noteCoordinator: NoteCoordinator
+    private let calendarCoordinator: CalendarCoordinator
     private let quickLookController = QuickLookController()
 
     private var panel: KeyablePanel?
@@ -178,7 +179,8 @@ final class PanelController: NSObject, NSWindowDelegate {
         store: ClipStore,
         pasteService: PasteService,
         watcher: PasteboardWatcher,
-        noteCoordinator: NoteCoordinator
+        noteCoordinator: NoteCoordinator,
+        calendarCoordinator: CalendarCoordinator
     ) {
         self.store = store
         self.pasteService = pasteService
@@ -186,6 +188,7 @@ final class PanelController: NSObject, NSWindowDelegate {
         self.qrController = QRWindowController(watcher: watcher)
         self.queueService = QueueService(store: store, pasteService: pasteService)
         self.noteCoordinator = noteCoordinator
+        self.calendarCoordinator = calendarCoordinator
         super.init()
 
         qrController.panelFrame = { [weak self] in
@@ -428,6 +431,9 @@ final class PanelController: NSObject, NSWindowDelegate {
             saveNote: { [weak self] item in
                 self?.saveNote(for: item)
             },
+            addToCalendar: { [weak self] item in
+                self?.addToCalendar(for: item)
+            },
             openNote: { [weak self] item in
                 self?.openNote(for: item)
             },
@@ -484,6 +490,42 @@ final class PanelController: NSObject, NSWindowDelegate {
         let alert = NSAlert()
         alert.alertStyle = .warning
         alert.messageText = loc("MemoryClip could not save the note.")
+        alert.informativeText = error.errorDescription ?? loc("Unknown error.")
+        alert.addButton(withTitle: loc("OK"))
+        alert.addButton(withTitle: loc("Open Settings…"))
+        NSApp.activate()
+        if alert.runModal() == .alertSecondButtonReturn {
+            openSettingsWindow()
+        }
+    }
+
+    // MARK: Calendar
+
+    /// Put a clip's appointment in the calendar, reporting the outcome.
+    ///
+    /// Awaited off this call the way the note export is — it may have to ask
+    /// for calendar permission, which blocks until the user answers — so the
+    /// panel stays live while it happens. Only failure interrupts: a clip that
+    /// got its event says so itself, in the card's stat line.
+    private func addToCalendar(for item: ClipItem) {
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            let result = await self.calendarCoordinator.addEvent(for: item)
+            if case .failure(let error) = result {
+                self.presentCalendarFailure(error)
+            }
+        }
+    }
+
+    /// Report a calendar failure where the user is actually looking.
+    ///
+    /// Same alert as a failed note, for the same reason: every one of these is
+    /// something only the user can fix — grant Calendars access, choose a
+    /// default calendar, copy something with a date in it.
+    private func presentCalendarFailure(_ error: CalendarError) {
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = loc("MemoryClip could not add the event.")
         alert.informativeText = error.errorDescription ?? loc("Unknown error.")
         alert.addButton(withTitle: loc("OK"))
         alert.addButton(withTitle: loc("Open Settings…"))

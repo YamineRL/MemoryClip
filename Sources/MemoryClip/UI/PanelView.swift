@@ -482,6 +482,8 @@ struct PanelActions {
     var pasteQueue: () -> Void
     /// Write (or rewrite) this clip's note at the configured destination.
     var saveNote: (ClipItem) -> Void
+    /// Put the appointment this clip describes in the calendar.
+    var addToCalendar: (ClipItem) -> Void
     /// Open the note already written for this clip.
     var openNote: (ClipItem) -> Void
     /// Show a screenshot clip's file in the Finder.
@@ -974,6 +976,14 @@ struct PanelContentView: View {
                         saveSelectedNote()
                         return .handled
                     }
+                    // ⌘E for the same reason, and it is free for the same
+                    // reason: `main.swift` builds an Edit menu of Undo, Redo,
+                    // Cut, Copy, Paste and Select All and nothing else, so no
+                    // menu item claims it. E is for Event.
+                    if press.characters.lowercased() == "e" {
+                        addSelectedToCalendar()
+                        return .handled
+                    }
                 }
                 return handleVimKey(press)
             }
@@ -1053,6 +1063,7 @@ struct PanelContentView: View {
                                 onShowQR: { actions.showQR(item) },
                                 onToggleQueue: { actions.toggleQueue(item) },
                                 onSaveNote: { actions.saveNote(item) },
+                                onAddToCalendar: { actions.addToCalendar(item) },
                                 onOpenNote: { actions.openNote(item) },
                                 onRevealInFinder: { actions.revealInFinder(item) }
                             )
@@ -1409,6 +1420,8 @@ struct PanelContentView: View {
             setMode(.insert)
         case .saveNote:
             saveSelectedNote()
+        case .addToCalendar:
+            addSelectedToCalendar()
         }
     }
 
@@ -1480,6 +1493,17 @@ struct PanelContentView: View {
     private func saveSelectedNote() {
         guard let item = selectedItem, ClipDisplay.canSaveNote(item) else { return }
         actions.saveNote(item)
+    }
+
+    /// Put the selected clip's appointment in the calendar.
+    ///
+    /// Gated on the same cheap predicate as the card's menu item, so the key
+    /// and the menu offer the action on the same clips. The gate only says the
+    /// clip could hold a date; whether it actually does is settled by the
+    /// detector, and a clip that turns out to hold none says so in an alert.
+    private func addSelectedToCalendar() {
+        guard let item = selectedItem, ClipDisplay.mightHaveEvent(item) else { return }
+        actions.addToCalendar(item)
     }
 
     private func quickPaste(_ digit: Int) {

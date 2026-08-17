@@ -46,6 +46,7 @@ struct ClipCardView: View {
     let onShowQR: () -> Void
     let onToggleQueue: () -> Void
     let onSaveNote: () -> Void
+    let onAddToCalendar: () -> Void
     let onOpenNote: () -> Void
     let onRevealInFinder: () -> Void
 
@@ -66,6 +67,7 @@ struct ClipCardView: View {
         onShowQR: @escaping () -> Void,
         onToggleQueue: @escaping () -> Void = {},
         onSaveNote: @escaping () -> Void = {},
+        onAddToCalendar: @escaping () -> Void = {},
         onOpenNote: @escaping () -> Void = {},
         onRevealInFinder: @escaping () -> Void = {}
     ) {
@@ -80,6 +82,7 @@ struct ClipCardView: View {
         self.onShowQR = onShowQR
         self.onToggleQueue = onToggleQueue
         self.onSaveNote = onSaveNote
+        self.onAddToCalendar = onAddToCalendar
         self.onOpenNote = onOpenNote
         self.onRevealInFinder = onRevealInFinder
     }
@@ -129,6 +132,9 @@ struct ClipCardView: View {
             if item.notePath != nil {
                 Button(loc("Open Note")) { onOpenNote() }
             }
+            if mightHaveEvent {
+                Button(calendarTitle) { onAddToCalendar() }
+            }
             Divider()
             Button(queuePosition == nil ? loc("Add to Queue") : loc("Remove from Queue")) { onToggleQueue() }
             Button(item.isPinned ? loc("Unpin") : loc("Pin")) { togglePinned() }
@@ -150,6 +156,9 @@ struct ClipCardView: View {
             }
             if item.notePath != nil {
                 Button(loc("Open Note")) { onOpenNote() }
+            }
+            if mightHaveEvent {
+                Button(calendarTitle) { onAddToCalendar() }
             }
         }
         .accessibilityActions {
@@ -442,12 +451,20 @@ struct ClipCardView: View {
     /// It replaces "text found" rather than joining it: a clip that has been
     /// noted obviously had text in it, and a three-part stat line is a stat
     /// line that truncates on a narrow panel.
+    ///
+    /// "· in calendar" is the same confirmation for ⌘E, and it yields to
+    /// "noted" for the same reason "noted" replaced "text found": the line has
+    /// room for one suffix. A clip that is both keeps the note wording, which
+    /// is the older promise and the one the user is more likely to go looking
+    /// for on disk.
     private var statLine: String {
         let noted = item.notePath != nil
+        let scheduled = item.calendarEventID != nil
         // Checked before the kind switch: a screenshot IS a file clip, and
         // "1 file" is the least informative thing the row could say about it.
         if item.isScreenshot {
             if noted { return loc("Screenshot · noted") }
+            if scheduled { return loc("Screenshot · in calendar") }
             if !(item.ocrText ?? "").isEmpty { return loc("Screenshot · text found") }
             return loc("Screenshot")
         }
@@ -459,6 +476,7 @@ struct ClipCardView: View {
             return item.colorHex ?? loc("Color")
         case .image:
             if noted { return loc("Image · noted") }
+            if scheduled { return loc("Image · in calendar") }
             if let ocr = item.ocrText, !ocr.isEmpty {
                 return loc("Image · text found")
             }
@@ -468,7 +486,8 @@ struct ClipCardView: View {
             let characters = count == 1
                 ? loc("1 character")
                 : loc("%@ characters", count.formatted(.number.grouping(.automatic)))
-            return noted ? loc("%@ · noted", characters) : characters
+            if noted { return loc("%@ · noted", characters) }
+            return scheduled ? loc("%@ · in calendar", characters) : characters
         }
     }
 
@@ -483,6 +502,21 @@ struct ClipCardView: View {
     /// on exactly the clips this menu does.
     private var canSaveNote: Bool {
         ClipDisplay.canSaveNote(item)
+    }
+
+    /// Whether this clip is worth offering the calendar for.
+    ///
+    /// Shared with the panel's ⌘E / `c` keys, and cheap by design: the real
+    /// detection runs once, when the action is taken.
+    private var mightHaveEvent: Bool {
+        ClipDisplay.mightHaveEvent(item)
+    }
+
+    /// The calendar item's title. A clip that already has an event keeps one
+    /// menu item that says what a second press would do, the way the note
+    /// item becomes "Update Note" rather than growing a neighbour.
+    private var calendarTitle: String {
+        item.calendarEventID == nil ? loc("Add to Calendar") : loc("Add to Calendar Again")
     }
 
     /// Kinds that carry plain text — the only ones offered transforms.
@@ -519,7 +553,8 @@ struct ClipCardView: View {
             hasExtractedText: !(item.ocrText ?? "").isEmpty,
             calcResult: calcSuffix,
             isScreenshot: item.isScreenshot,
-            hasNote: item.notePath != nil
+            hasNote: item.notePath != nil,
+            hasCalendarEvent: item.calendarEventID != nil
         )
     }
 
