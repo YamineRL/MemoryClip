@@ -985,6 +985,17 @@ struct PanelContentView: View {
                         addSelectedToCalendar()
                         return .handled
                     }
+                    // ⌘C means copy, everywhere in macOS, and a list of
+                    // clipboard entries is the last place it may mean
+                    // anything else — so it is claimed here rather than left
+                    // to reach the vim `c` binding, which is the calendar's.
+                    // The Edit menu's own Copy still wins whenever the search
+                    // field has a selection to copy: this runs only once that
+                    // item has nothing to act on.
+                    if press.characters.lowercased() == "c" {
+                        copySelected()
+                        return .handled
+                    }
                 }
                 return handleVimKey(press)
             }
@@ -1483,6 +1494,17 @@ struct PanelContentView: View {
     private func pasteSelected(plainOnly: Bool) {
         guard let item = selectedItem else { return }
         actions.paste(item, plainOnly)
+    }
+
+    /// Put the selected clip back on the pasteboard, leaving the panel open.
+    ///
+    /// The panel stays up because ⌘C is not a way out of it: it is the
+    /// gesture for taking a clip with you, and the next thing the user does
+    /// may well be to take another one.
+    private func copySelected() {
+        guard let item = selectedItem else { return }
+        actions.copyOnly(item)
+        announce(loc("Copied"))
     }
 
     /// Write (or rewrite) the selected clip's note.

@@ -117,6 +117,7 @@
 "Preview shown, %@" = "Preview shown, %@";
 "Quick Look, %@" = "Quick Look, %@";
 "Preview hidden" = "Preview hidden";
+"Copied" = "Copied";
 "Preview height" = "Preview height";
 "%d points" = "%d points";
 "Drag up for a taller preview" = "Drag up for a taller preview";
@@ -184,6 +185,7 @@
 "Paste the selected clip" = "Paste the selected clip";
 "Paste as plain text" = "Paste as plain text";
 "Paste the first nine results" = "Paste the first nine results";
+"Copy the selected clip without pasting" = "Copy the selected clip without pasting";
 "Save the selected clip as a note" = "Save the selected clip as a note";
 "Open the preview; press again to Quick Look a screenshot, image or file, or to close the preview (search field empty)" = "Open the preview; press again to Quick Look a screenshot, image or file, or to close the preview (search field empty)";
 "Close Quick Look, then the preview, then the panel" = "Close Quick Look, then the preview, then the panel";
@@ -386,3 +388,4 @@
 "Type to search across text, OCR text, colors, file names and the app you copied from; Space opens the preview, and again on a picture or a file opens Quick Look full size." = "Type to search across text, OCR text, colors, file names and the app you copied from; Space opens the preview, and again on a picture or a file opens Quick Look full size.";
 "macOS asks once. MemoryClip asks only for permission to add events — it cannot read your calendar, so events go to whichever calendar is your default for new ones (Settings → Calendar)." = "macOS asks once. MemoryClip asks only for permission to add events — it cannot read your calendar, so events go to whichever calendar is your default for new ones (Settings → Calendar).";
 "Re-opens the first-run tour of the panel, notes and calendar events, where launch at login, automatic paste, the note destination and automatic events can all be set." = "Re-opens the first-run tour of the panel, notes and calendar events, where launch at login, automatic paste, the note destination and automatic events can all be set.";
+
