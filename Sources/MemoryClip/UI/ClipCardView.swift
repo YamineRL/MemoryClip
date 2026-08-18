@@ -463,6 +463,9 @@ struct ClipCardView: View {
     /// room for one suffix. A clip that is both keeps the note wording, which
     /// is the older promise and the one the user is more likely to go looking
     /// for on disk.
+    ///
+    /// "· not translated" ranks under all three of those and over "text
+    /// found" — see `untranslated`.
     private var statLine: String {
         let noted = item.notePath != nil
         let scheduled = item.calendarEventID != nil
@@ -472,6 +475,7 @@ struct ClipCardView: View {
             if isSavingNote { return loc("Screenshot · saving…") }
             if noted { return loc("Screenshot · noted") }
             if scheduled { return loc("Screenshot · in calendar") }
+            if untranslated { return loc("Screenshot · not translated") }
             if !(item.ocrText ?? "").isEmpty { return loc("Screenshot · text found") }
             return loc("Screenshot")
         }
@@ -485,6 +489,7 @@ struct ClipCardView: View {
             if isSavingNote { return loc("Image · saving…") }
             if noted { return loc("Image · noted") }
             if scheduled { return loc("Image · in calendar") }
+            if untranslated { return loc("Image · not translated") }
             if let ocr = item.ocrText, !ocr.isEmpty {
                 return loc("Image · text found")
             }
@@ -498,6 +503,17 @@ struct ClipCardView: View {
             if noted { return loc("%@ · noted", characters) }
             return scheduled ? loc("%@ · in calendar", characters) : characters
         }
+    }
+
+    /// Whether the pipeline read this clip in another language and stored no
+    /// translation of it — the assets are not on the Mac, or macOS cannot
+    /// translate the pair at all. False while translation is switched off,
+    /// where every foreign clip is untranslated by choice.
+    ///
+    /// Which languages are waiting for a download, and the button that
+    /// fetches them, are in Settings → Translation.
+    private var untranslated: Bool {
+        NoteTranslation.isEnabled && item.sourceLanguage != nil && item.translatedText == nil
     }
 
     /// The image clip's OCR text, or nil when there is none worth offering.
