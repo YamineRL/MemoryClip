@@ -82,8 +82,8 @@ bar. **Launch at login** is in **Settings → General**.
 
 ⇧⌘V opens the panel from any app, newest clip first, list already focused. The menu-bar
 glyph gives the last five clips under a **Recent Clips** header, then Open MemoryClip and
-Pause Capture, then Settings and Clear All History, then Quit — the irreversible one kept
-a separator away from the item people actually come to click.
+Pause Capture, then Settings, Permissions and Clear All History, then Quit — the
+irreversible one kept a separator away from the item people actually come to click.
 
 | Key | Does |
 | --- | --- |
@@ -91,6 +91,7 @@ a separator away from the item people actually come to click.
 | `Return` | Paste the selected clip |
 | `⇧Return` | Paste it as **plain text**, dropping fonts and colours |
 | `⌘1`–`⌘9` | Paste any of the first nine results directly |
+| `⌘C` | Copy the selected clip, leaving the panel open |
 | `⌘S` | Save the selected clip as a note, if it carries any text |
 | `⌘E` | Add the selected clip to the calendar, if it names a date |
 | `Space` | Open the preview pane; press it again on a picture or a file for full-size **Quick Look** |
@@ -337,6 +338,13 @@ Recording, no Input Monitoring, no network. Optional, and only with the matching
   feature is deliberately not asking for.
 - **Accessibility** — only to auto-paste with a synthetic ⌘V. Without it the clip still
   reaches the clipboard.
+
+macOS keys a permission to an app's *signature*, not its name, and MemoryClip is ad-hoc
+signed — so every update is a new app to it, and the grants you gave the last version are
+dropped without anything saying so. MemoryClip records which permissions have worked and
+offers to ask again for the ones an update took, on the launch after it. **Permissions…**
+in the menu bar opens the same window at any time: one row per permission, each with the
+prompt or the System Settings pane that grants it.
 
 ## Settings
 
