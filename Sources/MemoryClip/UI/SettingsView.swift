@@ -643,7 +643,7 @@ private struct TranslationSettingsPane: View {
                 if translateEnabled {
                     TranslationLanguagePicker()
                 }
-                SettingsHint(loc("When MemoryClip writes a note, a screenshot in Arabic, Japanese or Russian is read in its own language and the note carries both: the text exactly as it was on screen, and an English translation underneath it. Translation runs on this Mac. The title, summary and tags are written from the English, so the note is findable in a vault you search in English.\n\nTick as many languages as you like — those are the ones MemoryClip will translate, and ticking one downloads its assets if macOS does not have them yet. With none ticked it translates any language this Mac can already handle. The packs go into the store the whole system shares, so a language you fetch here is the one Translate and Safari use."))
+                SettingsHint(loc("When MemoryClip writes a note, a screenshot in Arabic, Japanese or Russian is read in its own language and the note carries both: the text exactly as it was on screen, and an English translation underneath it. Translation runs on this Mac. The title, summary and tags are written from the English, so the note is findable in a vault you search in English.\n\nMemoryClip translates every language this Mac already has the assets for, whether or not it is ticked below. Ticking one downloads its assets if macOS does not have them yet, and tells MemoryClip to expect that language on screen. The packs go into the store the whole system shares, so a language you fetch here is the one Translate and Safari use."))
             }
 
             Section(loc("Clip preview")) {
@@ -752,9 +752,10 @@ final class TranslationLanguageStore {
 /// background, off any view), so it records what was missing in
 /// `NoteTranslation.pendingDownloads` — but waiting to be told is a poor way
 /// to find out. Every language Apple can translate into English is listed
-/// here, each with a checkbox: ticking one both opts it into the pipeline and
-/// fetches its assets if they are absent. Several can be ticked at once; the
-/// downloads queue, because a session can only prepare one pair at a time.
+/// here, each with a checkbox: ticking one fetches its assets if they are
+/// absent, which is what makes the pipeline able to translate it at all.
+/// Several can be ticked at once; the downloads queue, because a session can
+/// only prepare one pair at a time.
 private struct TranslationLanguagePicker: View {
     /// The catalog lives outside the view — see `TranslationLanguageStore`.
     private var store: TranslationLanguageStore { .shared }

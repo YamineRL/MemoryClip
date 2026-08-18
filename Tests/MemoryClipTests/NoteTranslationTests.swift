@@ -10,14 +10,20 @@ import XCTest
 private struct StubTranslator: NoteTranslator {
     /// Applied to the text to stand in for the engine.
     let translate: @Sendable (String) -> String?
+    /// What this Mac is pretending to have installed.
+    let readiness: TranslationReadiness
 
-    init(translate: @escaping @Sendable (String) -> String? = { "English of: \($0)" }) {
+    init(
+        readiness: TranslationReadiness = .ready,
+        translate: @escaping @Sendable (String) -> String? = { "English of: \($0)" }
+    ) {
+        self.readiness = readiness
         self.translate = translate
     }
 
     func supportedLanguages() async -> [Locale.Language] { [Locale.Language(identifier: "ar")] }
 
-    func readiness(for language: Locale.Language) async -> TranslationReadiness { .ready }
+    func readiness(for language: Locale.Language) async -> TranslationReadiness { readiness }
 
     func translate(_ text: String, from language: Locale.Language) async -> TranslatedText? {
         guard let translated = translate(text) else { return nil }
@@ -797,9 +803,10 @@ final class TranslationPipelineTests: XCTestCase {
         XCTAssertFalse(draft.title.isEmpty, "An untranslated clip still gets a title")
     }
 
-    /// A language the user did not tick is left in its own language, even
-    /// when the Mac could have translated it.
-    func testAnUnpickedLanguageIsNotTranslated() async throws {
+    /// The list in Settings picks what gets downloaded, not what is allowed:
+    /// a language whose assets are on the Mac is translated whether or not it
+    /// was ticked.
+    func testAnUnpickedLanguageIsTranslatedWhenItsAssetsAreInstalled() async throws {
         NoteTranslation.enabledLanguages = ["ja-Jpan"]
         defer { NoteTranslation.enabledLanguages = [] }
 
@@ -808,13 +815,65 @@ final class TranslationPipelineTests: XCTestCase {
         let coordinator = NoteCoordinator(
             store: store,
             refiner: EnglishOnlyRefiner(),
-            translator: StubTranslator { _ in XCTFail("Arabic was not picked"); return nil }
+            translator: StubTranslator(readiness: .ready) { _ in "The meeting is on Tuesday at three" }
+        )
+        _ = await coordinator.exportNote(for: item)
+
+        let refreshed = try XCTUnwrap(store.item(withUUID: item.uuid))
+        XCTAssertEqual(refreshed.sourceLanguage, "ar")
+        XCTAssertEqual(refreshed.translatedText, "The meeting is on Tuesday at three")
+    }
+
+    /// A language whose assets are absent is left alone AND remembered, which
+    /// is what puts it in front of the user in Settings → Translation.
+    func testAnUninstalledLanguageIsNotTranslatedAndIsRecorded() async throws {
+        let key = NoteSettingsKeys.translationPending
+        let original = UserDefaults.standard.stringArray(forKey: key)
+        defer { UserDefaults.standard.set(original, forKey: key) }
+        NoteTranslation.pendingDownloads = []
+
+        let store = try ClipStore(inMemory: true)
+        let item = try screenshotClip(text: arabic, in: store)
+        let coordinator = NoteCoordinator(
+            store: store,
+            refiner: EnglishOnlyRefiner(),
+            translator: StubTranslator(readiness: .needsDownload) { _ in
+                XCTFail("A language with no assets must not reach the engine")
+                return nil
+            }
         )
         _ = await coordinator.exportNote(for: item)
 
         let refreshed = try XCTUnwrap(store.item(withUUID: item.uuid))
         XCTAssertNil(refreshed.translatedText)
         XCTAssertEqual(refreshed.sourceLanguage, "ar", "The language is still recorded")
+        XCTAssertEqual(NoteTranslation.pendingDownloads, ["ar"])
+    }
+
+    /// A pair macOS cannot translate at all is skipped, and is not offered as
+    /// a download the user could start.
+    func testAnUnsupportedLanguageIsNotTranslated() async throws {
+        let key = NoteSettingsKeys.translationPending
+        let original = UserDefaults.standard.stringArray(forKey: key)
+        defer { UserDefaults.standard.set(original, forKey: key) }
+        NoteTranslation.pendingDownloads = []
+
+        let store = try ClipStore(inMemory: true)
+        let item = try screenshotClip(text: arabic, in: store)
+        let coordinator = NoteCoordinator(
+            store: store,
+            refiner: EnglishOnlyRefiner(),
+            translator: StubTranslator(readiness: .unsupported) { _ in
+                XCTFail("An unsupported language must not reach the engine")
+                return nil
+            }
+        )
+        _ = await coordinator.exportNote(for: item)
+
+        let refreshed = try XCTUnwrap(store.item(withUUID: item.uuid))
+        XCTAssertNil(refreshed.translatedText)
+        XCTAssertEqual(refreshed.sourceLanguage, "ar", "The language is still recorded")
+        XCTAssertEqual(NoteTranslation.pendingDownloads, [])
     }
 
     func testTranslationRespectsItsSetting() async throws {
@@ -949,19 +1008,13 @@ final class EnabledLanguagesTests: XCTestCase {
         NoteTranslation.enabledLanguages = []
     }
 
-    /// The default. Not "nobody chose" but "everything this Mac can do" —
-    /// the only default that leaves the feature working for someone who never
-    /// opens Settings.
-    func testAnEmptySelectionAllowsEverything() {
-        XCTAssertTrue(NoteTranslation.allowsLanguage("ar"))
-        XCTAssertTrue(NoteTranslation.allowsLanguage("ja"))
-    }
-
-    func testOnlyPickedLanguagesAreTranslated() {
+    /// The picked list is what Settings downloads and what detection is
+    /// biased toward; it never decides whether a clip may be translated —
+    /// `TranslationPipelineTests` holds that gate.
+    func testThePickedListRoundTripsThroughDefaults() {
+        XCTAssertEqual(NoteTranslation.enabledLanguages, [])
         NoteTranslation.enabledLanguages = ["ar-Arab", "ja-Jpan"]
-        XCTAssertTrue(NoteTranslation.allowsLanguage("ar"))
-        XCTAssertTrue(NoteTranslation.allowsLanguage("ja"))
-        XCTAssertFalse(NoteTranslation.allowsLanguage("ru"))
+        XCTAssertEqual(NoteTranslation.enabledLanguages, ["ar-Arab", "ja-Jpan"])
     }
 
     /// The two sides are spelled by different libraries: the recognizer says

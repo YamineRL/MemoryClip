@@ -335,14 +335,27 @@ final class NoteCoordinator {
     /// Returns nil for the ordinary case — English text — without touching
     /// the translator at all, so the common path costs one language
     /// identification and nothing else.
+    ///
+    /// The gate is the readiness of the pair, not the list of languages
+    /// ticked in Settings — that list downloads assets and biases detection.
+    /// A pair that would need a download is recorded rather than attempted:
+    /// nothing outside a view can fetch one.
     private func translateIfWanted(_ input: RefinementInput) async -> TranslatedText? {
         guard Self.isTranslationEnabled else { return nil }
         guard let language = input.language, LanguageDetector.needsTranslation(language) else { return nil }
-        guard NoteTranslation.allowsLanguage(LanguageDetector.identifier(for: language)) else {
-            log.notice("Translation skipped: language is not one of the picked ones")
+
+        let identifier = LanguageDetector.identifier(for: language)
+        switch await translator.readiness(for: language) {
+        case .ready:
+            return await translator.translate(input.rawText, from: language)
+        case .needsDownload:
+            NoteTranslation.notePendingDownload(identifier)
+            log.notice("Translation skipped: \(identifier, privacy: .public) assets are not downloaded")
+            return nil
+        case .unsupported:
+            log.notice("Translation skipped: \(identifier, privacy: .public) is not supported by this Mac")
             return nil
         }
-        return await translator.translate(input.rawText, from: language)
     }
 
     // MARK: - Notes
