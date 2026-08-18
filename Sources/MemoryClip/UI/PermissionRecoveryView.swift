@@ -19,6 +19,9 @@ struct PermissionRecoveryView: View {
         case update
         /// Opened from the menu bar.
         case review
+        /// Opened because a feature the user switched on cannot run without a
+        /// permission macOS has not given.
+        case blocked
     }
 
     let reason: Reason
@@ -90,6 +93,7 @@ struct PermissionRecoveryView: View {
         switch reason {
         case .update: return loc("MemoryClip needs your permission again")
         case .review: return loc("MemoryClip's permissions")
+        case .blocked: return loc("A feature you have switched on is blocked")
         }
     }
 
@@ -99,6 +103,8 @@ struct PermissionRecoveryView: View {
             return loc("macOS treats an updated app as a new one, so the permissions you gave the last version were dropped. Nothing else changed — your clips, notes and settings are where you left them.")
         case .review:
             return loc("Each one is used by a single feature, and nothing else in MemoryClip needs it. You can change any of them later in System Settings → Privacy & Security.")
+        case .blocked:
+            return loc("macOS has not given MemoryClip the permission it needs, so the feature is switched on and quietly doing nothing. Allowing it here is all that is missing.")
         }
     }
 

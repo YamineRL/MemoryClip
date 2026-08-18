@@ -199,7 +199,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // here, rather than failing silently at the next note or event. A
         // Mac that has lost nothing — including a first run, which has
         // nothing recorded yet — gets no window.
-        PermissionRecoveryController.shared.showIfNeeded()
+        // Two offers, never both at once: what an update took away, and —
+        // for the release that introduces the ledger, which has no history to
+        // read — what a switched-on feature is missing outright.
+        if !PermissionRecoveryController.shared.showIfNeeded() {
+            PermissionRecoveryController.shared.showBlockedOnce()
+        }
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
