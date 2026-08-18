@@ -294,6 +294,7 @@ enum ShortcutReference {
             ShortcutEntry(keys: "Return", detail: loc("Paste the selected clip")),
             ShortcutEntry(keys: "⇧Return", detail: loc("Paste as plain text")),
             ShortcutEntry(keys: "⌘1…⌘9", detail: loc("Paste the first nine results")),
+            ShortcutEntry(keys: "⌘C", detail: loc("Copy the selected clip without pasting")),
             ShortcutEntry(keys: "⌘S", detail: loc("Save the selected clip as a note")),
             ShortcutEntry(keys: "⌘E", detail: loc("Add the selected clip to the calendar")),
             ShortcutEntry(

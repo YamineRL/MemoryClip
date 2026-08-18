@@ -117,6 +117,7 @@
 "Preview shown, %@" = "Aperçu affiché, %@";
 "Quick Look, %@" = "Coup d’œil, %@";
 "Preview hidden" = "Aperçu masqué";
+"Copied" = "Copié";
 "Preview height" = "Hauteur de l’aperçu";
 "%d points" = "%d points";
 "Drag up for a taller preview" = "Faites glisser vers le haut pour agrandir l’aperçu";
@@ -184,6 +185,7 @@
 "Paste the selected clip" = "Coller le clip sélectionné";
 "Paste as plain text" = "Coller en texte brut";
 "Paste the first nine results" = "Coller les neuf premiers résultats";
+"Copy the selected clip without pasting" = "Copier le clip sélectionné sans le coller";
 "Save the selected clip as a note" = "Enregistrer le clip sélectionné comme note";
 "Open the preview; press again to Quick Look a screenshot, image or file, or to close the preview (search field empty)" = "Ouvrir l’aperçu ; appuyer de nouveau pour ouvrir une capture d’écran, une image ou un fichier dans Coup d’œil, ou pour fermer l’aperçu (champ de recherche vide)";
 "Close Quick Look, then the preview, then the panel" = "Fermer Coup d’œil, puis l’aperçu, puis le panneau";
@@ -386,3 +388,4 @@
 "Type to search across text, OCR text, colors, file names and the app you copied from; Space opens the preview, and again on a picture or a file opens Quick Look full size." = "Tapez pour chercher dans le texte, le texte OCR, les couleurs, les noms de fichiers et l’app d’origine ; Espace ouvre l’aperçu, et de nouveau sur une image ou un fichier ouvre Coup d’œil en grand.";
 "macOS asks once. MemoryClip asks only for permission to add events — it cannot read your calendar, so events go to whichever calendar is your default for new ones (Settings → Calendar)." = "macOS ne demande qu’une fois. MemoryClip demande uniquement la permission d’ajouter des événements — il ne peut pas lire votre calendrier, donc les événements vont dans celui que vous avez défini par défaut pour les nouveaux (Réglages → Calendrier).";
 "Re-opens the first-run tour of the panel, notes and calendar events, where launch at login, automatic paste, the note destination and automatic events can all be set." = "Rouvre la visite de première ouverture — le panneau, les notes et les événements de calendrier — où le lancement au démarrage, le collage automatique, la destination des notes et les événements automatiques se règlent aussi.";
+
