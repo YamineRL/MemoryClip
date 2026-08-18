@@ -249,26 +249,16 @@ enum NoteTranslation {
         return chunks
     }
 
-    /// The languages the user picked to have detected and translated, as
+    /// The languages the user picked to have downloaded and detected, as
     /// catalog identifiers.
+    ///
+    /// Not a permission list: whether a clip is translated turns on whether
+    /// its assets are installed — see `NoteCoordinator.translateIfWanted`.
+    /// Ticking a language fetches those assets and lifts it in
+    /// `LanguageDetector.dominantLanguage(of:preferring:)`.
     static var enabledLanguages: [String] {
         get { UserDefaults.standard.stringArray(forKey: NoteSettingsKeys.translationLanguages) ?? [] }
         set { UserDefaults.standard.set(newValue, forKey: NoteSettingsKeys.translationLanguages) }
-    }
-
-    /// Whether a clip detected as `identifier` is one the user wants
-    /// translated.
-    ///
-    /// An empty selection means yes to everything. That is not a shortcut for
-    /// "nobody chose": it is the only default that leaves the feature working
-    /// for someone who never opens Settings, and it degrades safely, because
-    /// a language whose assets are not on the Mac is skipped a moment later
-    /// anyway. Once the user picks languages, the picked set is exactly what
-    /// gets translated — which is the point of picking.
-    static func allowsLanguage(_ identifier: String) -> Bool {
-        let selected = enabledLanguages
-        guard !selected.isEmpty else { return true }
-        return selected.contains { TranslationCatalog.matches(selection: $0, detected: identifier) }
     }
 
     /// Languages MemoryClip has met and could not translate for want of a
@@ -711,8 +701,7 @@ enum LanguageDetector {
     /// than merely demote it. So the first pass says which languages are
     /// plausible at all, and the second re-weighs exactly those, lifting the
     /// user's picks and English above the rest. With no picks there is no
-    /// prior to apply — an empty selection means "anything", the same as it
-    /// does in `NoteTranslation.allowsLanguage` — and the first pass stands.
+    /// prior to apply and the first pass stands.
     private static func hypotheses(for text: String, preferring preferred: [String]) -> [String: Double] {
         let recognizer = NLLanguageRecognizer()
         recognizer.processString(text)
