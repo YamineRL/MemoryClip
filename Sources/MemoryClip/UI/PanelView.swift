@@ -1107,6 +1107,11 @@ struct PanelContentView: View {
                     .padding(.bottom, Design.Size.cardBottomPadding)
                 }
                 .scrollIndicators(.never)
+                // The same fading edge and chevron the preview pane uses for
+                // text that runs past its bottom. The strip hides its scroll
+                // bar and cuts its cards evenly, so nothing else in it says
+                // that there are more clips to the right.
+                .scrollMoreHint(.horizontal)
                 .frame(height: Design.Size.cardStripHeight)
                 .onChange(of: selection) {
                     // Re-resolved rather than reusing `selected`: the action
