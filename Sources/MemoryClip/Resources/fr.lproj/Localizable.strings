@@ -19,6 +19,7 @@
 "Unknown" = "App inconnue";
 "Screenshot · saving…" = "Capture · enregistrement…";
 "Screenshot · noted" = "Capture · note créée";
+"Screenshot · not translated" = "Capture · non traduite";
 "Screenshot · text found" = "Capture · texte trouvé";
 "Screenshot" = "Capture d’écran";
 "1 file" = "1 fichier";
@@ -26,6 +27,7 @@
 "Color" = "Couleur";
 "Image · saving…" = "Image · enregistrement…";
 "Image · noted" = "Image · note créée";
+"Image · not translated" = "Image · non traduite";
 "Image · text found" = "Image · texte trouvé";
 "Image" = "Image";
 "1 character" = "1 caractère";

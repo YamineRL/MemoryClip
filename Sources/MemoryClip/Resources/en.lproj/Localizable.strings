@@ -19,6 +19,7 @@
 "Unknown" = "Unknown";
 "Screenshot · saving…" = "Screenshot · saving…";
 "Screenshot · noted" = "Screenshot · noted";
+"Screenshot · not translated" = "Screenshot · not translated";
 "Screenshot · text found" = "Screenshot · text found";
 "Screenshot" = "Screenshot";
 "1 file" = "1 file";
@@ -26,6 +27,7 @@
 "Color" = "Color";
 "Image · saving…" = "Image · saving…";
 "Image · noted" = "Image · noted";
+"Image · not translated" = "Image · not translated";
 "Image · text found" = "Image · text found";
 "Image" = "Image";
 "1 character" = "1 character";
