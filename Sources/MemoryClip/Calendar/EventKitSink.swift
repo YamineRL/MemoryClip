@@ -75,8 +75,14 @@ final class EventKitSink: EventSink {
     private nonisolated static let grantedInThisRun = Flag()
 
     /// Records that access has been granted, from wherever it was asked.
+    ///
+    /// Also written to `PermissionLedger`, which outlives the process: the
+    /// grant is keyed to this build's signature, and the next update will
+    /// drop it without saying so. What the ledger remembers is what
+    /// `PermissionRecoveryController` offers to restore.
     nonisolated static func noteAccessGranted() {
         grantedInThisRun.set()
+        PermissionLedger().noteGranted(.calendar)
     }
 
     @MainActor

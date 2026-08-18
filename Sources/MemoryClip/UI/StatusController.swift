@@ -152,6 +152,18 @@ final class StatusController: NSObject, NSMenuDelegate {
         settingsItem.target = self
         menu.addItem(settingsItem)
 
+        // Beside Settings, because it is the same kind of errand and because
+        // it has to be reachable at all times: the permission window's own
+        // buttons hand the screen to system dialogs, and an agent with no Dock
+        // tile has no other way back to a window that fell behind one.
+        let permissionsItem = NSMenuItem(
+            title: loc("Permissions…"),
+            action: #selector(openPermissions),
+            keyEquivalent: ""
+        )
+        permissionsItem.target = self
+        menu.addItem(permissionsItem)
+
         // Deleting the whole history is the one irreversible thing this menu
         // does, so it is kept out of the run above: Pause Capture is the item
         // people come here to click, and a destructive row directly beneath it
@@ -269,6 +281,10 @@ final class StatusController: NSObject, NSMenuDelegate {
 
     @objc private func openSettings() {
         openSettingsWindow()
+    }
+
+    @objc private func openPermissions() {
+        PermissionRecoveryController.shared.showAll()
     }
 
     @objc private func quit() {
