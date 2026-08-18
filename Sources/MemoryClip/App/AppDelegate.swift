@@ -193,6 +193,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         // Phase-4 polish: the first-run tour (shown once; re-openable from Settings).
         OnboardingController.shared.showIfFirstRun()
+
+        // An update is a new app to TCC, so the grants the last build had are
+        // gone. Anything that was working and no longer is gets asked for
+        // here, rather than failing silently at the next note or event. A
+        // Mac that has lost nothing — including a first run, which has
+        // nothing recorded yet — gets no window.
+        PermissionRecoveryController.shared.showIfNeeded()
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {

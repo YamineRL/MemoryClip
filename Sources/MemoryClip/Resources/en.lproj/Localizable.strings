@@ -389,3 +389,19 @@
 "macOS asks once. MemoryClip asks only for permission to add events — it cannot read your calendar, so events go to whichever calendar is your default for new ones (Settings → Calendar)." = "macOS asks once. MemoryClip asks only for permission to add events — it cannot read your calendar, so events go to whichever calendar is your default for new ones (Settings → Calendar).";
 "Re-opens the first-run tour of the panel, notes and calendar events, where launch at login, automatic paste, the note destination and automatic events can all be set." = "Re-opens the first-run tour of the panel, notes and calendar events, where launch at login, automatic paste, the note destination and automatic events can all be set.";
 
+
+/* Permission recovery after an update. */
+"Calendars" = "Calendars";
+"Automation" = "Automation";
+"Accessibility" = "Accessibility";
+"Adding a clip to your calendar." = "Adding a clip to your calendar.";
+"Saving a clip to Apple Notes." = "Saving a clip to Apple Notes.";
+"Pasting the clip you pick into the app you came from." = "Pasting the clip you pick into the app you came from.";
+"MemoryClip needs your permission again" = "MemoryClip needs your permission again";
+"macOS treats an updated app as a new one, so the permissions you gave the last version were dropped. Nothing else changed — your clips, notes and settings are where you left them." = "macOS treats an updated app as a new one, so the permissions you gave the last version were dropped. Nothing else changed — your clips, notes and settings are where you left them.";
+"Restored" = "Restored";
+"Allow…" = "Allow…";
+"MemoryClip's permissions" = "MemoryClip's permissions";
+"Each one is used by a single feature, and nothing else in MemoryClip needs it. You can change any of them later in System Settings → Privacy & Security." = "Each one is used by a single feature, and nothing else in MemoryClip needs it. You can change any of them later in System Settings → Privacy & Security.";
+"Allowed" = "Allowed";
+"Permissions…" = "Permissions…";

@@ -54,6 +54,10 @@ struct NotesAppSink: NoteSink {
             body: NoteComposer.html(for: draft)
         )
         try Self.run(source)
+        // A script that ran is the Automation grant, observed: there is no
+        // status to read for Apple Events while Notes is not running, so this
+        // is the moment the ledger can record. See `PermissionRecovery`.
+        PermissionLedger().noteGranted(.notesAutomation)
 
         log.notice("Wrote note to Notes folder \(folder, privacy: .private)")
         // No `openURL`. Notes' AppleScript `id` is a `x-coredata://…` URL that

@@ -389,3 +389,19 @@
 "macOS asks once. MemoryClip asks only for permission to add events — it cannot read your calendar, so events go to whichever calendar is your default for new ones (Settings → Calendar)." = "macOS ne demande qu’une fois. MemoryClip demande uniquement la permission d’ajouter des événements — il ne peut pas lire votre calendrier, donc les événements vont dans celui que vous avez défini par défaut pour les nouveaux (Réglages → Calendrier).";
 "Re-opens the first-run tour of the panel, notes and calendar events, where launch at login, automatic paste, the note destination and automatic events can all be set." = "Rouvre la visite de première ouverture — le panneau, les notes et les événements de calendrier — où le lancement au démarrage, le collage automatique, la destination des notes et les événements automatiques se règlent aussi.";
 
+
+/* Permission recovery after an update. */
+"Calendars" = "Calendriers";
+"Automation" = "Automatisation";
+"Accessibility" = "Accessibilité";
+"Adding a clip to your calendar." = "Ajouter un clip à votre calendrier.";
+"Saving a clip to Apple Notes." = "Enregistrer un clip dans Notes.";
+"Pasting the clip you pick into the app you came from." = "Coller le clip choisi dans l’app d’où vous venez.";
+"MemoryClip needs your permission again" = "MemoryClip a de nouveau besoin de vos autorisations";
+"macOS treats an updated app as a new one, so the permissions you gave the last version were dropped. Nothing else changed — your clips, notes and settings are where you left them." = "macOS considère une app mise à jour comme une nouvelle app : les autorisations accordées à la version précédente ont été retirées. Rien d’autre n’a changé — vos clips, vos notes et vos réglages sont intacts.";
+"Restored" = "Rétabli";
+"Allow…" = "Autoriser…";
+"MemoryClip's permissions" = "Autorisations de MemoryClip";
+"Each one is used by a single feature, and nothing else in MemoryClip needs it. You can change any of them later in System Settings → Privacy & Security." = "Chacune sert à une seule fonction, et rien d’autre dans MemoryClip n’en a besoin. Vous pouvez les modifier à tout moment dans Réglages Système → Confidentialité et sécurité.";
+"Allowed" = "Autorisé";
+"Permissions…" = "Autorisations…";
