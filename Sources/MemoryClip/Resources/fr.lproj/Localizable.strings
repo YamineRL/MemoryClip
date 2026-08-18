@@ -405,3 +405,5 @@
 "Each one is used by a single feature, and nothing else in MemoryClip needs it. You can change any of them later in System Settings → Privacy & Security." = "Chacune sert à une seule fonction, et rien d’autre dans MemoryClip n’en a besoin. Vous pouvez les modifier à tout moment dans Réglages Système → Confidentialité et sécurité.";
 "Allowed" = "Autorisé";
 "Permissions…" = "Autorisations…";
+"A feature you have switched on is blocked" = "Une fonction activée est bloquée";
+"macOS has not given MemoryClip the permission it needs, so the feature is switched on and quietly doing nothing. Allowing it here is all that is missing." = "macOS n’a pas accordé à MemoryClip l’autorisation nécessaire : la fonction est activée mais reste sans effet. Il ne manque que votre accord ici.";

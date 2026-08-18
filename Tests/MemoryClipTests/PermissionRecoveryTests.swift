@@ -127,6 +127,64 @@ final class PermissionRecoveryTests: XCTestCase {
         XCTAssertTrue(lost.isEmpty, "a state that could not be read is not a loss")
     }
 
+    // MARK: A switched-on feature that cannot run
+
+    func testAnAutomaticEventSwitchWithNoCalendarAccessIsOffered() {
+        let blocked = PermissionRecovery.blocked(
+            states: [.calendar: .forgotten],
+            createsEventsAutomatically: true,
+            writesToNotesApp: false
+        )
+        XCTAssertEqual(blocked, [.calendar])
+    }
+
+    func testNotesAsTheDestinationWithNoAutomationIsOffered() {
+        let blocked = PermissionRecovery.blocked(
+            states: [.notesAutomation: .denied],
+            createsEventsAutomatically: false,
+            writesToNotesApp: true
+        )
+        XCTAssertEqual(blocked, [.notesAutomation])
+    }
+
+    func testAFeatureThatIsOffIsNotOffered() {
+        let blocked = PermissionRecovery.blocked(
+            states: [.calendar: .forgotten, .notesAutomation: .forgotten],
+            createsEventsAutomatically: false,
+            writesToNotesApp: false
+        )
+        XCTAssertTrue(blocked.isEmpty, "a permission is only worth asking for once something needs it")
+    }
+
+    func testAFeatureThatWorksIsNotOffered() {
+        let blocked = PermissionRecovery.blocked(
+            states: [.calendar: .granted],
+            createsEventsAutomatically: true,
+            writesToNotesApp: false
+        )
+        XCTAssertTrue(blocked.isEmpty)
+    }
+
+    func testAnUncheckableFeatureIsNotOffered() {
+        let blocked = PermissionRecovery.blocked(
+            states: [.notesAutomation: .unavailable],
+            createsEventsAutomatically: false,
+            writesToNotesApp: true
+        )
+        XCTAssertTrue(blocked.isEmpty, "Notes not being installed is not a permission problem")
+    }
+
+    func testAccessibilityIsNeverOfferedThisWay() {
+        // `autoPaste` defaults to on, so an Accessibility row here would open
+        // this window for nearly every user on first launch.
+        let blocked = PermissionRecovery.blocked(
+            states: [.accessibility: .forgotten, .calendar: .forgotten],
+            createsEventsAutomatically: true,
+            writesToNotesApp: true
+        )
+        XCTAssertFalse(blocked.contains(.accessibility))
+    }
+
     // MARK: The ledger
 
     func testTheLedgerRemembersWhatWorkedAndUnderWhichBuild() throws {

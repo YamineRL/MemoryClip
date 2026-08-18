@@ -405,3 +405,5 @@
 "Each one is used by a single feature, and nothing else in MemoryClip needs it. You can change any of them later in System Settings → Privacy & Security." = "Each one is used by a single feature, and nothing else in MemoryClip needs it. You can change any of them later in System Settings → Privacy & Security.";
 "Allowed" = "Allowed";
 "Permissions…" = "Permissions…";
+"A feature you have switched on is blocked" = "A feature you have switched on is blocked";
+"macOS has not given MemoryClip the permission it needs, so the feature is switched on and quietly doing nothing. Allowing it here is all that is missing." = "macOS has not given MemoryClip the permission it needs, so the feature is switched on and quietly doing nothing. Allowing it here is all that is missing.";

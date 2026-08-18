@@ -47,7 +47,8 @@ final class PermissionRecoveryController: NSObject, NSWindowDelegate {
     /// window, and a permission the user declined to restore is offered once
     /// per build rather than once per launch — Permissions… in the menu bar
     /// is how anyone who dismissed it gets back.
-    func showIfNeeded(defaults: UserDefaults = .standard) {
+    @discardableResult
+    func showIfNeeded(defaults: UserDefaults = .standard) -> Bool {
         let ledger = PermissionLedger(defaults: defaults)
         let states = PermissionProbe.states()
         reconcile(states: states, ledger: ledger)
@@ -58,12 +59,45 @@ final class PermissionRecoveryController: NSObject, NSWindowDelegate {
             states: states,
             identity: AppIdentity.current
         )
-        guard !lost.isEmpty else { return }
+        guard !lost.isEmpty else { return false }
         for permission in lost {
             ledger.noteOffered(permission)
         }
         log.notice("Offering to restore \(lost.count, privacy: .public) permission(s) after an update")
         show(lost, states: states, reason: .update, ledger: ledger)
+        return true
+    }
+
+    /// UserDefaults key recording that the blocked-feature offer has been made.
+    nonisolated static let blockedOfferKey = "permissionBlockedOfferShown"
+
+    /// Offer, once ever, the permissions a switched-on feature is missing.
+    ///
+    /// The ledger cannot help the release that introduces it: a grant dropped
+    /// by the very update that installs this code was never observed, so
+    /// `showIfNeeded` has nothing to offer and the feature protects only the
+    /// *next* update. The settings do know, though — automatic events are on,
+    /// or notes go to Notes — and a feature that is switched on and cannot run
+    /// is worth saying out loud exactly once.
+    ///
+    /// The flag is written only when the window is actually shown, so someone
+    /// who turns automatic events on next month still gets the offer then.
+    @discardableResult
+    func showBlockedOnce(defaults: UserDefaults = .standard) -> Bool {
+        guard !defaults.bool(forKey: Self.blockedOfferKey) else { return false }
+
+        let states = PermissionProbe.states()
+        let blocked = PermissionRecovery.blocked(
+            states: states,
+            createsEventsAutomatically: defaults.bool(forKey: CalendarSettingsKeys.autoCreate),
+            writesToNotesApp: NoteDestination.current == .notesApp
+        )
+        guard !blocked.isEmpty else { return false }
+
+        defaults.set(true, forKey: Self.blockedOfferKey)
+        log.notice("Offering \(blocked.count, privacy: .public) permission(s) a switched-on feature needs")
+        show(blocked, states: states, reason: .blocked, ledger: PermissionLedger(defaults: defaults))
+        return true
     }
 
     /// Bring the ledger up to date with what macOS says right now.

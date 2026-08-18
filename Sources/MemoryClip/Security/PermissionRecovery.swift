@@ -248,6 +248,41 @@ enum PermissionRecovery {
     /// 4. This build has not offered it already. One offer per update; the
     ///    Settings panes stay open to anyone who declines and changes their
     ///    mind.
+    /// The permissions a feature the user has switched on needs and does not
+    /// have.
+    ///
+    /// A different question from `lost`, and asked for a different reason.
+    /// `lost` repairs what an update took away, and can only fire once a grant
+    /// has been observed under an earlier build — which the release that
+    /// introduces the ledger never has. This one reads the settings instead:
+    /// automatic events are on, or notes are set to go to Notes, and the
+    /// permission that makes either work is missing. That is a feature that is
+    /// on and silently doing nothing, whatever the history behind it.
+    ///
+    /// Accessibility is deliberately absent. `autoPaste` defaults to on, so
+    /// including it would put this window in front of nearly every user on
+    /// first launch, and a window everyone learns to dismiss is worth less
+    /// than no window.
+    static func blocked(
+        states: [RecoverablePermission: PermissionState],
+        createsEventsAutomatically: Bool,
+        writesToNotesApp: Bool
+    ) -> [RecoverablePermission] {
+        var found: [RecoverablePermission] = []
+        if createsEventsAutomatically, isMissing(states[.calendar]) { found.append(.calendar) }
+        if writesToNotesApp, isMissing(states[.notesAutomation]) { found.append(.notesAutomation) }
+        return found
+    }
+
+    /// Missing in a way the user can do something about — which `.unavailable`
+    /// (Notes not installed, a profile blocking the service) is not.
+    private static func isMissing(_ state: PermissionState?) -> Bool {
+        switch state {
+        case .forgotten, .denied: return true
+        case .granted, .unavailable, nil: return false
+        }
+    }
+
     static func lost(
         granted: [RecoverablePermission: String],
         asked: [RecoverablePermission: String],
