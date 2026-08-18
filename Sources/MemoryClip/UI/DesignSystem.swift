@@ -446,11 +446,14 @@ struct KeyCap: View {
     }
 }
 
-/// The capsule shown at the foot of a scroll view while content continues
-/// below its edge.
+/// The capsule shown at the edge of a scroll view while content continues
+/// past it.
 struct ScrollMoreIndicator: View {
+    /// The axis the content runs along, which is the way the chevron points.
+    var axis: Axis = .vertical
+
     var body: some View {
-        Image(systemName: "chevron.down")
+        Image(systemName: axis == .vertical ? "chevron.down" : "chevron.right")
             .font(.system(size: Design.Typography.scrollHintSize, weight: .semibold))
             .foregroundStyle(Color(nsColor: .secondaryLabelColor))
             .padding(.horizontal, Design.Space.normal)
@@ -465,39 +468,65 @@ struct ScrollMoreIndicator: View {
     }
 }
 
-/// Fades the last line of a scroll view out under a `ScrollMoreIndicator`,
+/// Fades a scroll view's trailing edge out under a `ScrollMoreIndicator`,
 /// and shows both only while there is more to scroll to.
 ///
 /// The fade is a mask on the content rather than a gradient over it: these
 /// panes are translucent, so there is no colour to fade into.
+///
+/// Both axes, from one modifier: the preview pane scrolls down through a
+/// clip and the card strip scrolls right through the clips, and a reader who
+/// has learned what the fading edge and the chevron mean in one of them
+/// should not have to learn it again in the other.
 struct ScrollMoreHint: ViewModifier {
+    let axis: Axis
+
     @State private var hasMore = false
 
     func body(content: Content) -> some View {
         content
             .onScrollGeometryChange(for: Bool.self) { geometry in
-                let bottom = geometry.contentOffset.y + geometry.containerSize.height
-                return geometry.contentSize.height - bottom > Design.Size.scrollHintSlack
+                switch axis {
+                case .vertical:
+                    let edge = geometry.contentOffset.y + geometry.containerSize.height
+                    return geometry.contentSize.height - edge > Design.Size.scrollHintSlack
+                case .horizontal:
+                    let edge = geometry.contentOffset.x + geometry.containerSize.width
+                    return geometry.contentSize.width - edge > Design.Size.scrollHintSlack
+                }
             } action: { _, more in
                 withAnimation(Design.Motion.quick) { hasMore = more }
             }
-            .mask(alignment: .top) {
-                VStack(spacing: 0) {
-                    Rectangle()
-                    LinearGradient(
-                        colors: [.black, .black.opacity(hasMore ? 0.15 : 1)],
-                        startPoint: .top,
-                        endPoint: .bottom
-                    )
-                    .frame(height: Design.Size.scrollHintFade)
-                }
-            }
-            .overlay(alignment: .bottom) {
-                ScrollMoreIndicator()
-                    .padding(.bottom, Design.Space.tight)
+            .mask(alignment: axis == .vertical ? .top : .leading) { fade }
+            .overlay(alignment: axis == .vertical ? .bottom : .trailing) {
+                ScrollMoreIndicator(axis: axis)
+                    .padding(axis == .vertical ? .bottom : .trailing, Design.Space.tight)
                     .opacity(hasMore ? 1 : 0)
                     .allowsHitTesting(false)
             }
+    }
+
+    /// Opaque everywhere but the trailing edge, which fades while there is
+    /// more content behind it and is opaque again once there is not.
+    @ViewBuilder
+    private var fade: some View {
+        let gradient = LinearGradient(
+            colors: [.black, .black.opacity(hasMore ? 0.15 : 1)],
+            startPoint: axis == .vertical ? .top : .leading,
+            endPoint: axis == .vertical ? .bottom : .trailing
+        )
+        switch axis {
+        case .vertical:
+            VStack(spacing: 0) {
+                Rectangle()
+                gradient.frame(height: Design.Size.scrollHintFade)
+            }
+        case .horizontal:
+            HStack(spacing: 0) {
+                Rectangle()
+                gradient.frame(width: Design.Size.scrollHintFade)
+            }
+        }
     }
 }
 
@@ -520,9 +549,9 @@ struct DetectionChip: View {
 }
 
 extension View {
-    /// Mark a scroll view as one that says when it has more below.
-    func scrollMoreHint() -> some View {
-        modifier(ScrollMoreHint())
+    /// Mark a scroll view as one that says when it has more past its edge.
+    func scrollMoreHint(_ axis: Axis = .vertical) -> some View {
+        modifier(ScrollMoreHint(axis: axis))
     }
 
     /// A pane: a rounded, outlined surface for grouped content.
