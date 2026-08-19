@@ -34,14 +34,35 @@ enum TypeFilter: String, CaseIterable, Identifiable {
         }
     }
 
-    func matches(_ kind: ClipKind) -> Bool {
-        kinds.map { $0.contains(kind) } ?? true
+    /// Whether a clip belongs under this chip.
+    ///
+    /// A screenshot is stored as a `.file` clip, because that is what it is:
+    /// a file on disk, which is why pasting one pastes the file and Reveal in
+    /// Finder can find it. It is a *picture* to the person who took it,
+    /// though, and someone filtering Images and not seeing their screenshots
+    /// has been told something false about their own history. So the two
+    /// chips read `isScreenshot` rather than the kind alone: screenshots are
+    /// images here, and Files is what is left — the documents dragged or
+    /// copied in Finder, which is what anyone picking that chip is after.
+    func matches(_ kind: ClipKind, isScreenshot: Bool = false) -> Bool {
+        switch self {
+        case .all: return true
+        case .text: return kind == .text || kind == .richText
+        case .image: return kind == .image || isScreenshot
+        case .link: return kind == .link
+        case .file: return kind == .file && !isScreenshot
+        case .color: return kind == .color
+        }
     }
 
-    /// The clip kinds this chip admits, or nil for "everything".
+    /// The clip kinds this chip admits *in SQL*, or nil for "everything".
     ///
-    /// The single source of truth for both the Swift-side `matches` and the
-    /// SwiftData predicate, so the two can never drift apart.
+    /// Wider than `matches` for Images, and only there: a screenshot's row
+    /// says `file`, so the fetch has to admit file rows and let `refine(_:)`
+    /// drop the ones that are not screenshots. The predicate cannot do that
+    /// narrowing itself — every clause added to it costs type-checking time
+    /// the expression does not have (see `ClipFilter.predicate`) — and the
+    /// panel already re-checks and re-pages the remainder in Swift.
     var kinds: Set<ClipKind>? {
         switch self {
         case .all:
@@ -51,7 +72,7 @@ enum TypeFilter: String, CaseIterable, Identifiable {
             // deliberately *not* folded in (they have their own chip).
             return [.text, .richText]
         case .image:
-            return [.image]
+            return [.image, .file]
         case .link:
             return [.link]
         case .file:
@@ -146,7 +167,7 @@ struct ClipFilter: Equatable {
     var isIdentity: Bool { search.isEmpty && type == .all && source == nil }
 
     func matchesType(_ item: some ClipDisplayable) -> Bool {
-        type.matches(item.kind)
+        type.matches(item.kind, isScreenshot: item.isScreenshot)
     }
 
     func matchesSource(_ item: some ClipDisplayable) -> Bool {
@@ -346,12 +367,18 @@ extension ClipFilter {
     /// The part of the filter the predicate could not express, applied to
     /// rows the predicate already returned.
     ///
-    /// Only file clips need re-checking: they are the ones `predicate` waves
-    /// through unconditionally while a search is active. Everything else
-    /// already matched in SQL.
+    /// Two things SQL waved through. The type, because Images admits file
+    /// rows in order to reach the screenshots among them, and the ones that
+    /// are not screenshots have to go. And the search over file clips, whose
+    /// searchable content lives in `fileURLStrings` — one opaque blob to
+    /// SwiftData — so they are admitted unconditionally while a search is
+    /// active and sifted here.
     func refine<T: ClipDisplayable>(_ items: [T]) -> [T] {
-        guard !search.isEmpty else { return items }
-        return items.filter { $0.kind != .file || matchesSearch($0) }
+        items.filter { item in
+            guard matchesType(item) else { return false }
+            guard !search.isEmpty, item.kind == .file else { return true }
+            return matchesSearch(item)
+        }
     }
 }
 
