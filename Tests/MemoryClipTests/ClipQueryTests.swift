@@ -254,25 +254,78 @@ final class ClipQueryTests: XCTestCase {
         )
     }
 
-    func testRefineIsAPassThroughWithoutASearch() {
+    func testRefineIsAPassThroughWithoutASearchOrANarrowedType() {
         let items = [
             ClipItem(kind: .file, fileURLStrings: ["/tmp/a.txt"], contentHash: "a"),
             ClipItem(kind: .text, text: "b", contentHash: "b")
         ]
         XCTAssertEqual(ClipFilter().refine(items).count, 2)
-        XCTAssertEqual(ClipFilter(type: .file).refine(items).count, 2, "the type filter is SQL's job")
+        XCTAssertEqual(ClipFilter(type: .file).refine(items).count, 1, "a text row is not a file")
+    }
+
+    // MARK: Screenshots are pictures
+
+    func testTheImageChipAdmitsScreenshotsAndTheFileChipDoesNot() {
+        // A screenshot is a `.file` clip — it is a file on disk — but the
+        // person who took it is looking under Images.
+        let shot = ClipItem(
+            kind: .file,
+            fileURLStrings: ["/tmp/Screenshot 2026-08-19 at 10.00.00.png"],
+            contentHash: "shot",
+            isScreenshot: true
+        )
+        let document = ClipItem(kind: .file, fileURLStrings: ["/tmp/report.pdf"], contentHash: "doc")
+        let pasted = ClipItem(kind: .image, contentHash: "img")
+
+        XCTAssertEqual(
+            ClipFilter(type: .image).refine([shot, document, pasted]).map(\.uuid),
+            [shot.uuid, pasted.uuid],
+            "Images means every picture, however it arrived"
+        )
+        XCTAssertEqual(
+            ClipFilter(type: .file).refine([shot, document, pasted]).map(\.uuid),
+            [document.uuid],
+            "Files means the documents, not the screenshots"
+        )
+    }
+
+    func testTheImageChipStillFetchesScreenshotRows() throws {
+        insert(kind: .file, files: ["/tmp/report.pdf"], app: "Finder")
+        let shot = ClipItem(
+            kind: .file,
+            fileURLStrings: ["/tmp/Screenshot.png"],
+            contentHash: "shot",
+            sourceAppName: ClipStore.screenshotSourceName,
+            isScreenshot: true
+        )
+        context.insert(shot)
+        try context.save()
+
+        // The fetch has to admit file rows for the screenshots among them;
+        // the narrowing is `refine`'s, and both halves have to agree or the
+        // chip shows an empty panel over a store that holds the clip.
+        let filter = ClipFilter(type: .image)
+        let fetched = try context.fetch(filter.fetchDescriptor())
+        XCTAssertTrue(fetched.contains { $0.uuid == shot.uuid }, "SQL dropped the screenshot")
+        XCTAssertEqual(filter.refine(fetched).map(\.uuid), [shot.uuid])
     }
 
     func testKindRawValuesMirrorTheTypeFilter() {
         XCTAssertEqual(TypeFilter.all.kindRawValues, [], "empty means unrestricted")
         XCTAssertEqual(TypeFilter.text.kindRawValues, ["richText", "text"])
         XCTAssertEqual(TypeFilter.link.kindRawValues, ["link"])
+        XCTAssertEqual(TypeFilter.image.kindRawValues, ["file", "image"], "screenshots are file rows")
+
+        // The fetch may be wider than the filter — Images reaches screenshots
+        // by admitting file rows — but it may never be NARROWER, because a
+        // row SQL drops is a clip `refine(_:)` never sees and the panel never
+        // shows.
         for type in TypeFilter.allCases {
             for kind in ClipKind.allCases where type != .all {
-                XCTAssertEqual(
-                    type.matches(kind),
+                guard type.matches(kind) else { continue }
+                XCTAssertTrue(
                     type.kindRawValues.contains(kind.rawValue),
-                    "\(type)/\(kind): the predicate and the Swift filter must agree"
+                    "\(type)/\(kind): the predicate would drop a row the filter admits"
                 )
             }
         }
