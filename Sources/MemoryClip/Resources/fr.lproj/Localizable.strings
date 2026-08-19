@@ -323,6 +323,7 @@
 "Choose a Notes folder in Settings → Notes." = "Choisissez un dossier Notes dans Réglages → Notes.";
 "Choose a Shortcut in Settings → Notes." = "Choisissez un raccourci dans Réglages → Notes.";
 "MemoryClip can no longer reach %@. Pick the folder again in Settings → Notes." = "MemoryClip n’a plus accès à %@. Choisissez à nouveau le dossier dans Réglages → Notes.";
+"macOS is not letting MemoryClip into %@. Allow it under Permissions in the menu bar — an update drops the access you gave the folder." = "macOS n’autorise pas MemoryClip à accéder à %@. Accordez-le via Autorisations dans la barre des menus — une mise à jour retire l’accès que vous aviez donné au dossier.";
 "The note could not be written: %@" = "La note n’a pas pu être écrite : %@";
 "MemoryClip needs permission to control Notes. Allow it in System Settings → Privacy & Security → Automation." = "MemoryClip a besoin de votre autorisation pour contrôler Notes. Accordez-la dans Réglages Système → Confidentialité et sécurité → Automatisation.";
 "The Shortcut did not finish: %@" = "Le raccourci ne s’est pas terminé : %@";
@@ -396,6 +397,9 @@
 "Accessibility" = "Accessibilité";
 "Adding a clip to your calendar." = "Ajouter un clip à votre calendrier.";
 "Saving a clip to Apple Notes." = "Enregistrer un clip dans Notes.";
+"Files and Folders" = "Fichiers et dossiers";
+"Writing notes into your Markdown folder, and watching the folder your screenshots go to." = "Écrire vos notes dans votre dossier Markdown, et surveiller le dossier où vont vos captures d’écran.";
+"Not available" = "Indisponible";
 "Pasting the clip you pick into the app you came from." = "Coller le clip choisi dans l’app d’où vous venez.";
 "MemoryClip needs your permission again" = "MemoryClip a de nouveau besoin de vos autorisations";
 "macOS treats an updated app as a new one, so the permissions you gave the last version were dropped. Nothing else changed — your clips, notes and settings are where you left them." = "macOS considère une app mise à jour comme une nouvelle app : les autorisations accordées à la version précédente ont été retirées. Rien d’autre n’a changé — vos clips, vos notes et vos réglages sont intacts.";

@@ -68,8 +68,17 @@ final class PermissionRecoveryController: NSObject, NSWindowDelegate {
         return true
     }
 
-    /// UserDefaults key recording that the blocked-feature offer has been made.
-    nonisolated static let blockedOfferKey = "permissionBlockedOfferShown"
+    /// UserDefaults key recording which permissions the blocked-feature offer
+    /// has already been made for.
+    nonisolated static let blockedOfferKey = "permissionBlockedOffered"
+
+    /// The 0.4.0 spelling: one boolean for the window as a whole.
+    ///
+    /// Kept only to be read. A user who was offered Calendars under 0.4.0 has
+    /// had their one offer, and a set seeded from this flag says so — but it
+    /// must not silence the folder permission, which 0.4.0 could not offer and
+    /// which is the one most of them are missing.
+    nonisolated static let legacyBlockedOfferKey = "permissionBlockedOfferShown"
 
     /// Offer, once ever, the permissions a switched-on feature is missing.
     ///
@@ -80,24 +89,53 @@ final class PermissionRecoveryController: NSObject, NSWindowDelegate {
     /// or notes go to Notes — and a feature that is switched on and cannot run
     /// is worth saying out loud exactly once.
     ///
-    /// The flag is written only when the window is actually shown, so someone
-    /// who turns automatic events on next month still gets the offer then.
+    /// Recorded per permission, and only when the window is actually shown, so
+    /// someone who turns automatic events on next month still gets the offer
+    /// then — and so a release that can offer something the last one could not
+    /// is not silenced by an offer the user has already had.
+    ///
+    /// The Markdown folder is the case this shipped without, and the one that
+    /// needs it most: it is the default destination, it needs no setup beyond
+    /// picking a folder, and the folder people pick is usually under
+    /// `~/Documents` — so it is the permission the largest number of users
+    /// silently lost, with a vault path still showing in Settings.
     @discardableResult
     func showBlockedOnce(defaults: UserDefaults = .standard) -> Bool {
-        guard !defaults.bool(forKey: Self.blockedOfferKey) else { return false }
-
+        let offered = Self.blockedOffers(defaults: defaults)
         let states = PermissionProbe.states()
         let blocked = PermissionRecovery.blocked(
             states: states,
             createsEventsAutomatically: defaults.bool(forKey: CalendarSettingsKeys.autoCreate),
-            writesToNotesApp: NoteDestination.current == .notesApp
-        )
+            writesToNotesApp: NoteDestination.current == .notesApp,
+            usesAFolder: NoteDestination.current == .markdownVault || ScreenshotWatcher.isEnabled
+        ).filter { !offered.contains($0) }
         guard !blocked.isEmpty else { return false }
 
-        defaults.set(true, forKey: Self.blockedOfferKey)
+        Self.noteBlockedOffers(offered.union(blocked), defaults: defaults)
         log.notice("Offering \(blocked.count, privacy: .public) permission(s) a switched-on feature needs")
         show(blocked, states: states, reason: .blocked, ledger: PermissionLedger(defaults: defaults))
         return true
+    }
+
+    /// The permissions the blocked-feature offer has already been made for.
+    ///
+    /// Seeded from the 0.4.0 boolean when that is all there is: it meant the
+    /// window had been shown, and the only two permissions it could have shown
+    /// were these.
+    nonisolated static func blockedOffers(defaults: UserDefaults = .standard) -> Set<RecoverablePermission> {
+        if let stored = defaults.array(forKey: blockedOfferKey) as? [String] {
+            return Set(stored.compactMap(RecoverablePermission.init(rawValue:)))
+        }
+        guard defaults.bool(forKey: legacyBlockedOfferKey) else { return [] }
+        return [.calendar, .notesAutomation]
+    }
+
+    /// Record that the offer has been made for `permissions`.
+    nonisolated static func noteBlockedOffers(
+        _ permissions: Set<RecoverablePermission>,
+        defaults: UserDefaults = .standard
+    ) {
+        defaults.set(permissions.map(\.rawValue).sorted(), forKey: blockedOfferKey)
     }
 
     /// Bring the ledger up to date with what macOS says right now.

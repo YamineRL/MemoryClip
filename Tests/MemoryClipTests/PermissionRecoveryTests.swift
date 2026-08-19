@@ -39,9 +39,14 @@ final class PermissionRecoveryTests: XCTestCase {
 
     func testEveryLostGrantIsOfferedInADeterminedOrder() {
         let lost = PermissionRecovery.lost(
-            granted: [.accessibility: old, .calendar: old, .notesAutomation: old],
+            granted: [.accessibility: old, .calendar: old, .notesAutomation: old, .filesAndFolders: old],
             asked: [:],
-            states: [.accessibility: .forgotten, .calendar: .forgotten, .notesAutomation: .forgotten],
+            states: [
+                .accessibility: .forgotten,
+                .calendar: .forgotten,
+                .notesAutomation: .forgotten,
+                .filesAndFolders: .forgotten,
+            ],
             identity: new
         )
         // Dictionaries do not keep an order; the window must not reshuffle its
@@ -67,7 +72,12 @@ final class PermissionRecoveryTests: XCTestCase {
         let lost = PermissionRecovery.lost(
             granted: [:],
             asked: [:],
-            states: [.calendar: .forgotten, .notesAutomation: .forgotten, .accessibility: .forgotten],
+            states: [
+                .calendar: .forgotten,
+                .notesAutomation: .forgotten,
+                .filesAndFolders: .forgotten,
+                .accessibility: .forgotten,
+            ],
             identity: new
         )
         XCTAssertTrue(lost.isEmpty)
@@ -133,7 +143,8 @@ final class PermissionRecoveryTests: XCTestCase {
         let blocked = PermissionRecovery.blocked(
             states: [.calendar: .forgotten],
             createsEventsAutomatically: true,
-            writesToNotesApp: false
+            writesToNotesApp: false,
+            usesAFolder: false
         )
         XCTAssertEqual(blocked, [.calendar])
     }
@@ -142,7 +153,8 @@ final class PermissionRecoveryTests: XCTestCase {
         let blocked = PermissionRecovery.blocked(
             states: [.notesAutomation: .denied],
             createsEventsAutomatically: false,
-            writesToNotesApp: true
+            writesToNotesApp: true,
+            usesAFolder: false
         )
         XCTAssertEqual(blocked, [.notesAutomation])
     }
@@ -151,7 +163,8 @@ final class PermissionRecoveryTests: XCTestCase {
         let blocked = PermissionRecovery.blocked(
             states: [.calendar: .forgotten, .notesAutomation: .forgotten],
             createsEventsAutomatically: false,
-            writesToNotesApp: false
+            writesToNotesApp: false,
+            usesAFolder: false
         )
         XCTAssertTrue(blocked.isEmpty, "a permission is only worth asking for once something needs it")
     }
@@ -160,7 +173,8 @@ final class PermissionRecoveryTests: XCTestCase {
         let blocked = PermissionRecovery.blocked(
             states: [.calendar: .granted],
             createsEventsAutomatically: true,
-            writesToNotesApp: false
+            writesToNotesApp: false,
+            usesAFolder: false
         )
         XCTAssertTrue(blocked.isEmpty)
     }
@@ -169,7 +183,8 @@ final class PermissionRecoveryTests: XCTestCase {
         let blocked = PermissionRecovery.blocked(
             states: [.notesAutomation: .unavailable],
             createsEventsAutomatically: false,
-            writesToNotesApp: true
+            writesToNotesApp: true,
+            usesAFolder: false
         )
         XCTAssertTrue(blocked.isEmpty, "Notes not being installed is not a permission problem")
     }
@@ -180,9 +195,80 @@ final class PermissionRecoveryTests: XCTestCase {
         let blocked = PermissionRecovery.blocked(
             states: [.accessibility: .forgotten, .calendar: .forgotten],
             createsEventsAutomatically: true,
-            writesToNotesApp: true
+            writesToNotesApp: true,
+            usesAFolder: true
         )
         XCTAssertFalse(blocked.contains(.accessibility))
+    }
+
+    // MARK: The folder the notes go to
+
+    func testAWatchedScreenshotFolderMacOSWillNotOpenIsOffered() {
+        // The folder the watcher falls back to when nothing was picked is
+        // usually ~/Desktop, which macOS guards; the row has to cover it, or
+        // the only thing that tells the user is a cold prompt at launch.
+        let blocked = PermissionRecovery.blocked(
+            states: [.filesAndFolders: .forgotten],
+            createsEventsAutomatically: false,
+            writesToNotesApp: false,
+            usesAFolder: true
+        )
+        XCTAssertEqual(blocked, [.filesAndFolders])
+    }
+
+    func testAVaultMacOSWillNotOpenIsOffered() {
+        // The case 0.4.0 shipped without: notes go to a Markdown folder, the
+        // folder is under ~/Documents, and the update that installed the app
+        // dropped the grant that let it write there.
+        let blocked = PermissionRecovery.blocked(
+            states: [.filesAndFolders: .forgotten],
+            createsEventsAutomatically: false,
+            writesToNotesApp: false,
+            usesAFolder: true
+        )
+        XCTAssertEqual(blocked, [.filesAndFolders])
+    }
+
+    func testAVaultThatOpensIsNotOffered() {
+        let blocked = PermissionRecovery.blocked(
+            states: [.filesAndFolders: .granted],
+            createsEventsAutomatically: false,
+            writesToNotesApp: false,
+            usesAFolder: true
+        )
+        XCTAssertTrue(blocked.isEmpty)
+    }
+
+    func testNoFolderPickedIsNotAPermissionProblem() {
+        // Nothing chosen, so nothing to be refused: `.unavailable` is what the
+        // probe reports, and there is no grant for the user to give.
+        let blocked = PermissionRecovery.blocked(
+            states: [.filesAndFolders: .unavailable],
+            createsEventsAutomatically: false,
+            writesToNotesApp: false,
+            usesAFolder: true
+        )
+        XCTAssertTrue(blocked.isEmpty)
+    }
+
+    func testNotesGoingSomewhereElseDoNotAskForTheFolder() {
+        let blocked = PermissionRecovery.blocked(
+            states: [.filesAndFolders: .forgotten],
+            createsEventsAutomatically: false,
+            writesToNotesApp: true,
+            usesAFolder: false
+        )
+        XCTAssertEqual(blocked, [], "a Markdown folder nobody writes to needs no permission")
+    }
+
+    func testAFolderGrantLostToAnUpdateIsOffered() {
+        let lost = PermissionRecovery.lost(
+            granted: [.filesAndFolders: old],
+            asked: [:],
+            states: [.filesAndFolders: .forgotten],
+            identity: new
+        )
+        XCTAssertEqual(lost, [.filesAndFolders])
     }
 
     // MARK: The ledger
@@ -204,6 +290,24 @@ final class PermissionRecoveryTests: XCTestCase {
         XCTAssertNil(ledger.granted[.calendar])
     }
 
+    func testTheLedgerAnswersWhetherThisBuildIsKnownToWork() throws {
+        // The only Files and Folders question that can be answered without
+        // putting a dialog on screen, which is why the launch path asks it.
+        let suite = "PermissionRecoveryTests-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { UserDefaults.standard.removePersistentDomain(forName: suite) }
+        let ledger = PermissionLedger(defaults: defaults)
+
+        XCTAssertFalse(
+            ledger.worksUnderThisBuild(.filesAndFolders, identity: new),
+            "unknown counts as lost: the alternative is finding out by prompting"
+        )
+        ledger.noteGranted(.filesAndFolders, identity: old)
+        XCTAssertFalse(ledger.worksUnderThisBuild(.filesAndFolders, identity: new))
+        ledger.noteGranted(.filesAndFolders, identity: new)
+        XCTAssertTrue(ledger.worksUnderThisBuild(.filesAndFolders, identity: new))
+    }
+
     func testTheLedgerKeepsOffersApartFromGrants() throws {
         let suite = "PermissionRecoveryTests-\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
@@ -223,6 +327,47 @@ final class PermissionRecoveryTests: XCTestCase {
         defaults.set(["screenRecording": new, "calendar": new], forKey: PermissionLedger.grantedKey)
 
         XCTAssertEqual(PermissionLedger(defaults: defaults).granted, [.calendar: new])
+    }
+
+    // MARK: What has already been offered
+
+    func testAnOfferIsRememberedPerPermission() throws {
+        let suite = "PermissionRecoveryTests-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { UserDefaults.standard.removePersistentDomain(forName: suite) }
+
+        XCTAssertTrue(PermissionRecoveryController.blockedOffers(defaults: defaults).isEmpty)
+        PermissionRecoveryController.noteBlockedOffers([.calendar], defaults: defaults)
+        XCTAssertEqual(PermissionRecoveryController.blockedOffers(defaults: defaults), [.calendar])
+    }
+
+    func testAnOfferMadeByTheOldFlagCoversOnlyWhatItCouldOffer() throws {
+        // 0.4.0 wrote one boolean for the whole window, and could only ever
+        // have shown these two. Reading it as "everything has been offered"
+        // would silence the folder permission for exactly the users who lost
+        // it — the ones who already ran 0.4.0.
+        let suite = "PermissionRecoveryTests-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { UserDefaults.standard.removePersistentDomain(forName: suite) }
+        defaults.set(true, forKey: PermissionRecoveryController.legacyBlockedOfferKey)
+
+        let offered = PermissionRecoveryController.blockedOffers(defaults: defaults)
+        XCTAssertEqual(offered, [.calendar, .notesAutomation])
+        XCTAssertFalse(offered.contains(.filesAndFolders))
+    }
+
+    func testTheNewRecordWinsOverTheOldFlag() throws {
+        let suite = "PermissionRecoveryTests-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { UserDefaults.standard.removePersistentDomain(forName: suite) }
+        defaults.set(true, forKey: PermissionRecoveryController.legacyBlockedOfferKey)
+        PermissionRecoveryController.noteBlockedOffers([.filesAndFolders], defaults: defaults)
+
+        XCTAssertEqual(
+            PermissionRecoveryController.blockedOffers(defaults: defaults),
+            [.filesAndFolders],
+            "the migration seeds the record once, it does not keep re-adding to it"
+        )
     }
 
     // MARK: Identity
@@ -249,5 +394,7 @@ final class PermissionRecoveryTests: XCTestCase {
         XCTAssertFalse(RecoverablePermission.accessibility.canPromptInPlace)
         XCTAssertTrue(RecoverablePermission.calendar.canPromptInPlace)
         XCTAssertTrue(RecoverablePermission.notesAutomation.canPromptInPlace)
+        // The open panel is the ask, and it grants the folder outright.
+        XCTAssertTrue(RecoverablePermission.filesAndFolders.canPromptInPlace)
     }
 }

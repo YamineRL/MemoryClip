@@ -28,6 +28,7 @@ enum PermissionProbe {
         switch permission {
         case .calendar: return calendarState
         case .notesAutomation: return notesAutomationState
+        case .filesAndFolders: return filesAndFoldersState
         case .accessibility: return accessibilityState
         }
     }
@@ -78,6 +79,62 @@ enum PermissionProbe {
         AXIsProcessTrusted() ? .granted : .forgotten
     }
 
+    /// Whether the folders the user picked are known to work.
+    ///
+    /// Read out of the ledger, not off the disk, and that is the whole design
+    /// rather than a shortcut. macOS answers a folder question by putting a
+    /// dialog in front of the user, so a probe here would raise one from
+    /// `states()` — which runs at launch, from the code whose entire job is to
+    /// explain the dialog before it appears.
+    ///
+    /// `.forgotten` therefore covers "lost to an update" and "never recorded"
+    /// alike. Both mean the same thing to the window: offer it, and let the
+    /// button be what touches the disk.
+    private static var filesAndFoldersState: PermissionState {
+        guard !grantedFolders().isEmpty else { return .unavailable }
+        return PermissionLedger().worksUnderThisBuild(.filesAndFolders) ? .granted : .forgotten
+    }
+
+    /// A folder MemoryClip has been pointed at, and how to ask for it again.
+    struct GrantedFolder {
+        let key: String
+        let url: URL
+        let title: String
+        let message: String
+    }
+
+    /// The folders in use, in the order Settings presents them.
+    ///
+    /// The vault is left out when its bookmark will not resolve at all: there
+    /// is no URL to probe and no folder to re-pick, and Settings shows no
+    /// folder for it either, so there is nothing here the window could offer.
+    static func grantedFolders(defaults: UserDefaults = .standard) -> [GrantedFolder] {
+        var folders: [GrantedFolder] = []
+        if NoteDestination.current == .markdownVault,
+           let vault = FolderBookmark.resolve(key: NoteSettingsKeys.vaultBookmark) {
+            folders.append(GrantedFolder(
+                key: NoteSettingsKeys.vaultBookmark,
+                url: vault,
+                title: loc("Choose Note Folder"),
+                message: loc("Pick the folder MemoryClip should write notes into — an Obsidian vault, or any folder of Markdown files.")
+            ))
+        }
+        if defaults.bool(forKey: NoteSettingsKeys.screenshotCaptureEnabled) {
+            // The folder the watcher actually watches, which is not always a
+            // bookmarked one: with the feature on and nothing picked, it falls
+            // back to wherever `screencapture` is configured to write — very
+            // often `~/Desktop`, which macOS guards just as closely. Reading
+            // only the bookmark here left the row blind to exactly that case.
+            folders.append(GrantedFolder(
+                key: NoteSettingsKeys.screenshotFolderBookmark,
+                url: ScreenshotWatcher.resolvedFolder(),
+                title: loc("Choose Screenshot Folder"),
+                message: loc("Pick the folder macOS saves your screenshots to. MemoryClip watches it for new files.")
+            ))
+        }
+        return folders
+    }
+
     // MARK: - Asking again
 
     /// Put the permission's own prompt on screen where macOS still allows one,
@@ -93,6 +150,8 @@ enum PermissionProbe {
             return calendarState
         case .notesAutomation:
             return await requestNotesAutomation()
+        case .filesAndFolders:
+            return requestFilesAndFolders()
         case .accessibility:
             requestAccessibility()
             return accessibilityState
@@ -126,6 +185,60 @@ enum PermissionProbe {
         default:
             return .forgotten
         }
+    }
+
+    /// Ask for the refused folders again, through the open panel.
+    ///
+    /// The panel *is* the prompt. Files and Folders has no dialog an app can
+    /// raise, but a folder the user chooses is granted to the app as part of
+    /// the choosing — the same route that granted it the first time — and that
+    /// route works even where System Settings shows a refusal.
+    ///
+    /// Only the folders that are actually refused are asked for, so someone
+    /// whose vault is fine and whose screenshot folder is not is not made to
+    /// re-pick both. Cancelling any of them leaves the rest alone: the state
+    /// returned is read back from disk afterwards, not assumed from the fact
+    /// that a panel was shown.
+    private static func requestFilesAndFolders() -> PermissionState {
+        var readings: [FolderAccess.Reading] = []
+        for folder in grantedFolders() {
+            // The real access first. The user pressed a button, so a prompt
+            // here is the prompt they asked for — and where macOS has simply
+            // forgotten rather than refused, answering it is the whole repair
+            // and the picker never has to appear.
+            var reading = FolderAccess.read(folder.url)
+            if reading != .readable {
+                // Refused, or the folder has moved. Picking it in an open
+                // panel grants it outright, which is the one route that works
+                // even against a refusal on the record.
+                if let chosen = FolderBookmark.choose(
+                    key: folder.key,
+                    title: folder.title,
+                    message: folder.message,
+                    startingAt: folder.url
+                ) {
+                    reading = FolderAccess.read(chosen)
+                }
+            }
+            readings.append(reading)
+        }
+        // From what the folders just said, not from the ledger: reading the
+        // ledger back here would report the state as it was before the button
+        // was pressed.
+        guard !readings.isEmpty else { return .unavailable }
+        let state: PermissionState = readings.allSatisfy { $0 == .readable } ? .granted : .forgotten
+
+        // Written here rather than left to the caller, and written *before*
+        // the notification: the watcher checks the ledger the moment it is
+        // told the folder changed, and would find the old answer.
+        if state == .granted { PermissionLedger().noteGranted(.filesAndFolders) }
+        if readings.contains(.readable) {
+            // The screenshot watcher declined to open a folder it had no
+            // access to, and nothing else would tell it that changed. Same
+            // notification the Settings picker posts, for the same reason.
+            NotificationCenter.default.post(name: .memoryClipScreenshotFolderChanged, object: nil)
+        }
+        return state
     }
 
     /// Ask macOS to list MemoryClip under Accessibility, and open the pane.

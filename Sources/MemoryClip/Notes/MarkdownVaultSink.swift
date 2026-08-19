@@ -99,12 +99,13 @@ struct MarkdownVaultSink: NoteSink {
     private func writeWithinScope(_ draft: NoteDraft, replacing existingLocation: String?) throws -> NoteReceipt {
         let fileManager = FileManager.default
         let vaultPath = vaultURL.path(percentEncoded: false)
-        var isDirectory: ObjCBool = false
-        guard fileManager.fileExists(atPath: vaultPath, isDirectory: &isDirectory), isDirectory.boolValue else {
-            // The folder was reachable when the sink was built and is not any
-            // more (unmounted volume, iCloud evicted the folder). Same recovery
-            // as never having picked one.
-            throw NoteError.folderUnavailable(vaultPath)
+        // The folder was reachable when the sink was built and is not any more
+        // (unmounted volume, iCloud evicted the folder, an update dropped the
+        // grant). Which of those it is decides what the user is told.
+        switch FolderAccess.read(vaultURL) {
+        case .readable: break
+        case .refused: throw NoteError.folderNotPermitted(vaultPath)
+        case .missing: throw NoteError.folderUnavailable(vaultPath)
         }
 
         // Copy the image FIRST: composition reads `attachmentFileName`, and an

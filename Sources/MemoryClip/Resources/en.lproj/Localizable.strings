@@ -323,6 +323,7 @@
 "Choose a Notes folder in Settings → Notes." = "Choose a Notes folder in Settings → Notes.";
 "Choose a Shortcut in Settings → Notes." = "Choose a Shortcut in Settings → Notes.";
 "MemoryClip can no longer reach %@. Pick the folder again in Settings → Notes." = "MemoryClip can no longer reach %@. Pick the folder again in Settings → Notes.";
+"macOS is not letting MemoryClip into %@. Allow it under Permissions in the menu bar — an update drops the access you gave the folder." = "macOS is not letting MemoryClip into %@. Allow it under Permissions in the menu bar — an update drops the access you gave the folder.";
 "The note could not be written: %@" = "The note could not be written: %@";
 "MemoryClip needs permission to control Notes. Allow it in System Settings → Privacy & Security → Automation." = "MemoryClip needs permission to control Notes. Allow it in System Settings → Privacy & Security → Automation.";
 "The Shortcut did not finish: %@" = "The Shortcut did not finish: %@";
@@ -396,6 +397,9 @@
 "Accessibility" = "Accessibility";
 "Adding a clip to your calendar." = "Adding a clip to your calendar.";
 "Saving a clip to Apple Notes." = "Saving a clip to Apple Notes.";
+"Files and Folders" = "Files and Folders";
+"Writing notes into your Markdown folder, and watching the folder your screenshots go to." = "Writing notes into your Markdown folder, and watching the folder your screenshots go to.";
+"Not available" = "Not available";
 "Pasting the clip you pick into the app you came from." = "Pasting the clip you pick into the app you came from.";
 "MemoryClip needs your permission again" = "MemoryClip needs your permission again";
 "macOS treats an updated app as a new one, so the permissions you gave the last version were dropped. Nothing else changed — your clips, notes and settings are where you left them." = "macOS treats an updated app as a new one, so the permissions you gave the last version were dropped. Nothing else changed — your clips, notes and settings are where you left them.";

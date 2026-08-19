@@ -388,6 +388,9 @@ struct NoteDestinationSetup: View {
         )
         guard let chosen else { return }
         vault = chosen
+        // Picking a folder in an open panel is how the grant is given, so this
+        // is one of the few places the app learns it has one.
+        PermissionLedger().noteGranted(.filesAndFolders)
     }
 }
 

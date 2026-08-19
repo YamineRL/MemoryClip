@@ -28,6 +28,17 @@ enum RecoverablePermission: String, CaseIterable, Sendable, Identifiable {
     case calendar
     /// Apple Events to Notes.app — `NotesAppSink`.
     case notesAutomation
+    /// Reading and writing the folders the user picked — `MarkdownVaultSink`
+    /// and `ScreenshotWatcher`.
+    ///
+    /// The odd one out, and the one this feature shipped without. There is no
+    /// status API behind it and no prompt to raise: macOS grants a folder when
+    /// the user chooses it in an open panel, and takes the grant away with the
+    /// signature, exactly as it does for Apple Events. A vault under
+    /// `~/Documents` therefore stops being writable at every update, with a
+    /// picked folder still shown in Settings and nothing on screen to say why
+    /// the notes stopped.
+    case filesAndFolders
     /// The synthetic ⌘V — `PasteService`.
     case accessibility
 
@@ -39,6 +50,7 @@ enum RecoverablePermission: String, CaseIterable, Sendable, Identifiable {
         switch self {
         case .calendar: return loc("Calendars")
         case .notesAutomation: return loc("Automation")
+        case .filesAndFolders: return loc("Files and Folders")
         case .accessibility: return loc("Accessibility")
         }
     }
@@ -52,6 +64,8 @@ enum RecoverablePermission: String, CaseIterable, Sendable, Identifiable {
             return loc("Adding a clip to your calendar.")
         case .notesAutomation:
             return loc("Saving a clip to Apple Notes.")
+        case .filesAndFolders:
+            return loc("Writing notes into your Markdown folder, and watching the folder your screenshots go to.")
         case .accessibility:
             return loc("Pasting the clip you pick into the app you came from.")
         }
@@ -61,6 +75,7 @@ enum RecoverablePermission: String, CaseIterable, Sendable, Identifiable {
         switch self {
         case .calendar: return "calendar.badge.plus"
         case .notesAutomation: return "note.text"
+        case .filesAndFolders: return "folder"
         case .accessibility: return "hand.tap"
         }
     }
@@ -76,6 +91,7 @@ enum RecoverablePermission: String, CaseIterable, Sendable, Identifiable {
         switch self {
         case .calendar: anchor = "Privacy_Calendars"
         case .notesAutomation: anchor = "Privacy_Automation"
+        case .filesAndFolders: anchor = "Privacy_FilesAndFolders"
         case .accessibility: anchor = "Privacy_Accessibility"
         }
         return URL(string: "x-apple.systempreferences:com.apple.preference.security?\(anchor)")
@@ -88,6 +104,11 @@ enum RecoverablePermission: String, CaseIterable, Sendable, Identifiable {
     /// the recovery window has two kinds of button: `AXIsProcessTrusted` has
     /// no "ask" — the API only opens System Settings with the list scrolled to
     /// MemoryClip, where the user has to add it themselves.
+    ///
+    /// True for Files and Folders, where the ask is an open panel rather than
+    /// a TCC dialog. That is not a workaround: choosing the folder is how the
+    /// grant was given in the first place, and macOS honours it whatever it
+    /// has on file, which no dialog this app can raise would do.
     var canPromptInPlace: Bool { self != .accessibility }
 }
 
@@ -191,6 +212,18 @@ struct PermissionLedger {
         Self.read(defaults.dictionary(forKey: Self.askedKey))
     }
 
+    /// Whether `permission` is known to work under the build that is running.
+    ///
+    /// The only question about Files and Folders that can be answered without
+    /// touching the disk, and therefore the only one the launch path may ask:
+    /// macOS has no silent way to report a folder grant, so "did it work under
+    /// this exact build" — recorded where access actually succeeded — is what
+    /// stands in for one. False means unknown as well as lost, and unknown is
+    /// treated as lost, because the alternative is finding out by prompting.
+    func worksUnderThisBuild(_ permission: RecoverablePermission, identity: String = AppIdentity.current) -> Bool {
+        granted[permission] == identity
+    }
+
     /// Record that `permission` works under the running build.
     func noteGranted(_ permission: RecoverablePermission, identity: String = AppIdentity.current) {
         write(Self.grantedKey, permission, identity)
@@ -255,8 +288,8 @@ enum PermissionRecovery {
     /// `lost` repairs what an update took away, and can only fire once a grant
     /// has been observed under an earlier build — which the release that
     /// introduces the ledger never has. This one reads the settings instead:
-    /// automatic events are on, or notes are set to go to Notes, and the
-    /// permission that makes either work is missing. That is a feature that is
+    /// automatic events are on, or notes go to Notes, or they go to a folder
+    /// macOS is refusing, and the permission that makes it work is missing. That is a feature that is
     /// on and silently doing nothing, whatever the history behind it.
     ///
     /// Accessibility is deliberately absent. `autoPaste` defaults to on, so
@@ -266,11 +299,13 @@ enum PermissionRecovery {
     static func blocked(
         states: [RecoverablePermission: PermissionState],
         createsEventsAutomatically: Bool,
-        writesToNotesApp: Bool
+        writesToNotesApp: Bool,
+        usesAFolder: Bool
     ) -> [RecoverablePermission] {
         var found: [RecoverablePermission] = []
         if createsEventsAutomatically, isMissing(states[.calendar]) { found.append(.calendar) }
         if writesToNotesApp, isMissing(states[.notesAutomation]) { found.append(.notesAutomation) }
+        if usesAFolder, isMissing(states[.filesAndFolders]) { found.append(.filesAndFolders) }
         return found
     }
 

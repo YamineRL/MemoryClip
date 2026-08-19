@@ -135,6 +135,13 @@ struct PermissionRecoveryView: View {
             .font(.callout)
             .foregroundStyle(Color(nsColor: .systemGreen))
             .labelStyle(.titleAndIcon)
+        } else if outcomes[permission] == .unavailable {
+            // Nothing to grant: Notes is not installed, or no folder has been
+            // picked for the permission to be about. A button here would ask
+            // macOS for something it has no way to give, and do nothing twice.
+            Text(loc("Not available"))
+                .font(.callout)
+                .foregroundStyle(Color(nsColor: .tertiaryLabelColor))
         } else if asking == permission {
             ProgressView()
                 .controlSize(.small)

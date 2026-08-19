@@ -100,15 +100,16 @@ enum NoteSinkFactory {
                 throw NoteError.noDestinationConfigured(.markdownVault)
             }
             let path = vault.path(percentEncoded: false)
-            // A bookmark can resolve to a folder that has since been deleted or
-            // replaced by a file. Checking now turns that into one clear
-            // sentence instead of a `copyItem` failure three layers down.
-            let reachable = FolderBookmark.withAccess(to: vault) { () -> Bool in
-                var isDirectory: ObjCBool = false
-                let exists = FileManager.default.fileExists(atPath: path, isDirectory: &isDirectory)
-                return exists && isDirectory.boolValue
+            // A bookmark can resolve to a folder that has since been deleted,
+            // or to one macOS will no longer let this build open. Checking now
+            // turns either into one clear sentence instead of a `copyItem`
+            // failure three layers down — and they are told apart, because the
+            // repairs are different and `fileExists` answers false for both.
+            switch FolderAccess.read(vault) {
+            case .readable: break
+            case .refused: throw NoteError.folderNotPermitted(path)
+            case .missing: throw NoteError.folderUnavailable(path)
             }
-            guard reachable else { throw NoteError.folderUnavailable(path) }
 
             let attachmentFolder = defaults.string(forKey: NoteSettingsKeys.vaultAttachmentFolder)
             return MarkdownVaultSink(

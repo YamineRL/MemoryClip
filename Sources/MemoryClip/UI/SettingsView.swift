@@ -603,6 +603,9 @@ private struct ScreenshotSettingsPane: View {
         )
         guard let chosen else { return }
         folder = chosen
+        // Recorded before the notification: the watcher reads the ledger the
+        // moment it is told the folder changed.
+        PermissionLedger().noteGranted(.filesAndFolders)
         NotificationCenter.default.post(name: .memoryClipScreenshotFolderChanged, object: nil)
     }
 }

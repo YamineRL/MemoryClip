@@ -177,7 +177,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // …and on text that was recognised but never refined, for the same
         // reason: the setting may have been off, or the app may have quit
         // mid-backlog.
-        noteCoordinator.processPending()
+        //
+        // Held back when the notes go to a folder this build has no recorded
+        // access to: writing into it is what raises the consent dialog, and a
+        // backlog is not worth a prompt the user did not ask for seconds
+        // before the window that explains it. The backlog keeps; the next
+        // capture after the grant picks it up.
+        if NoteDestination.current != .markdownVault
+            || PermissionLedger().worksUnderThisBuild(.filesAndFolders)
+            || FolderBookmark.resolve(key: NoteSettingsKeys.vaultBookmark).map({ !FolderAccess.isGuarded($0) }) == true {
+            noteCoordinator.processPending()
+        }
         // Retention + cap enforcement — deferred off the launch path, then
         // periodic (not just once at launch: this agent can stay resident for
         // weeks).

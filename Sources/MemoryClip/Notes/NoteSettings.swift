@@ -131,6 +131,7 @@ enum NoteDestination: String, CaseIterable, Identifiable, Sendable {
 enum NoteError: LocalizedError, Equatable {
     case noDestinationConfigured(NoteDestination)
     case folderUnavailable(String)
+    case folderNotPermitted(String)
     case writeFailed(String)
     case automationDenied
     case shortcutFailed(String)
@@ -146,6 +147,8 @@ enum NoteError: LocalizedError, Equatable {
             }
         case .folderUnavailable(let path):
             return loc("MemoryClip can no longer reach %@. Pick the folder again in Settings → Notes.", path)
+        case .folderNotPermitted(let path):
+            return loc("macOS is not letting MemoryClip into %@. Allow it under Permissions in the menu bar — an update drops the access you gave the folder.", path)
         case .writeFailed(let reason):
             return loc("The note could not be written: %@", reason)
         case .automationDenied:
@@ -177,6 +180,8 @@ enum NoteError: LocalizedError, Equatable {
             return "no destination configured (\(destination.rawValue))"
         case .folderUnavailable:
             return "note folder unavailable"
+        case .folderNotPermitted:
+            return "note folder refused by macOS"
         case .writeFailed:
             return "write failed"
         case .automationDenied:

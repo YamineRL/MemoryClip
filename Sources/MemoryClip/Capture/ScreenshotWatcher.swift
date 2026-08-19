@@ -171,7 +171,10 @@ final class ScreenshotWatcher {
         openSource()
         // Catch up before the first event: screenshots taken while the app
         // was closed are exactly what the mark exists to make recoverable.
-        scheduleScan()
+        // Only once the folder is actually open, though — a scan is a
+        // directory listing, which is the other way to raise the prompt
+        // `openSource` just declined to raise.
+        if source != nil { scheduleScan() }
     }
 
     /// Stop watching and release the descriptor.
@@ -214,7 +217,7 @@ final class ScreenshotWatcher {
         guard isStarted, Self.isEnabled else { return }
         closeSource()
         openSource()
-        scheduleScan()
+        if source != nil { scheduleScan() }
     }
 
     private func settingDidChange() {
@@ -238,6 +241,24 @@ final class ScreenshotWatcher {
     private func openSource() {
         closeSource()
 
+        // Ask before opening. `open` on a folder macOS guards is what puts a
+        // consent dialog on screen, and this runs at launch — so without the
+        // check the user meets a cold prompt with no explanation, seconds
+        // before the window whose whole job is to explain it. `FolderAccess`
+        // answers the same question silently; a refusal is left for that
+        // window to offer, and `folderDidChange()` starts the watcher once the
+        // grant comes back.
+        // Opening a folder macOS guards is what puts a consent dialog on
+        // screen, and this runs at launch — so it is gated on the ledger,
+        // which is the only thing that answers "may we" without asking. An
+        // unrecorded folder is left shut for the permission window to offer;
+        // `folderDidChange()` starts the watcher the moment a grant lands, so
+        // nothing here has to poll for one.
+        guard !FolderAccess.isGuarded(folder) || PermissionLedger().worksUnderThisBuild(.filesAndFolders) else {
+            log.notice("Not watching the screenshot folder: no folder access recorded for this build")
+            return
+        }
+
         // `O_EVTONLY` asks for a descriptor for event delivery only: it does
         // not count as a reference that would keep an unmounting volume busy,
         // which matters when the screenshot folder is on an external disk.
@@ -249,6 +270,11 @@ final class ScreenshotWatcher {
             scheduleReopen()
             return
         }
+
+        // The open succeeded, so the grant is real and belongs in the ledger:
+        // TCC will not tell an app what it was allowed to do under a signature
+        // it no longer has, and this is the moment the answer is known.
+        PermissionLedger().noteGranted(.filesAndFolders)
 
         let source = DispatchSource.makeFileSystemObjectSource(
             fileDescriptor: descriptor,
