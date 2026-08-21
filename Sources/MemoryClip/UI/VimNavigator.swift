@@ -18,6 +18,7 @@ enum VimCommand: Equatable {
     case enterInsert  // i — edit the existing query
     case saveNote     // n
     case addToCalendar // c
+    case visual       // v — enter/leave visual mode
 }
 
 /// Modifier state relevant to vim keys.
@@ -100,6 +101,11 @@ struct VimNavigator {
         // the keystroke rather than arming a sequence, since there is no
         // second key that could complete it.
         case "c": return .addToCalendar
+        // `v` is vim's own character-wise visual mode, and it means the same
+        // thing here: the movement keys stop moving the cursor and start
+        // dragging one end of a range behind it. A second `v` leaves, as it
+        // does in vim.
+        case "v": return .visual
         default: return nil
         }
     }

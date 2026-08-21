@@ -542,9 +542,28 @@ extension ClipFilter {
 /// silently slides onto a different clip. Storing the uuid and re-deriving
 /// the index each render keeps the highlight on the clip the user picked.
 struct ClipSelection: Equatable {
-    /// The selected clip, or nil for "nothing chosen yet" (which means the
-    /// top row: the panel opens with the newest clip ready to paste).
+    /// The cursor: the clip the arrows move, and the one every action that
+    /// can only mean one clip acts on. Nil for "nothing chosen yet" (which
+    /// means the top row: the panel opens with the newest clip ready to
+    /// paste).
     private(set) var id: UUID?
+
+    /// The far end of an extended range, or nil while the cursor stands
+    /// alone.
+    ///
+    /// The range between it and the cursor is deliberately NOT stored: it is
+    /// re-derived from the current list every time it is asked for, so an
+    /// extension that shrinks again leaves nothing behind, and a range whose
+    /// middle rows were filtered away closes up instead of holding on to
+    /// clips that are no longer on screen.
+    private(set) var rangeOrigin: UUID?
+
+    /// Clips picked out one at a time, away from whatever range is live.
+    ///
+    /// Never holds the cursor — the cursor is a member of the selection by
+    /// definition, and storing it twice would let two equal selections
+    /// compare unequal.
+    private(set) var picked: Set<UUID> = []
 
     init(id: UUID? = nil) {
         self.id = id
@@ -568,12 +587,104 @@ struct ClipSelection: Equatable {
         index(in: ids) ?? 0
     }
 
+    /// Every selected clip, in list order.
+    ///
+    /// The one place the range and the individually picked clips are put back
+    /// together, and the one place membership is decided — so a clip that has
+    /// left the list cannot be acted on, whatever the selection still
+    /// remembers about it.
+    func selectedIDs(in ids: [UUID]) -> [UUID] {
+        guard !ids.isEmpty else { return [] }
+        var members = picked
+        members.insert(id ?? ids[0])
+        if let rangeOrigin,
+           let from = ids.firstIndex(of: rangeOrigin),
+           let to = index(in: ids) {
+            for step in min(from, to)...max(from, to) { members.insert(ids[step]) }
+        }
+        return ids.filter { members.contains($0) }
+    }
+
+    /// Whether more than the cursor may be selected. Cheap enough to ask
+    /// before resolving the whole list against it.
+    var isExtended: Bool {
+        rangeOrigin != nil || !picked.isEmpty
+    }
+
     mutating func clear() {
         id = nil
+        collapse()
+    }
+
+    /// Drop everything but the cursor.
+    mutating func collapse() {
+        rangeOrigin = nil
+        picked = []
     }
 
     /// Select a row by index, clamped into the list.
+    ///
+    /// A plain movement or click replaces the whole selection, the way it does
+    /// in every other list on the system: only the modified gestures below add
+    /// to one.
     mutating func select(index: Int, in ids: [UUID]) {
+        collapse()
+        moveCursor(to: index, in: ids)
+    }
+
+    /// Extend the selection to a row, leaving the far end of the range where
+    /// it is — ⇧-click, ⇧↑/⇧↓, and the movement keys in visual mode.
+    ///
+    /// The first extension anchors the range at the cursor, so a run of them
+    /// sweeps out from where the user was rather than from the top of the
+    /// list.
+    mutating func extend(to index: Int, in ids: [UUID]) {
+        guard !ids.isEmpty else {
+            id = nil
+            collapse()
+            return
+        }
+        if rangeOrigin == nil { rangeOrigin = ids[movementOrigin(in: ids)] }
+        moveCursor(to: index, in: ids)
+    }
+
+    /// Extend by `delta` rows from the cursor.
+    mutating func extend(by delta: Int, in ids: [UUID]) {
+        extend(to: movementOrigin(in: ids) + delta, in: ids)
+    }
+
+    /// Add one clip to the selection, or take it out again — ⌘-click.
+    ///
+    /// Taking the last clip out is refused rather than honoured: the panel's
+    /// keys all act on a cursor, and an empty selection would leave Return,
+    /// Space and ⌘C with nothing to do and no way back except the arrows.
+    mutating func toggle(index: Int, in ids: [UUID]) {
+        guard !ids.isEmpty else { return }
+        let target = ids[min(max(index, 0), ids.count - 1)]
+        var members = selectedIDs(in: ids)
+        if let position = members.firstIndex(of: target) {
+            guard members.count > 1 else { return }
+            members.remove(at: position)
+            setMembers(members, cursor: members[min(position, members.count - 1)])
+        } else {
+            members.append(target)
+            setMembers(members, cursor: target)
+        }
+    }
+
+    /// Replace the selection with an explicit list of members.
+    ///
+    /// Flattens whatever range was live into the picked set, which is what
+    /// makes ⌘-click able to punch a hole in a range: there is no range left
+    /// to re-derive it from.
+    private mutating func setMembers(_ members: [UUID], cursor: UUID) {
+        id = cursor
+        rangeOrigin = nil
+        picked = Set(members)
+        picked.remove(cursor)
+    }
+
+    private mutating func moveCursor(to index: Int, in ids: [UUID]) {
         guard !ids.isEmpty else {
             id = nil
             return
@@ -594,14 +705,55 @@ struct ClipSelection: Equatable {
     /// is deleted. `ids` is the list *before* the deletion, so the new
     /// selection is valid the moment the query refreshes.
     mutating func selectNeighbour(of removed: UUID, in ids: [UUID]) {
-        guard let index = ids.firstIndex(of: removed) else { return }
-        var remaining = ids
-        remaining.remove(at: index)
+        selectNeighbour(ofAll: [removed], in: ids)
+    }
+
+    /// The same, for a whole multi-selection going at once.
+    ///
+    /// The selection lands where the topmost deleted clip was: nothing above
+    /// it moved, so that row index is the hole the deletion leaves whichever
+    /// of the rows below it also went.
+    mutating func selectNeighbour(ofAll removed: [UUID], in ids: [UUID]) {
+        guard let slot = removed.compactMap({ ids.firstIndex(of: $0) }).min() else { return }
+        let gone = Set(removed)
+        let remaining = ids.filter { !gone.contains($0) }
+        collapse()
         guard !remaining.isEmpty else {
             id = nil
             return
         }
-        id = remaining[min(index, remaining.count - 1)]
+        id = remaining[min(slot, remaining.count - 1)]
+    }
+
+    /// What a run of clips puts on the pasteboard: each one's primary
+    /// copyable text, in list order, one per line.
+    ///
+    /// Built out of the preview pane's copy options rather than a second set
+    /// of kind-by-kind rules, so a clip copied on its own and the same clip
+    /// copied as part of a run put the same text on the pasteboard. Clips
+    /// with nothing to copy — an image Vision could not read, a colour-less
+    /// swatch — drop out instead of contributing a blank line.
+    static func copyText<T: ClipDisplayable>(for items: [T]) -> String {
+        items
+            .compactMap { PreviewCopy.options(for: $0).first?.text }
+            .joined(separator: "\n")
+    }
+}
+
+/// What a click on a card means, given the modifiers held with it.
+///
+/// A plain click has pasted since the panel's first version and still does;
+/// the two modified clicks are the mouse's half of the keyboard's ⇧↑/⇧↓ and
+/// visual mode. ⌘ wins over ⇧ when both are down, matching the Finder.
+enum ClipClick: Equatable {
+    case paste
+    case extend
+    case toggle
+
+    static func intent(for modifiers: NSEvent.ModifierFlags) -> ClipClick {
+        if modifiers.contains(.command) { return .toggle }
+        if modifiers.contains(.shift) { return .extend }
+        return .paste
     }
 }
 
@@ -615,12 +767,17 @@ struct ClipSelection: Equatable {
 enum PanelInputMode: Equatable {
     /// Keys are vim commands; typing does not reach the search field.
     case normal
+    /// The movement keys drag one end of a range instead of moving the
+    /// cursor. Every other vim command still runs, and acts on the whole
+    /// range.
+    case visual
     /// Keys type into the search field.
     case insert
 
     var badge: String {
         switch self {
         case .normal: return "NORMAL"
+        case .visual: return "VISUAL"
         case .insert: return "INSERT"
         }
     }
@@ -628,7 +785,26 @@ enum PanelInputMode: Equatable {
     var announcement: String {
         switch self {
         case .normal: return loc("Normal mode. Slash to search.")
+        case .visual: return loc("Visual mode. j and k extend the selection.")
         case .insert: return loc("Search mode. Escape to return to normal mode.")
+        }
+    }
+
+    /// What VoiceOver calls the badge.
+    var accessibilityName: String {
+        switch self {
+        case .normal: return loc("Normal mode")
+        case .visual: return loc("Visual mode")
+        case .insert: return loc("Search mode")
+        }
+    }
+
+    /// The badge's tooltip: what this mode is, and the key out of it.
+    var help: String {
+        switch self {
+        case .normal: return loc("Vim normal mode — press / or i to search")
+        case .visual: return loc("Vim visual mode — j and k extend the selection, Esc leaves")
+        case .insert: return loc("Search mode — press Esc for vim navigation")
         }
     }
 
@@ -638,12 +814,19 @@ enum PanelInputMode: Equatable {
     /// every character belongs to the query, so `n` types an `n` and only
     /// normal mode may claim it. The modified shortcuts (⌘S, ⌘1–⌘9) run in
     /// both modes precisely because they are unreachable by typing.
-    var readsVimKeys: Bool { self == .normal }
+    var readsVimKeys: Bool { self != .insert }
 }
 
 /// Callbacks the panel UI uses to talk back to controllers.
 struct PanelActions {
     var paste: (ClipItem, Bool) -> Void
+    /// Paste a run of clips, in the order given.
+    ///
+    /// Separate from `paste` because pasting several clips is not pasting one
+    /// clip several times: each ⌘V has to be seen to land before the
+    /// pasteboard is overwritten with the next clip. `QueueService` already
+    /// does that, and this routes to it rather than growing a second answer.
+    var pasteMany: ([ClipItem], Bool) -> Void
     var copyOnly: (ClipItem) -> Void
     /// Copy an image clip's OCR text (Phase 3 made it searchable; this makes
     /// it reachable).
@@ -731,7 +914,7 @@ struct PanelContentView: View {
     @State private var selection = ClipSelection()
     @State private var inputMode: PanelInputMode = .normal
     @State private var showNukeConfirmation = false
-    @State private var pendingDelete: ClipItem?
+    @State private var pendingDeletes: [ClipItem] = []
     @State private var previewVisible = false
     @State private var previewItem: ClipItem?
     @State private var vim = VimNavigator()
@@ -793,8 +976,16 @@ struct PanelContentView: View {
         return visibleItems[index]
     }
 
+    /// Every selected clip, in list order — one element for the selection the
+    /// panel has always had, more once a range or a ⌘-click has widened it.
+    private var selectedItems: [ClipItem] {
+        let visible = visibleItems
+        let chosen = Set(selection.selectedIDs(in: visible.map(\.uuid)))
+        return visible.filter { chosen.contains($0.uuid) }
+    }
+
     /// True while keystrokes should be read as vim commands.
-    private var isNormalMode: Bool {
+    private var readsVimKeys: Bool {
         vimModeEnabled && inputMode.readsVimKeys
     }
 
@@ -942,23 +1133,29 @@ struct PanelContentView: View {
             announceSelection()
         }
         .confirmationDialog(
-            loc("Delete this clip?"),
+            pendingDeletes.count > 1
+                ? loc("Delete %d clips?", pendingDeletes.count)
+                : loc("Delete this clip?"),
             isPresented: deleteConfirmationBinding,
             titleVisibility: .visible
         ) {
-            Button(loc("Delete Clip"), role: .destructive) { confirmDelete() }
-            Button(loc("Cancel"), role: .cancel) { pendingDelete = nil }
+            Button(
+                pendingDeletes.count > 1 ? loc("Delete %d Clips", pendingDeletes.count) : loc("Delete Clip"),
+                role: .destructive
+            ) { confirmDelete() }
+            Button(loc("Cancel"), role: .cancel) { pendingDeletes = [] }
         } message: {
             Text(loc("Deleting a clip cannot be undone."))
         }
     }
 
     /// `dd` is destructive and has no undo, so it routes through the same kind
-    /// of confirmation as the footer's nuke-all button.
+    /// of confirmation as the footer's nuke-all button — one clip or a whole
+    /// selection, the same gate.
     private var deleteConfirmationBinding: Binding<Bool> {
         Binding(
-            get: { pendingDelete != nil },
-            set: { if !$0 { pendingDelete = nil } }
+            get: { !pendingDeletes.isEmpty },
+            set: { if !$0 { pendingDeletes = [] } }
         )
     }
 
@@ -997,7 +1194,7 @@ struct PanelContentView: View {
     }
 
     private var searchPlaceholder: String {
-        isNormalMode ? loc("Press / to search") : loc("Search clips")
+        readsVimKeys ? loc("Press / to search") : loc("Search clips")
     }
 
     /// Makes the vim mode visible instead of leaving it as invisible state.
@@ -1017,10 +1214,8 @@ struct PanelContentView: View {
                 )
             )
             .foregroundStyle(Color(nsColor: inputMode == .normal ? .secondaryLabelColor : .labelColor))
-            .accessibilityLabel(inputMode == .normal ? loc("Normal mode") : loc("Search mode"))
-            .help(inputMode == .normal
-                  ? loc("Vim normal mode — press / or i to search")
-                  : loc("Search mode — press Esc for vim navigation"))
+            .accessibilityLabel(inputMode.accessibilityName)
+            .help(inputMode.help)
     }
 
     // MARK: Quick filters
@@ -1102,8 +1297,15 @@ struct PanelContentView: View {
             // never hears them. How fast those repeats are allowed to move
             // the selection is `HeldKeyPacer`'s business, not the system
             // key-repeat slider's.
+            // ⇧ with a movement key drags one end of a range behind the
+            // cursor instead of carrying the selection along whole, which is
+            // what ⇧ with a movement key does in every list on the system.
             .onKeyPress(keys: [.upArrow, .downArrow], phases: [.down, .repeat]) { press in
-                moveSelection(press.key == .downArrow ? 1 : -1, phase: press.phase)
+                moveSelection(
+                    press.key == .downArrow ? 1 : -1,
+                    extending: press.modifiers.contains(.shift),
+                    phase: press.phase
+                )
                 return .handled
             }
             .onKeyPress(keys: [.leftArrow, .rightArrow], phases: [.down, .repeat]) { press in
@@ -1111,8 +1313,12 @@ struct PanelContentView: View {
                 // caret — swallowing them would make the search field
                 // impossible to correct. With an empty field (the state the
                 // panel opens in) they move the selection.
-                guard isNormalMode || filter.search.isEmpty else { return .ignored }
-                moveSelection(press.key == .rightArrow ? 1 : -1, phase: press.phase)
+                guard readsVimKeys || filter.search.isEmpty else { return .ignored }
+                moveSelection(
+                    press.key == .rightArrow ? 1 : -1,
+                    extending: press.modifiers.contains(.shift),
+                    phase: press.phase
+                )
                 return .handled
             }
             .onKeyPress(keys: [.return], phases: .down) { press in
@@ -1120,7 +1326,7 @@ struct PanelContentView: View {
                 return .handled
             }
             .onKeyPress(.space, phases: .down) { _ in
-                if isNormalMode {
+                if readsVimKeys {
                     escalatePreview()
                     return .handled
                 }
@@ -1179,11 +1385,15 @@ struct PanelContentView: View {
             }
     }
 
-    /// Esc unwinds one layer at a time: pending vim sequence → search mode →
-    /// preview → panel.
+    /// Esc unwinds one layer at a time: pending vim sequence → visual mode →
+    /// search mode → preview → panel.
     private func handleEscape() {
         if vim.hasPending {
             vim.reset()
+            return
+        }
+        if inputMode == .visual {
+            setMode(.normal)
             return
         }
         if vimModeEnabled, inputMode == .insert {
@@ -1234,7 +1444,7 @@ struct PanelContentView: View {
             }
         } else {
             // Resolved once for the whole strip rather than per card.
-            let selected = selection.index(in: visible.map(\.uuid))
+            let selected = Set(selection.selectedIDs(in: visible.map(\.uuid)))
             ScrollViewReader { proxy in
                 ScrollView(.horizontal) {
                     LazyHStack(spacing: Design.Size.cardSpace) {
@@ -1242,7 +1452,7 @@ struct PanelContentView: View {
                             ClipCardView(
                                 item: item,
                                 index: index,
-                                isSelected: index == selected,
+                                isSelected: selected.contains(item.uuid),
                                 queuePosition: queue.position(of: item),
                                 isSavingNote: uiState.notesInFlight.contains(item.uuid),
                                 onPaste: { plain in actions.paste(item, plain) },
@@ -1260,7 +1470,13 @@ struct PanelContentView: View {
                             )
                             .id(item.uuid)
                             .contentShape(Rectangle())
-                            .onTapGesture { actions.paste(item, false) }
+                            // The modifiers are read from the event queue
+                            // rather than from the gesture: SwiftUI's tap
+                            // gesture reports where the click landed and
+                            // nothing about what was held down with it.
+                            .onTapGesture {
+                                handleClick(on: item, at: index, in: visible)
+                            }
                         }
                         if hasMorePages {
                             // The paging sentinel, moved from the BOTTOM of
@@ -1411,6 +1627,14 @@ struct PanelContentView: View {
     /// the highlight, so the selection has to be spoken explicitly.
     private func announceSelection() {
         guard let index = selectedIndex, let item = selectedItem else { return }
+        // A range says how big it is rather than where its cursor is: "12 of
+        // 300" is the same sentence whether one clip or thirty are about to be
+        // pasted, which is the one thing the listener needs to know.
+        let chosen = selection.isExtended ? selectedItems.count : 1
+        guard chosen == 1 else {
+            announce(loc("%d clips selected, %@", chosen, item.announcementSummary))
+            return
+        }
         announce(loc("%d of %d, %@", index + 1, visibleItems.count, item.announcementSummary))
     }
 
@@ -1496,6 +1720,10 @@ struct PanelContentView: View {
 
     private func setMode(_ mode: PanelInputMode) {
         guard inputMode != mode else { return }
+        // Leaving visual drops the range, as it does in vim: the mode and the
+        // range are the same gesture, so one outliving the other would leave
+        // a selection nothing on screen explains.
+        if inputMode == .visual { selection.collapse() }
         inputMode = mode
         vim.reset()
         if mode == .insert { searchFocused = true }
@@ -1509,7 +1737,7 @@ struct PanelContentView: View {
     /// consumed (bound or not) so nothing leaks into the search field; in
     /// insert mode nothing is consumed and typing works normally.
     private func handleVimKey(_ press: KeyPress) -> KeyPress.Result {
-        guard isNormalMode else { return .ignored }
+        guard readsVimKeys else { return .ignored }
         // Keys with dedicated handlers above must never be swallowed here.
         guard !Self.reservedCharacters.contains(press.key.character) else { return .ignored }
         guard let key = press.characters.first else { return .ignored }
@@ -1581,22 +1809,33 @@ struct PanelContentView: View {
                 index: selection.movementOrigin(in: ids),
                 count: ids.count
             )
-            selection.select(index: index, in: ids)
+            if inputMode == .visual {
+                selection.extend(to: index, in: ids)
+            } else {
+                selection.select(index: index, in: ids)
+            }
             refreshPreview(settling: step == .moveSettlingPreview)
         case .paste:
             pasteSelected(plainOnly: false)
         case .pastePlain:
             pasteSelected(plainOnly: true)
         case .pin:
-            guard let item = selectedItem else { return }
-            item.isPinned.toggle()
+            let chosen = selectedItems
+            guard !chosen.isEmpty else { return }
+            for item in chosen { item.isPinned.toggle() }
             try? modelContext.save()
         case .delete:
-            guard let item = selectedItem else { return }
-            pendingDelete = item
+            let chosen = selectedItems
+            guard !chosen.isEmpty else { return }
+            pendingDeletes = chosen
         case .queueToggle:
-            guard let item = selectedItem else { return }
-            actions.toggleQueue(item)
+            let chosen = selectedItems
+            guard !chosen.isEmpty else { return }
+            for item in chosen { actions.toggleQueue(item) }
+            // One clip queued steps to the next, so that `qqq` queues three.
+            // A whole selection has already said which clips it means, and
+            // stepping off it would throw that away.
+            guard chosen.count == 1 else { return }
             let ids = visibleIDs
             selection.select(
                 index: VimNavigator.newIndex(
@@ -1618,6 +1857,8 @@ struct PanelContentView: View {
             saveSelectedNote()
         case .addToCalendar:
             addSelectedToCalendar()
+        case .visual:
+            setMode(inputMode == .visual ? .normal : .visual)
         }
     }
 
@@ -1625,14 +1866,17 @@ struct PanelContentView: View {
     /// selection to its neighbour by uuid (no index arithmetic that assumes
     /// whether the @Query has refreshed yet).
     private func confirmDelete() {
-        guard let item = pendingDelete else { return }
-        pendingDelete = nil
-        selection.selectNeighbour(of: item.uuid, in: visibleIDs)
-        modelContext.delete(item)
+        let items = pendingDeletes
+        guard !items.isEmpty else { return }
+        pendingDeletes = []
+        // Both questions are asked while the clips are still in the context: a
+        // `ClipItem` the delete has taken out is no longer safe to read.
+        let removed = items.map(\.uuid)
+        let previewGoes = previewItem.map { removed.contains($0.uuid) } ?? false
+        selection.selectNeighbour(ofAll: removed, in: visibleIDs)
+        for item in items { modelContext.delete(item) }
         try? modelContext.save()
-        if previewItem?.uuid == item.uuid {
-            previewItem = nil
-        }
+        if previewGoes { previewItem = nil }
         syncPreviewItem()
     }
 
@@ -1642,12 +1886,32 @@ struct PanelContentView: View {
     ///
     /// `phase` is the keystroke's phase: a `.down` press always moves, a
     /// `.repeat` from a held key moves only if enough time has passed since
-    /// the last step the user saw.
-    private func moveSelection(_ delta: Int, phase: KeyPress.Phases = .down) {
+    /// the last step the user saw. `extending` is ⇧ held with the key, which
+    /// leaves the far end of the range behind instead of carrying it along.
+    private func moveSelection(_ delta: Int, extending: Bool = false, phase: KeyPress.Phases = .down) {
         let step = pacer.step(isRepeat: phase.contains(.repeat), now: Self.now())
         guard step != .drop else { return }
-        selection.move(by: delta, in: visibleIDs)
+        let ids = visibleIDs
+        if extending {
+            selection.extend(by: delta, in: ids)
+        } else {
+            selection.move(by: delta, in: ids)
+        }
         refreshPreview(settling: step == .moveSettlingPreview)
+    }
+
+    /// A click on a card: paste it, extend the selection to it, or add it to
+    /// the selection — whichever the modifiers held with the click asked for.
+    private func handleClick(on item: ClipItem, at index: Int, in visible: [ClipItem]) {
+        let ids = visible.map(\.uuid)
+        switch ClipClick.intent(for: NSEvent.modifierFlags) {
+        case .paste:
+            actions.paste(item, false)
+        case .extend:
+            selection.extend(to: index, in: ids)
+        case .toggle:
+            selection.toggle(index: index, in: ids)
+        }
     }
 
     /// The panel's clock, read in exactly one place so that `HeldKeyPacer`
@@ -1672,11 +1936,19 @@ struct PanelContentView: View {
         if !settling { syncPreviewItem() }
     }
 
-    /// Paste the selected clip. Does nothing when the selection no longer
-    /// exists — falling back to row 0 would paste the newest clip instead.
+    /// Paste the selection. Does nothing when it no longer exists — falling
+    /// back to row 0 would paste the newest clip instead.
+    ///
+    /// Several clips paste in the order they sit in the strip, left to right,
+    /// so what arrives in the target app reads the way the panel does.
     private func pasteSelected(plainOnly: Bool) {
-        guard let item = selectedItem else { return }
-        actions.paste(item, plainOnly)
+        let chosen = selectedItems
+        guard let first = chosen.first else { return }
+        guard chosen.count > 1 else {
+            actions.paste(first, plainOnly)
+            return
+        }
+        actions.pasteMany(chosen, plainOnly)
     }
 
     /// Put the selected clip back on the pasteboard, leaving the panel open.
@@ -1684,13 +1956,33 @@ struct PanelContentView: View {
     /// The panel stays up because ⌘C is not a way out of it: it is the
     /// gesture for taking a clip with you, and the next thing the user does
     /// may well be to take another one.
+    ///
+    /// Several clips go as one block of text, one clip per line, because the
+    /// pasteboard holds one thing: a run of ⌘C presses would leave only the
+    /// last of them. The clips themselves — the image, the rich text, the file
+    /// references — cannot survive that flattening, so this is text and only
+    /// text; `pasteMany` is the path that keeps each clip whole.
     private func copySelected() {
-        guard let item = selectedItem else { return }
-        actions.copyOnly(item)
-        announce(loc("Copied"))
+        let chosen = selectedItems
+        guard let first = chosen.first else { return }
+        guard chosen.count > 1 else {
+            actions.copyOnly(first)
+            announce(loc("Copied"))
+            return
+        }
+        let text = ClipSelection.copyText(for: chosen)
+        guard !text.isEmpty else { return }
+        actions.copyText(first, text)
+        announce(loc("%d clips copied", chosen.count))
     }
 
-    /// Write (or rewrite) the selected clip's note.
+    /// Write (or rewrite) the cursor clip's note.
+    ///
+    /// The cursor and not the whole selection: a note is one document about
+    /// one clip, and the composer, the destination and the failure alert are
+    /// all built around that. The same goes for the calendar, the QR sheet and
+    /// Quick Look below — a multi-selection widens what pastes, copies and
+    /// deletes, and leaves the single-clip actions pointed at the cursor.
     ///
     /// Gated on the same predicate as the card's context-menu item, so the
     /// key and the menu agree about which clips can be noted. The menu hides

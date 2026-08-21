@@ -106,6 +106,15 @@
 "Press / to search" = "Press / to search";
 "Search clips" = "Search clips";
 "Normal mode" = "Normal mode";
+"Visual mode" = "Visual mode";
+"Visual mode. j and k extend the selection." = "Visual mode. j and k extend the selection.";
+"Visual mode: j and k extend the selection, Esc leaves" = "Visual mode: j and k extend the selection, Esc leaves";
+"Vim visual mode — j and k extend the selection, Esc leaves" = "Vim visual mode — j and k extend the selection, Esc leaves";
+"Select several clips; ⇧-click does the same, ⌘-click picks them out one at a time" = "Select several clips; ⇧-click does the same, ⌘-click picks them out one at a time";
+"Delete %d clips?" = "Delete %d clips?";
+"Delete %d Clips" = "Delete %d Clips";
+"%d clips selected, %@" = "%d clips selected, %@";
+"%d clips copied" = "%d clips copied";
 "Search mode" = "Search mode";
 "Vim normal mode — press / or i to search" = "Vim normal mode — press / or i to search";
 "Search mode — press Esc for vim navigation" = "Search mode — press Esc for vim navigation";

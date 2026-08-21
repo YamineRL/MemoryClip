@@ -379,6 +379,22 @@ final class PanelController: NSObject, NSWindowDelegate {
                 self.hide(restorePrevious: false)
                 self.pasteService.paste(item, plainOnly: plain, target: target)
             },
+            // Appends to the paste queue and runs it, rather than pasting the
+            // clips itself. The queue is the app's one implementation of
+            // "several clips, in order" — it waits for each ⌘V to land before
+            // overwriting the pasteboard and gives up if the target app loses
+            // focus — and a second copy of that in the panel would be a second
+            // thing to get wrong. Clips already queued are left where they
+            // are, so a running order built by hand keeps its positions.
+            pasteMany: { [weak self] items, plain in
+                guard let self else { return }
+                let target = self.previousApp
+                self.hide(restorePrevious: false)
+                for item in items where !self.queueService.isQueued(item) {
+                    self.queueService.toggle(item)
+                }
+                self.queueService.pasteAll(target: target, plainOnly: plain)
+            },
             copyOnly: { [weak self] item in
                 guard let self else { return }
                 if self.pasteService.write(item, plainOnly: false) {

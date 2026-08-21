@@ -295,6 +295,10 @@ enum ShortcutReference {
             ShortcutEntry(keys: "⇧Return", detail: loc("Paste as plain text")),
             ShortcutEntry(keys: "⌘1…⌘9", detail: loc("Paste the first nine results")),
             ShortcutEntry(keys: "⌘C", detail: loc("Copy the selected clip without pasting")),
+            ShortcutEntry(
+                keys: "⇧↑ ⇧↓",
+                detail: loc("Select several clips; ⇧-click does the same, ⌘-click picks them out one at a time")
+            ),
             ShortcutEntry(keys: "⌘S", detail: loc("Save the selected clip as a note")),
             ShortcutEntry(keys: "⌘E", detail: loc("Add the selected clip to the calendar")),
             ShortcutEntry(
@@ -324,6 +328,10 @@ enum ShortcutReference {
             ShortcutEntry(keys: "p", detail: loc("Pin or unpin the selected clip")),
             ShortcutEntry(keys: "n", detail: loc("Save the selected clip as a note")),
             ShortcutEntry(keys: "c", detail: loc("Add the selected clip to the calendar")),
+            ShortcutEntry(
+                keys: "v",
+                detail: loc("Visual mode: j and k extend the selection, Esc leaves")
+            ),
             ShortcutEntry(keys: "dd", detail: loc("Delete the selected clip (asks first)")),
             ShortcutEntry(keys: "q / ⇧Q", detail: loc("Add to the queue / paste the queue")),
             ShortcutEntry(keys: "/ or i", detail: loc("Search: / starts a fresh query, i edits the current one")),
