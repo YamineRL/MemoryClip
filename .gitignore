@@ -11,3 +11,8 @@ dist/
 
 # Internal roadmap / decisions log — local only.
 PLAN.md
+
+# Agent instructions — local only, and never part of a release: they are rules
+# for whoever is working on the checkout, not something the app ships with.
+AGENTS.md
+CLAUDE.md
