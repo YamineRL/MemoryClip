@@ -20,10 +20,11 @@ translated into your own when it is not one you read — and turns one into a no
 **[Obsidian](https://obsidian.md)**, any other folder of Markdown, Apple Notes, or a
 Shortcut.
 
-**Zero network calls**: no sync, no analytics, no accounts. Clips live in a local
-SwiftData store, and the models that read, tidy and translate run here too. The only files
-written anywhere else are the notes you asked for, in the folder you chose, and the
-calendar events you asked for.
+**No network calls unless you ask for one**: no sync, no analytics, no accounts. Clips
+live in a local SwiftData store, and the models that read, tidy and translate run here too.
+The only files written anywhere else are the notes you asked for, in the folder you chose,
+and the calendar events you asked for. One optional setting reaches the network at all —
+the daily update check below, off until you switch it on.
 
 Requires macOS 26 on Apple silicon.
 
@@ -77,6 +78,24 @@ xattr -dr com.apple.quarantine /Applications/MemoryClip.app
 
 There is no Dock icon either way. Press **⇧⌘V**, or find the clipboard glyph in the menu
 bar. **Launch at login** is in **Settings → General**.
+
+### Staying up to date
+
+`brew upgrade --cask memoryclip` if you installed it that way. If you installed by hand
+there is nothing to tell you a new version exists — no Dock icon, no window, no sync — so
+**Settings → General → Updates** has a switch for it, offered again on its own page of the
+first-run tour:
+
+- **Off by default.** With it off, MemoryClip makes no network calls at all.
+- **On**, it asks `api.github.com` once a day what the newest release is. The request is
+  an unauthenticated `GET` of a public endpoint carrying no identifier of any kind; the
+  only thing GitHub learns is that some address asked.
+- If there is something newer you get **one notification** — once per version, not once a
+  day until you give in. Take it and MemoryClip downloads that release's `.dmg` to a
+  temporary folder and opens it, leaving you the same drag onto `/Applications` as the
+  first install.
+- **It never installs anything itself.** This app is ad-hoc signed, so a silent
+  self-replacing updater would be asking you to trust a binary swap you never saw.
 
 ## Using it
 
@@ -327,7 +346,9 @@ back out again. Either way the clip row reads `· in calendar`.
 
 ## Privacy and security
 
-Everything happens on this Mac — a local SwiftData store, and no network calls at all.
+Everything happens on this Mac — a local SwiftData store, and no network calls except the
+one you can switch on ([the daily update check](#staying-up-to-date), off by default,
+which sends nothing about you and installs nothing on its own).
 
 - **The store is owner-only**, at `~/Library/Application Support/app.memoryclip/` —
   directory `0700`, files `0600`.
@@ -356,6 +377,10 @@ selection changes are announced, and every row action is reachable from the keyb
 **None** for the core job: capture, store, search, and copy clips back. No Screen
 Recording, no Input Monitoring, no network. Optional, and only with the matching feature:
 
+- **Notifications** — for the banner an automatic calendar event posts, and the one the
+  update check posts when a newer release exists. Asked for at the first banner, never at
+  launch.
+
 - **Files and folders** — to read your screenshot folder and write notes into the one you
   pick. Each grant is kept as a *security-scoped bookmark* rather than a path, so it
   outlives a relaunch, and MemoryClip never reaches into a folder you did not point it at.
@@ -381,7 +406,7 @@ where you left it.
 
 | Group | Pane | Contains |
 | --- | --- | --- |
-| General | **General** | Launch at login, theme, auto-paste |
+| General | **General** | Launch at login, theme, auto-paste, the daily update check |
 | General | **Shortcuts** | The global hotkey recorder (⇧⌘V is only the default), plus a key reference |
 | Clipboard | **History** | History cap, retention window, export |
 | Clipboard | **Screenshots** | Screenshot capture, the folder to watch, image OCR |
