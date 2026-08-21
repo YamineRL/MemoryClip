@@ -111,11 +111,19 @@ Inside Quick Look the arrows keep working, walking full-size through the picture
 files of whatever you had filtered, and the one you stop on is the one selected when you
 come back out.
 
-**Search** matches clip text, text recognised inside images, the model's summary, colour
-values, file names and the source app, with chips for **All, Text, Images, Links, Files,
-Colors**. It runs in the database over an index, a page at a time, so tens of thousands of
-clips filter like an empty store — paging bounds what is *drawn*, never what is
-*findable*.
+**Search** matches clip text, text recognised inside images, the model's summary, title
+and tags, an English translation, colour values, file names and the source app, with chips
+for **All, Text, Images, Links, Files, Colors**. It runs in the database over an index, a
+page at a time, so tens of thousands of clips filter like an empty store — paging bounds
+what is *drawn*, never what is *findable*.
+
+Type a **sentence** and every word has to match, rather than the whole phrase being looked
+for verbatim: "that error about the deploy failing" finds the clip that says *deployment
+to production failed*. Words are reduced to the stem they share with their dictionary form
+— `failing` reaches `failed`, `screenshots` reaches `screenshot` — and a stem is only ever
+a prefix of what you typed, so it can widen a search and never narrow it. Common words are
+dropped, the database is asked for the longest term alone, and the rest of the sentence is
+checked over the page that comes back.
 
 **Along the way** it badges emails, URLs, phone numbers, JWTs and JSON, shows `= 84` under
 a copied `12*7`, and offers a QR code for links. Right-click to transform a clip on the
@@ -383,7 +391,7 @@ notes and the panel's preview alike, which is why its two halves are headed **No
 ./Scripts/make_app.sh    # release build + dist/MemoryClip.app (ad-hoc signed)
 ./Scripts/make_dmg.sh    # the above, plus dist/MemoryClip-<version>.dmg
 swift build && swift run # debug build, run from it
-swift test               # 1008 unit tests (benchmarks skipped)
+swift test               # 1017 unit tests (benchmarks skipped)
 ```
 
 `make_app.sh` regenerates `Resources/AppIcon.icns` if it is missing, so
