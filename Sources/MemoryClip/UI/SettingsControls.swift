@@ -581,3 +581,125 @@ struct CalendarAutoCreateSetup: View {
         }
     }
 }
+
+// MARK: - Update checks
+
+/// The daily update check: the switch, what it last found, and a way to ask
+/// now.
+///
+/// Shared with the tour because this is the one decision in MemoryClip that
+/// changes what the app does on the network, and a user who never opens
+/// Settings should still get to make it. It earns a page by the same bar as
+/// the others: one switch, reversible, and something the app may not answer
+/// on the user's behalf.
+///
+/// The line under it names the host and says what is sent, on both windows.
+/// An update check is the kind of feature that quietly becomes telemetry, and
+/// the defence against that is a sentence the user can hold the code to.
+///
+/// - Parameter showsHint: the tour page says the same thing in its own
+///   bullets, so it turns the line off rather than printing it twice.
+struct UpdateCheckToggle: View {
+    var showsHint: Bool = true
+
+    /// The checker this reads. Defaulted to the shared one — which is what
+    /// both windows want — and injectable so the control can be put in front
+    /// of a stubbed one and looked at in each of its states.
+    @ObservedObject var checker: UpdateChecker = .shared
+
+    @AppStorage(SettingsKeys.automaticUpdates) private var automaticUpdates = false
+
+    var body: some View {
+        Group {
+            // The same explicit HStack the launch-at-login switch documents:
+            // a labelled Toggle leans on an enclosing Form, and the tour has
+            // no Form to lean on.
+            HStack(spacing: Design.Space.normal) {
+                Label {
+                    Text(loc("Check for updates daily"))
+                } icon: {
+                    SettingsIcon(symbol: "arrow.down.circle", tint: Color(nsColor: .systemBlue))
+                }
+                Spacer(minLength: Design.Space.normal)
+                Toggle(loc("Check for updates daily"), isOn: $automaticUpdates)
+                    .labelsHidden()
+            }
+
+            if automaticUpdates {
+                HStack(spacing: Design.Space.normal) {
+                    status
+                    Spacer(minLength: Design.Space.normal)
+                    action
+                }
+            }
+
+            if showsHint {
+                SettingsHint(loc("Off by default. When on, MemoryClip asks github.com once a day what the newest release is and tells you if it is newer than this one — nothing is sent about you, and nothing is downloaded or installed until you choose it."))
+            }
+        }
+    }
+
+    /// What the last check came back with, in one line.
+    @ViewBuilder
+    private var status: some View {
+        switch checker.status {
+        case .idle:
+            Text(lastCheckedText)
+                .font(.caption)
+                .foregroundStyle(Color(nsColor: .secondaryLabelColor))
+        case .checking:
+            Text(loc("Checking…"))
+                .font(.caption)
+                .foregroundStyle(Color(nsColor: .secondaryLabelColor))
+        case .upToDate:
+            Label(loc("MemoryClip is up to date"), systemImage: "checkmark.circle.fill")
+                .font(.caption)
+                .foregroundStyle(Color(nsColor: .systemGreen))
+        case let .available(update):
+            Text(loc("MemoryClip %@ is available", update.version.description))
+                .font(.caption)
+                .foregroundStyle(Color(nsColor: .labelColor))
+        case .downloading:
+            Text(loc("Downloading…"))
+                .font(.caption)
+                .foregroundStyle(Color(nsColor: .secondaryLabelColor))
+        case .opened:
+            // The disk image is in Finder now, so the next move is a drag and
+            // not another button here.
+            Text(loc("Drag MemoryClip to Applications in the window that opened, then relaunch."))
+                .font(.caption)
+                .foregroundStyle(Color(nsColor: .secondaryLabelColor))
+                .fixedSize(horizontal: false, vertical: true)
+        case let .failed(reason):
+            Text(reason)
+                .font(.caption)
+                .foregroundStyle(Color(nsColor: .systemRed))
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    /// Check Now, or — once there is something to take — Download.
+    @ViewBuilder
+    private var action: some View {
+        switch checker.status {
+        case let .available(update):
+            Button(loc("Download")) { checker.download(update) }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.small)
+        case .checking, .downloading:
+            ProgressView().controlSize(.small)
+        default:
+            Button(loc("Check Now")) { checker.check(userInitiated: true) }
+                .controlSize(.small)
+        }
+    }
+
+    /// When it last looked, or that it has not yet.
+    private var lastCheckedText: String {
+        guard let last = checker.lastChecked else { return loc("Not checked yet") }
+        let when = last.formatted(
+            Date.FormatStyle(date: .abbreviated, time: .shortened).locale(L10n.locale)
+        )
+        return loc("Last checked %@", when)
+    }
+}

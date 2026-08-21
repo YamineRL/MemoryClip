@@ -6,6 +6,14 @@ enum SettingsKeys {
     static let retentionDays: String = "retentionDays"
     static let autoPaste: String = "autoPaste"
     static let vimMode: String = "vimMode"
+    /// The daily update check — off unless the user switches it on. See
+    /// `UpdateChecker` for what it does and what it deliberately does not.
+    static let automaticUpdates: String = "automaticUpdates"
+    /// When the last check completed, as a reference-date interval.
+    static let lastUpdateCheck: String = "lastUpdateCheck"
+    /// The newest version already announced in a banner, so an update the
+    /// user leaves un-taken is not re-announced every day.
+    static let lastOfferedUpdate: String = "lastOfferedUpdate"
     static let appearance: String = "appearance"
     /// Which Settings pane was open last (a `SettingsPane` raw value).
     ///
@@ -29,11 +37,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private(set) var screenshotWatcher: ScreenshotWatcher!
     private(set) var noteCoordinator: NoteCoordinator!
     private(set) var calendarCoordinator: CalendarCoordinator!
+    /// The daily release check — the shared instance the Settings pane and
+    /// the tour also read, named here because this is what starts its timer.
+    let updateChecker = UpdateChecker.shared
 
     /// Answers the Undo and Open in Calendar buttons on the banner an
     /// automatically created event posts. Held for the life of the app
     /// because `UNUserNotificationCenter.delegate` is a weak reference.
-    private var eventNotificationDelegate: EventNotificationDelegate?
+    private var eventNotificationDelegate: AppNotificationDelegate?
 
     /// Watches for the user picking a different screenshot folder in
     /// Settings, so the watcher re-points without a relaunch.
@@ -162,9 +173,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // that happens at launch; permission is asked for at the first banner
         // (see `EventNotifier`). Inert in a process with no bundle identifier,
         // which is every process that is not the built app.
-        let notificationDelegate = EventNotificationDelegate(calendarCoordinator: calendarCoordinator)
+        let notificationDelegate = AppNotificationDelegate(
+            calendarCoordinator: calendarCoordinator,
+            updateChecker: updateChecker
+        )
         eventNotificationDelegate = notificationDelegate
-        EventNotifier.install(delegate: notificationDelegate)
+        AppNotifications.install(delegate: notificationDelegate)
+
+        // The timer only asks whether a check is owed; the setting is what
+        // answers, so this is started whether or not it is switched on.
+        updateChecker.start()
 
         screenshotFolderObserver = NotificationCenter.default.addObserver(
             forName: .memoryClipScreenshotFolderChanged,

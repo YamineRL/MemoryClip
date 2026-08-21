@@ -155,6 +155,41 @@ final class OnboardingTests: XCTestCase {
         )
     }
 
+    /// The update check is the only thing in MemoryClip that opens a socket,
+    /// so the page offering it has to name the host it talks to and say that
+    /// nothing installs itself. Found by the control rather than the page id,
+    /// so the page can be rewritten around the switch but not emptied of the
+    /// two claims the user is being asked to trust.
+    func testUpdateStepNamesTheHostAndDisclaimsSelfInstalling() throws {
+        let step = try XCTUnwrap(OnboardingFlow.steps.first { $0.setup == .updateChecks })
+        let text = step.bullets.joined(separator: " ")
+        XCTAssertTrue(text.contains("github.com"), "the page must name the host it asks: \(text)")
+        XCTAssertTrue(
+            text.contains("Nothing is installed behind your back"),
+            "the page must say the download stops at the disk image: \(text)"
+        )
+        XCTAssertTrue(
+            step.subtitle.contains("does not update itself"),
+            "the subtitle must not imply an automatic updater: \(step.subtitle)"
+        )
+    }
+
+    /// The welcome page's privacy claim and the update switch are two pages
+    /// apart, and only one of them can be right: an unqualified "nothing
+    /// leaves this Mac" beside a setting that phones GitHub is a promise the
+    /// app does not keep.
+    func testTheWelcomeClaimIsQualifiedByTheUpdateCheck() throws {
+        let welcome = try XCTUnwrap(OnboardingFlow.steps.first { $0.id == "welcome" })
+        let claim = try XCTUnwrap(
+            welcome.bullets.first { $0.contains("no sync, no accounts, no analytics") },
+            "the welcome page no longer states the privacy posture at all"
+        )
+        XCTAssertTrue(
+            claim.contains("update check"),
+            "the claim must name the one exception to it: \(claim)"
+        )
+    }
+
     /// A tour is read in the order it is written, so anything needing an
     /// answer is asked before anything that only explains: a decision buried
     /// past the last page anyone reaches is a decision nobody makes.

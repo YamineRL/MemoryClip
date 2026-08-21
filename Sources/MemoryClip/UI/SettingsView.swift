@@ -223,6 +223,10 @@ private struct GeneralSettingsPane: View {
                 LaunchAtLoginToggle()
             }
 
+            Section(loc("Updates")) {
+                UpdateCheckToggle()
+            }
+
             Section(loc("Appearance")) {
                 Picker(selection: $appearance) {
                     ForEach(AppearanceSetting.allCases) { option in
@@ -679,7 +683,7 @@ private struct AboutSettingsPane: View {
                     .multilineTextAlignment(.center)
                     .padding(.top, Design.Space.tight)
 
-                Text(loc("Everything happens on this Mac: clips are stored in a local SwiftData file, and MemoryClip makes no network calls — no sync, no accounts, no analytics. It needs no Accessibility or Screen Recording permission to capture, search and copy clips; Accessibility is optional and only lets auto-paste send a synthetic ⌘V."))
+                Text(loc("Everything happens on this Mac: clips are stored in a local SwiftData file — no sync, no accounts, no analytics. MemoryClip makes one kind of network call and only if you ask for it: the daily update check in Settings → General, off until you switch it on. It needs no Accessibility or Screen Recording permission to capture, search and copy clips; Accessibility is optional and only lets auto-paste send a synthetic ⌘V."))
                     .font(.caption)
                     .foregroundStyle(Color(nsColor: .secondaryLabelColor))
                     .multilineTextAlignment(.center)

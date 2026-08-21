@@ -25,6 +25,9 @@ enum OnboardingSetup: String, CaseIterable, Equatable, Sendable {
     /// Automatic calendar events, which is also where the write-only calendar
     /// permission is asked for — Settings → Calendar → Adding events.
     case calendarEvents
+    /// The daily update check, the one setting that decides whether the app
+    /// touches the network at all — Settings → General → Updates.
+    case updateChecks
 }
 
 /// One page of the first-run tour. Pure data so the flow can be tested
@@ -78,7 +81,7 @@ enum OnboardingFlow {
             bullets: [
                 loc("Everything you copy — text, rich text, images, files, links, hex colors — is kept in a history on this Mac. Identical re-copies are deduplicated; old clips age out by count and by age (Settings → History)."),
                 loc("MemoryClip lives in the menu bar (no Dock icon) and starts capturing as soon as it launches."),
-                loc("Nothing leaves this Mac: no sync, no accounts, no analytics. Luhn-valid card numbers, copies made in password managers and anything marked concealed on the pasteboard are skipped entirely."),
+                loc("Nothing you copy leaves this Mac: no sync, no accounts, no analytics. Luhn-valid card numbers, copies made in password managers and anything marked concealed on the pasteboard are skipped entirely. The only network call MemoryClip can make is the update check a few pages on, and it is off until you switch it on."),
             ],
             setup: .launchAtLogin
         ),
@@ -118,6 +121,19 @@ enum OnboardingFlow {
                 loc("macOS asks once. MemoryClip asks only for permission to add events — it cannot read your calendar, so events go to whichever calendar is your default for new ones (Settings → Calendar)."),
             ],
             setup: .calendarEvents
+        ),
+        OnboardingStep(
+            id: "updates",
+            symbol: "arrow.down.circle",
+            title: loc("Getting the next version"),
+            subtitle: loc("MemoryClip does not update itself, and will not go looking unless you say so."),
+            bullets: [
+                loc("Installed with Homebrew? “brew upgrade --cask memoryclip” is all of it, and you can leave the switch below alone."),
+                loc("Otherwise there is nothing to tell you a new version exists — MemoryClip has no Dock icon, no window and no sync, so a release can sit on GitHub for months unnoticed."),
+                loc("Switch this on and once a day MemoryClip asks github.com what the newest release is. Nothing about you is sent: it is an anonymous read of a public page, and if there is nothing newer, nothing happens at all."),
+                loc("When there is, you get one notification. Take it and MemoryClip downloads that release and opens the disk image, with Applications sitting right beside the app — the same drag as the first time. Nothing is installed behind your back."),
+            ],
+            setup: .updateChecks
         ),
         OnboardingStep(
             id: "extras",
@@ -287,6 +303,10 @@ struct OnboardingView: View {
                 // callout and drops the rest; what qualifies as an event is
                 // the page's second bullet.
                 CalendarAutoCreateSetup(showsDetail: false)
+            case .updateChecks:
+                // The page's bullets already name the host and say what is
+                // sent, so the control's own line would be the third telling.
+                UpdateCheckToggle(showsHint: false)
             }
         }
         .padding(Design.Space.roomy)
