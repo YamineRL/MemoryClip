@@ -128,8 +128,12 @@ struct ClipCardView: View {
             }
             if isTextBearing {
                 Menu(loc("Transform")) {
-                    ForEach(Transform.allCases) { transform in
-                        Button(transform.label) { onTransform(transform) }
+                    ForEach(TransformGroup.allCases) { group in
+                        Menu(group.label) {
+                            ForEach(group.transforms) { transform in
+                                Button(transform.label) { onTransform(transform) }
+                            }
+                        }
                     }
                 }
             }

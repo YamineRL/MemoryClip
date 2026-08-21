@@ -485,7 +485,7 @@ struct PreviewView: View {
         case .url: return "URL"
         case .phone: return loc("Phone")
         case .jwt: return "JWT"
-        case .json: return "JSON"
+        case .json: return loc("JSON")
         }
     }
 
