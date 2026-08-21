@@ -821,10 +821,15 @@ private struct TranslationSettingsPane: View {
 
     var body: some View {
         Form {
+            Section(loc("Language")) {
+                ClipTranslationTargetPicker()
+                SettingsHint(loc("The language MemoryClip translates into, for notes and for the panel's preview alike. It starts as the language this Mac is set to read. A language the on-device translator has no assets for falls back to English, which is the pairing macOS ships most widely."))
+            }
+
             Section(loc("Notes")) {
                 Toggle(isOn: $translateEnabled) {
                     Label {
-                        Text(loc("Translate other languages into English"))
+                        Text(loc("Translate other languages"))
                     } icon: {
                         SettingsIcon(symbol: "character.bubble.fill", tint: Color(nsColor: .systemPink))
                     }
@@ -832,7 +837,7 @@ private struct TranslationSettingsPane: View {
                 if translateEnabled {
                     TranslationLanguagePicker()
                 }
-                SettingsHint(loc("When MemoryClip writes a note, a screenshot in Arabic, Japanese or Russian is read in its own language and the note carries both: the text exactly as it was on screen, and an English translation underneath it. Translation runs on this Mac. The title, summary and tags are written from the English, so the note is findable in a vault you search in English.\n\nMemoryClip translates every language this Mac already has the assets for, whether or not it is ticked below. Ticking one downloads its assets if macOS does not have them yet, and tells MemoryClip to expect that language on screen. The packs go into the store the whole system shares, so a language you fetch here is the one Translate and Safari use."))
+                SettingsHint(loc("When MemoryClip writes a note, a screenshot in Arabic, Japanese or Russian is read in its own language and the note carries both: the text exactly as it was on screen, and a translation underneath it, in the language chosen above. Translation runs on this Mac. The title, summary and tags are written from that translation, so the note is findable in the language you search your vault in.\n\nMemoryClip translates every language this Mac already has the assets for, whether or not it is ticked below. Ticking one downloads its assets if macOS does not have them yet, and tells MemoryClip to expect that language on screen. The packs go into the store the whole system shares, so a language you fetch here is the one Translate and Safari use."))
             }
 
             Section(loc("Clip preview")) {
@@ -843,10 +848,7 @@ private struct TranslationSettingsPane: View {
                         SettingsIcon(symbol: "text.bubble.fill", tint: Color(nsColor: .systemTeal))
                     }
                 }
-                if clipTranslateEnabled {
-                    ClipTranslationTargetPicker()
-                }
-                SettingsHint(loc("Nothing to do with notes: copy something in a language you do not read and the panel's preview shows it in yours, above the text as it was copied. It happens when you open the preview, not when you copy — a clipboard is mostly things nobody reads twice — and each clip is translated once and remembered."))
+                SettingsHint(loc("Copy something in a language you do not read and the panel's preview shows it in the language chosen above, over the text as it was copied. It happens when you open the preview, not when you copy — a clipboard is mostly things nobody reads twice — and each clip is translated once and remembered."))
             }
         }
         .formStyle(.grouped)

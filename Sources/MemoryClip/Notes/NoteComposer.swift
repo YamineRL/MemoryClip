@@ -39,18 +39,35 @@ enum NoteComposer {
     /// Heading for the block carrying the untouched recognition.
     static let rawTextHeading = "Original text"
 
-    /// Heading for the block carrying the English rendering.
+    /// Heading for the block carrying the translation.
     ///
     /// A function of the draft rather than a constant, because "Translation"
     /// alone does not say which direction it went: the note's body is the
     /// language the user photographed, and the reader has to be able to tell
     /// at a glance which of the two blocks is the machine's. Falls back to
-    /// the bare noun when the source language was not identified.
+    /// the bare noun for either half it cannot name.
     static func translationHeading(for draft: NoteDraft) -> String {
-        guard let identifier = draft.sourceLanguage, !identifier.isEmpty else {
-            return "English translation"
-        }
-        return "English translation from \(LanguageDetector.displayName(forIdentifier: identifier))"
+        let noun = translationLanguageName(for: draft).map { "\($0) translation" } ?? "Translation"
+        guard let identifier = draft.sourceLanguage, !identifier.isEmpty else { return noun }
+        return "\(noun) from \(LanguageDetector.displayName(forIdentifier: identifier))"
+    }
+
+    /// What language the draft's translation came out in.
+    ///
+    /// Read off the translated text itself rather than off
+    /// `NoteTranslation.target`. The target is a setting the user can change,
+    /// and `Update Note` rewrites a file from whatever the clip is already
+    /// carrying: a note translated last spring keeps its old translation, so
+    /// naming today's target over it would caption the block with a language
+    /// that is not in it. The text in hand is the only thing that cannot be
+    /// out of date. Nil when it is too short or too mixed to identify, which
+    /// leaves the heading saying only which direction the translation went.
+    private static func translationLanguageName(for draft: NoteDraft) -> String? {
+        guard let translation = translationToEmit(for: draft),
+              let language = LanguageDetector.dominantLanguage(of: translation),
+              let code = language.languageCode?.identifier
+        else { return nil }
+        return LanguageDetector.displayName(forIdentifier: code)
     }
 
     /// The line under the translation heading, saying where it came from.

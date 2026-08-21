@@ -1,7 +1,7 @@
 import Foundation
 import NaturalLanguage
 
-/// Reading a screenshot that is not in English (Phase 5).
+/// Reading a screenshot that is not in a language you read (Phase 5).
 ///
 /// # What this layer is for
 ///
@@ -16,9 +16,10 @@ import NaturalLanguage
 ///
 /// So a clip whose text is not in `NoteTranslation.target` is translated
 /// first, on-device, and the note carries BOTH: the original text as
-/// recognised, and the English rendering underneath it. The original is the
-/// record — the same contract the raw OCR has against refinement — and the
-/// translation is the part that makes it findable and readable.
+/// recognised, and the rendering into the reader's own language underneath
+/// it. The original is the record — the same contract the raw OCR has against
+/// refinement — and the translation is the part that makes it findable and
+/// readable.
 ///
 /// # Why the seam is here and not in the provider
 ///
@@ -58,7 +59,7 @@ struct TranslationChunk: Sendable, Equatable {
     var separator: String
 }
 
-/// Anything that can turn foreign-language text into English.
+/// Anything that can turn text into a language the reader asked for.
 protocol NoteTranslator: Sendable {
     /// Every language this Mac can translate, downloaded or not — as a source
     /// for the note pipeline, and as a target for the preview pane.
@@ -100,10 +101,11 @@ protocol NoteTranslator: Sendable {
 
 /// The pair-aware calls, for a translator that only knows one target.
 ///
-/// Every conformer answers about its own fixed target — English, for the two
-/// in this app that predate the preview pane, and whatever a test stub was
-/// told to return. A provider that can genuinely translate into more than one
-/// language implements both and these defaults never run.
+/// Every conformer answers about the one target it knows — the note
+/// pipeline's, for the two in this app that predate the preview pane, and
+/// whatever a test stub was told to return. A provider that can genuinely
+/// translate into more than one language implements both and these defaults
+/// never run.
 extension NoteTranslator {
     func readiness(from source: Locale.Language, to target: Locale.Language) async -> TranslationReadiness {
         await readiness(for: source)
@@ -143,18 +145,74 @@ enum TranslationReadiness: Sendable, Equatable {
 /// The fixed points of translation: what we translate into, and how much of
 /// a clip is worth translating.
 enum NoteTranslation {
-    /// The language notes are translated into.
+    /// The language notes are translated into: whatever Settings' translation
+    /// target names, which is the same language the preview pane renders a
+    /// clip into. One setting rather than two, so the app cannot hold two
+    /// answers to "which language do you read".
     ///
-    /// English rather than the user's preferred locale, deliberately: it is
-    /// the language the rest of the pipeline is best at — the on-device model
-    /// reads it, `RefinementGuard`'s tokenizer was tuned on it — and it is
-    /// the one pairing macOS ships assets for most widely. The original text
-    /// is always kept, so this is a second reading of the note, never a
-    /// replacement of it.
-    static let target = Locale.Language(identifier: "en-US")
+    /// English is the floor, in two places. It is what an unset or unreadable
+    /// setting resolves to, and it is the second entry in `targetPreference`,
+    /// tried when the chosen pair has no assets on this Mac — macOS ships
+    /// `xx→en` most widely, so English is the pair most likely to exist at
+    /// all. The rest of the pipeline leans the same way and degrades rather
+    /// than breaks when the target is something else:
+    ///
+    /// - `FoundationModelsRefiner` writes the title, summary and tags FROM the
+    ///   translation, and it reads 23 locales. A target outside them fails
+    ///   `supportsLanguage` and those three fields fall back to the
+    ///   heuristics, which is the same outcome an unavailable model already
+    ///   gives.
+    /// - `RefinementGuard` splits on non-alphanumerics, so its ratios count
+    ///   words for any space-separated script and count *sentences* for
+    ///   Chinese, Japanese and Thai, where a clause arrives as one token. Its
+    ///   thresholds were also measured on English pairs, and a heavily
+    ///   inflected target spends more of its distinct-token budget on endings
+    ///   than English does. It errs toward rejection, so a weaker read costs
+    ///   an unpolished note rather than a fabricated one.
+    ///
+    /// The original text is always kept, so this is a second reading of the
+    /// note, never a replacement of it.
+    static var target: Locale.Language {
+        Locale.Language(identifier: targetIdentifier)
+    }
 
-    /// The identifier written into note front matter for `target`.
-    static let targetIdentifier = "en"
+    /// `target` as a BCP-47 identifier ("en", "fr", "zh-Hant").
+    ///
+    /// Reduced through `ClipTranslation.identity(of:)`, which drops a region
+    /// the engine does not translate differently for and keeps a script that
+    /// names a different language — so the two properties always agree about
+    /// which language was picked.
+    static var targetIdentifier: String {
+        let stored = UserDefaults.standard.string(forKey: NoteSettingsKeys.clipTranslationTarget) ?? ""
+        let language = Locale.Language(identifier: stored)
+        // The shape is checked rather than trusted. `Locale.Language` parses
+        // anything it is handed — "!!!" comes back with "!!!" as its language
+        // code — and a target like that would be asked of the availability
+        // API and hinted to the recognizer as though it named a language.
+        // "und" is BCP-47's own way of saying it does not.
+        guard let code = language.languageCode?.identifier,
+              (2...8).contains(code.count),
+              code.allSatisfy({ $0.isASCII && $0.isLetter }),
+              code != "und"
+        else { return fallbackTargetIdentifier }
+        return ClipTranslation.identity(of: language)
+    }
+
+    /// The language a note falls back to: the setting's floor, and the second
+    /// target tried when the first has no assets.
+    static let fallbackTargetIdentifier = "en"
+
+    /// The targets to try for one clip, best first.
+    ///
+    /// One entry when the setting already names English. Two otherwise, and
+    /// the second is not a downgrade worth interrupting anyone over: a note
+    /// nobody can read is worse than a note in the wrong second language, and
+    /// the text as it was on screen sits above the translation either way.
+    static var targetPreference: [Locale.Language] {
+        let target = self.target
+        guard target.languageCode?.identifier != fallbackTargetIdentifier else { return [target] }
+        return [target, Locale.Language(identifier: fallbackTargetIdentifier)]
+    }
 
     /// How much text is translated, in characters.
     ///
@@ -708,10 +766,13 @@ enum LanguageDetector {
         let unhinted = recognizer.languageHypotheses(withMaximum: hypothesisDepth)
 
         guard !preferred.isEmpty, !unhinted.isEmpty else { return identifiers(of: unhinted) }
-        // English joins the user's picks unconditionally: it is the language
-        // this whole layer translates INTO, so a clip that is already in it
-        // is the outcome no part of the pipeline has to work for.
-        let boosted = ([NoteTranslation.targetIdentifier] + preferred).compactMap(recognizerLanguage(for:))
+        // The targets join the user's picks unconditionally: they are what
+        // this whole layer translates INTO, so a clip that is already in one
+        // is the outcome no part of the pipeline has to work for. Both of
+        // them, because English is the fallback target even when it is not the
+        // chosen one — and when it IS, the two collapse to one hint.
+        let targets = [NoteTranslation.targetIdentifier, NoteTranslation.fallbackTargetIdentifier]
+        let boosted = (targets + preferred).compactMap(recognizerLanguage(for:))
         guard !boosted.isEmpty else { return identifiers(of: unhinted) }
 
         var hints = unhinted.mapValues { _ in neutralHintWeight }
@@ -836,8 +897,8 @@ enum TranslationCatalog {
     /// Three rules, each earning its place against the raw list (38 entries
     /// on macOS 26.5):
     ///
-    /// 1. **English is dropped.** It is the target; "translate English into
-    ///    English" is not an option, it is a no-op.
+    /// 1. **The target is dropped.** Translating a language into itself is
+    ///    not an option, it is a no-op.
     /// 2. **Regions are collapsed, scripts are not.** Apple lists es-ES,
     ///    es-MX and es-US separately, and offering three Spanishes to someone
     ///    who wants to read a screenshot is a choice with no right answer.
@@ -879,10 +940,10 @@ enum TranslationCatalog {
 
     /// The whole menu, with nothing dropped.
     ///
-    /// The exclusion above exists because English cannot be a *source* for
-    /// the note pipeline, which translates into it. A target picker has no
-    /// such language: every one the framework names, English included, is
-    /// something a user might want their clips rendered into.
+    /// The exclusion above exists because the target cannot also be a *source*
+    /// for the note pipeline. A target picker has no such language: every one
+    /// the framework names is something a user might want their clips rendered
+    /// into.
     static func menu(from languages: [Locale.Language]) -> [TranslationLanguage] {
         // "und" is BCP-47 for an undetermined language, so it matches nothing
         // in the list and the exclusion is a no-op.

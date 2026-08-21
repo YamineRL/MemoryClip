@@ -129,10 +129,11 @@ protocol NoteRefiner: Sendable {
     /// being sent to it and something to lose — a rewrite in a language the
     /// model does not know is not a cleanup. The caller uses this to choose
     /// what to hand over: the original text when the model can read it, the
-    /// English translation when it cannot.
+    /// translation when it cannot.
     ///
-    /// nil means "not determined", which is the answer for English and for
-    /// text too short to identify, and must be treated as supported.
+    /// nil means "not determined", which is the answer for text already in the
+    /// target language and for text too short to identify, and must be treated
+    /// as supported.
     func supportsLanguage(_ language: Locale.Language?) -> Bool
 }
 

@@ -33,11 +33,15 @@ enum NoteSettingsKeys {
     // Clip translation
     /// Whether a previewed text clip is translated into the user's own
     /// language. A different feature from the three keys above, which belong
-    /// to the screenshot → note pipeline and always translate into English —
-    /// see `ClipTranslation`.
+    /// to the screenshot → note pipeline — see `ClipTranslation`.
     static let clipTranslateEnabled = "clipTranslateEnabled"
-    /// The language a previewed clip is translated INTO, as a BCP-47
-    /// identifier. Defaulted to whatever this Mac is set to read.
+    /// The language a clip is translated INTO, as a BCP-47 identifier.
+    /// Defaulted to whatever this Mac is set to read.
+    ///
+    /// Read by both features, deliberately: `ClipTranslation.targetIdentifier`
+    /// for the preview pane and `NoteTranslation.targetIdentifier` for notes,
+    /// which floors it at English. One key, so the app cannot hold two answers
+    /// to "which language do you read".
     static let clipTranslationTarget = "clipTranslationTarget"
 
     // Panel
@@ -66,7 +70,8 @@ enum NoteSettingsKeys {
     /// (a note per screenshot would bury a vault — the manual action is the
     /// default way in). Refinement is ON but inert until something asks for
     /// a note or a screenshot is captured, and so is translation, which in
-    /// addition only ever fires for text that is not already English.
+    /// addition only ever fires for text that is not already in the target
+    /// language.
     ///
     /// Clip translation is OFF: it reads what the user copies, which is a
     /// thing to be asked for rather than switched on for someone who has not

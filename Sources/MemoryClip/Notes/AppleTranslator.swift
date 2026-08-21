@@ -73,8 +73,8 @@ struct AppleTranslator: NoteTranslator {
     /// lands — what the preview pane asks for.
     ///
     /// Every step below is target-independent except the availability check
-    /// and the session, which is why the note pipeline's fixed English target
-    /// is just one caller of this.
+    /// and the session, which is why the note pipeline and the preview pane
+    /// are two callers of one function.
     func translate(
         _ text: String,
         from language: Locale.Language,

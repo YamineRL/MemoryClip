@@ -31,6 +31,49 @@ private struct StubTranslator: NoteTranslator {
     }
 }
 
+/// Every target a translator was asked about, in order.
+private actor AskedTargets {
+    private(set) var codes: [String] = []
+    func record(_ code: String) { codes.append(code) }
+}
+
+/// A translator that answers per target rather than per source, so the walk
+/// from the chosen language down to English can be driven without any assets
+/// on the machine running the suite.
+private struct TargetAwareTranslator: NoteTranslator {
+    /// Target language codes this Mac is pretending to have assets for.
+    let installed: Set<String>
+    let asked = AskedTargets()
+
+    func supportedLanguages() async -> [Locale.Language] { [] }
+
+    func readiness(for language: Locale.Language) async -> TranslationReadiness {
+        await readiness(from: language, to: NoteTranslation.target)
+    }
+
+    func readiness(from source: Locale.Language, to target: Locale.Language) async -> TranslationReadiness {
+        installed.contains(target.languageCode?.identifier ?? "") ? .ready : .needsDownload
+    }
+
+    func translate(_ text: String, from language: Locale.Language) async -> TranslatedText? {
+        await translate(text, from: language, to: NoteTranslation.target)
+    }
+
+    func translate(
+        _ text: String,
+        from source: Locale.Language,
+        to target: Locale.Language
+    ) async -> TranslatedText? {
+        let code = target.languageCode?.identifier ?? ""
+        await asked.record(code)
+        guard installed.contains(code) else { return nil }
+        return TranslatedText(
+            text: "The meeting is on Tuesday at three, in \(code)",
+            sourceLanguage: LanguageDetector.identifier(for: source)
+        )
+    }
+}
+
 /// A refiner that reads only English, the way the on-device model does.
 private struct EnglishOnlyRefiner: NoteRefiner {
     let isAvailable = true
@@ -432,6 +475,106 @@ final class NoteTranslationBoundsTests: XCTestCase {
     }
 }
 
+// MARK: - The target
+
+/// Which language a note is translated INTO, resolved from the one setting
+/// the preview pane already uses.
+final class NoteTranslationTargetTests: XCTestCase {
+    private let key = NoteSettingsKeys.clipTranslationTarget
+    private var stored: Any?
+
+    override func setUp() {
+        super.setUp()
+        stored = UserDefaults.standard.object(forKey: key)
+    }
+
+    override func tearDown() {
+        UserDefaults.standard.set(stored, forKey: key)
+        super.tearDown()
+    }
+
+    /// Nothing stored is the state of a Mac whose defaults have never been
+    /// registered. English, not this machine's language: an answer that moved
+    /// with the tester's locale would be untestable, and English is what the
+    /// pipeline is built around.
+    func testAnAbsentSettingIsEnglish() {
+        UserDefaults.standard.removeObject(forKey: key)
+        XCTAssertEqual(NoteTranslation.targetIdentifier, "en")
+    }
+
+    func testAnEmptySettingIsEnglish() {
+        UserDefaults.standard.set("", forKey: key)
+        XCTAssertEqual(NoteTranslation.targetIdentifier, "en")
+    }
+
+    /// A stored value that names no language at all — a key written by hand,
+    /// or left behind by a build that spelled targets differently.
+    func testAnUnreadableSettingIsEnglish() {
+        for nonsense in ["und", "!!!", "   "] {
+            UserDefaults.standard.set(nonsense, forKey: key)
+            XCTAssertEqual(NoteTranslation.targetIdentifier, "en", nonsense)
+        }
+    }
+
+    func testAPickedLanguageIsTheTarget() {
+        UserDefaults.standard.set("fr", forKey: key)
+        XCTAssertEqual(NoteTranslation.targetIdentifier, "fr")
+        XCTAssertEqual(NoteTranslation.target.languageCode?.identifier, "fr")
+    }
+
+    /// The same rule `ClipTranslation` stores a target by: a region the engine
+    /// does not translate differently for goes, a script that names another
+    /// language stays.
+    func testTheTargetKeepsAScriptAndDropsARegion() {
+        UserDefaults.standard.set("zh-Hant", forKey: key)
+        XCTAssertEqual(NoteTranslation.targetIdentifier, "zh-Hant")
+
+        UserDefaults.standard.set("pt-BR", forKey: key)
+        XCTAssertEqual(NoteTranslation.targetIdentifier, "pt")
+    }
+
+    /// The two are one answer read two ways, so nothing downstream can be
+    /// told one language and write down another.
+    func testTheIdentifierAndTheLanguageAlwaysAgree() {
+        for value in ["", "und", "fr", "zh-Hant", "pt-BR", "en-US", "ja"] {
+            UserDefaults.standard.set(value, forKey: key)
+            let identifier = NoteTranslation.targetIdentifier
+            XCTAssertEqual(NoteTranslation.target, Locale.Language(identifier: identifier), value)
+            XCTAssertEqual(
+                NoteTranslation.target.languageCode?.identifier,
+                Locale.Language(identifier: identifier).languageCode?.identifier,
+                value
+            )
+        }
+    }
+
+    /// English is the second target, tried when the chosen pair has no assets.
+    func testAnyOtherTargetFallsBackToEnglish() {
+        UserDefaults.standard.set("fr", forKey: key)
+        let preference = NoteTranslation.targetPreference
+        XCTAssertEqual(preference.map(\.minimalIdentifier), ["fr", "en"])
+    }
+
+    /// Nothing to fall back to when English is already the choice: offering
+    /// it twice would ask the framework the same question twice.
+    func testEnglishHasNoSecondTarget() {
+        for value in ["en", "en-US", ""] {
+            UserDefaults.standard.set(value, forKey: key)
+            XCTAssertEqual(NoteTranslation.targetPreference.count, 1, value)
+            XCTAssertEqual(NoteTranslation.targetPreference.first?.languageCode?.identifier, "en", value)
+        }
+    }
+
+    /// Both targets are hinted to the recognizer — the chosen one and the
+    /// English it falls back to — and a hint is a prior, not a verdict: text
+    /// that really is in another language still comes back as that language.
+    func testAChosenTargetDoesNotOverruleDetection() {
+        UserDefaults.standard.set("fr", forKey: key)
+        let detected = LanguageDetector.dominantLanguage(of: portuguese, preferring: ["pt-Latn"])
+        XCTAssertEqual(detected?.languageCode?.identifier, "pt")
+    }
+}
+
 // MARK: - Chunks
 
 private enum ChunkFixture {
@@ -689,6 +832,35 @@ final class TranslatedNoteCompositionTests: XCTestCase {
         XCTAssertTrue(markdown.contains("## English translation\n"), markdown)
     }
 
+    /// The heading names the language the translation is actually in.
+    func testTheHeadingNamesTheLanguageOfTheTranslation() {
+        let french = "La réunion de mardi commence à trois heures et le dossier doit être prêt avant."
+        let markdown = NoteComposer.markdown(for: draft(translation: french))
+        XCTAssertTrue(markdown.contains("## French translation from Arabic"), markdown)
+    }
+
+    /// `Update Note` rewrites a file from what the clip is still carrying, so
+    /// a note translated into English before the target was changed keeps an
+    /// English heading over its English text. A note that says French over
+    /// English would be wrong about the one thing the heading is for.
+    func testUpdatingAnOlderNoteKeepsTheHeadingItsTranslationEarned() {
+        let key = NoteSettingsKeys.clipTranslationTarget
+        let stored = UserDefaults.standard.object(forKey: key)
+        defer { UserDefaults.standard.set(stored, forKey: key) }
+
+        UserDefaults.standard.set("fr", forKey: key)
+        let markdown = NoteComposer.markdown(for: draft())
+        XCTAssertTrue(markdown.contains("## English translation from Arabic"), markdown)
+        XCTAssertFalse(markdown.contains("French translation"), markdown)
+    }
+
+    /// Neither half nameable: a translation too short to identify still says
+    /// which direction it went.
+    func testTheHeadingDropsTheTargetItCannotName() {
+        let markdown = NoteComposer.markdown(for: draft(translation: "Bio"))
+        XCTAssertTrue(markdown.contains("## Translation from Arabic"), markdown)
+    }
+
     /// A clip whose text could not be translated but whose translation is all
     /// there is still counts as having something to write.
     func testDraftWithOnlyATranslationHasContent() {
@@ -701,16 +873,25 @@ final class TranslatedNoteCompositionTests: XCTestCase {
 
 @MainActor
 final class TranslationPipelineTests: XCTestCase {
+    private let targetKey = NoteSettingsKeys.clipTranslationTarget
+    private var storedTarget: Any?
+
     override func setUpWithError() throws {
         UserDefaults.standard.set(1000, forKey: SettingsKeys.historyCap)
         UserDefaults.standard.set(0, forKey: SettingsKeys.retentionDays)
         UserDefaults.standard.set(true, forKey: NoteSettingsKeys.refineEnabled)
         UserDefaults.standard.set(true, forKey: NoteSettingsKeys.translateEnabled)
         UserDefaults.standard.set(false, forKey: NoteSettingsKeys.autoNoteEnabled)
+        // Pinned rather than inherited: the target is a setting now, and a
+        // suite that read whichever language the tester's Mac is set to would
+        // pass or fail on the machine running it.
+        storedTarget = UserDefaults.standard.object(forKey: targetKey)
+        UserDefaults.standard.set("en", forKey: targetKey)
     }
 
     override func tearDownWithError() throws {
         UserDefaults.standard.set(true, forKey: NoteSettingsKeys.translateEnabled)
+        UserDefaults.standard.set(storedTarget, forKey: targetKey)
     }
 
     private func screenshotClip(text: String, in store: ClipStore) throws -> ClipItem {
@@ -759,6 +940,91 @@ final class TranslationPipelineTests: XCTestCase {
         XCTAssertEqual(draft.body, arabic)
         XCTAssertEqual(draft.translation, "Hello world\nThe meeting is on Tuesday at three")
         XCTAssertEqual(draft.sourceLanguage, "ar")
+    }
+
+    /// The change this all turns on: the note is rendered into the language
+    /// Settings names, not into English regardless.
+    func testTheNoteIsTranslatedIntoTheLanguageChosenInSettings() async throws {
+        UserDefaults.standard.set("fr", forKey: targetKey)
+
+        let store = try ClipStore(inMemory: true)
+        let item = try screenshotClip(text: arabic, in: store)
+        let translator = TargetAwareTranslator(installed: ["fr", "en"])
+        let coordinator = NoteCoordinator(store: store, refiner: EnglishOnlyRefiner(), translator: translator)
+        _ = await coordinator.exportNote(for: item)
+
+        let asked = await translator.asked.codes
+        XCTAssertEqual(asked, ["fr"], "English must not be asked for when the chosen pair is installed")
+
+        let refreshed = try XCTUnwrap(store.item(withUUID: item.uuid))
+        XCTAssertEqual(refreshed.ocrText, arabic, "The recognised text is still the record")
+        XCTAssertEqual(refreshed.translatedText, "The meeting is on Tuesday at three, in fr")
+        XCTAssertEqual(refreshed.sourceLanguage, "ar")
+        // The cost of a target the on-device model does not read: the note is
+        // still written, with a heuristic title instead of one the model wrote.
+        XCTAssertFalse(try XCTUnwrap(NoteCoordinator.draft(for: refreshed)).title.isEmpty)
+    }
+
+    /// A chosen target whose pair is not installed is not a dead end: English
+    /// is tried next, because `xx→en` is the pairing macOS ships most widely.
+    func testAnUninstalledTargetFallsBackToEnglish() async throws {
+        UserDefaults.standard.set("fr", forKey: targetKey)
+
+        let store = try ClipStore(inMemory: true)
+        let item = try screenshotClip(text: arabic, in: store)
+        let translator = TargetAwareTranslator(installed: ["en"])
+        let coordinator = NoteCoordinator(store: store, refiner: EnglishOnlyRefiner(), translator: translator)
+        _ = await coordinator.exportNote(for: item)
+
+        let asked = await translator.asked.codes
+        XCTAssertEqual(asked, ["en"], "Only the target that was actually reachable is sent anything")
+
+        let refreshed = try XCTUnwrap(store.item(withUUID: item.uuid))
+        XCTAssertEqual(refreshed.translatedText, "The meeting is on Tuesday at three, in en")
+        // The model reads the fallback, so the note keeps its written fields.
+        XCTAssertEqual(refreshed.refinedTitle, "Tuesday meeting")
+    }
+
+    /// Neither target installed: the note is written in the language it was
+    /// captured in, and the source language is left for Settings to offer.
+    func testNoInstalledTargetLeavesTheNoteUntranslated() async throws {
+        UserDefaults.standard.set("fr", forKey: targetKey)
+        let key = NoteSettingsKeys.translationPending
+        let original = UserDefaults.standard.stringArray(forKey: key)
+        defer { UserDefaults.standard.set(original, forKey: key) }
+        NoteTranslation.pendingDownloads = []
+
+        let store = try ClipStore(inMemory: true)
+        let item = try screenshotClip(text: arabic, in: store)
+        let translator = TargetAwareTranslator(installed: [])
+        let coordinator = NoteCoordinator(store: store, refiner: EnglishOnlyRefiner(), translator: translator)
+        _ = await coordinator.exportNote(for: item)
+
+        let asked = await translator.asked.codes
+        XCTAssertTrue(asked.isEmpty, "A pair with no assets must not reach the engine")
+
+        let refreshed = try XCTUnwrap(store.item(withUUID: item.uuid))
+        XCTAssertNil(refreshed.translatedText)
+        XCTAssertEqual(refreshed.sourceLanguage, "ar")
+        XCTAssertEqual(NoteTranslation.pendingDownloads, ["ar"])
+    }
+
+    /// A clip already in the chosen language is left alone, the same way an
+    /// English clip always was.
+    func testAClipAlreadyInTheChosenLanguageIsNotTranslated() async throws {
+        UserDefaults.standard.set("ar", forKey: targetKey)
+
+        let store = try ClipStore(inMemory: true)
+        let item = try screenshotClip(text: arabic, in: store)
+        let translator = TargetAwareTranslator(installed: ["ar", "en"])
+        let coordinator = NoteCoordinator(store: store, refiner: EnglishOnlyRefiner(), translator: translator)
+        _ = await coordinator.exportNote(for: item)
+
+        let asked = await translator.asked.codes
+        XCTAssertTrue(asked.isEmpty)
+        let refreshed = try XCTUnwrap(store.item(withUUID: item.uuid))
+        XCTAssertNil(refreshed.translatedText)
+        XCTAssertNil(refreshed.sourceLanguage, "The body is already in the target, so there is nothing to record")
     }
 
     func testEnglishClipIsNotTranslated() async throws {

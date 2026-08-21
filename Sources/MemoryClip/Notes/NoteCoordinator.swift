@@ -201,16 +201,26 @@ final class NoteCoordinator {
         let isScreenshot: Bool
     }
 
+    /// A finished translation and the language it actually landed in, which is
+    /// not always `NoteTranslation.target`: a pair with no assets falls back
+    /// to English, and the refiner has to be told which of the two it is
+    /// being handed.
+    private struct NoteTranslationResult: Sendable {
+        let translated: TranslatedText
+        let target: Locale.Language
+    }
+
     /// What the two model stages produced for one clip: the note fields, and
-    /// the English rendering when the text was not in English to begin with.
+    /// the rendering into the reader's language when the text was not in it
+    /// to begin with.
     private struct ProcessedClip: Sendable {
         let refined: RefinedNote
         let translation: TranslatedText?
         /// The refined text to STORE. nil for a translated clip: its note
         /// body stays the original language, and what the model cleaned up
         /// was the translation, which is carried in `translation` instead.
-        /// Writing it to `refinedText` would replace the user's own text with
-        /// English in the panel, in search, and in the note.
+        /// Writing it to `refinedText` would replace the text the user
+        /// photographed in the panel, in search, and in the note.
         let refinedTextToStore: String?
     }
 
@@ -260,16 +270,16 @@ final class NoteCoordinator {
         )
     }
 
-    /// Translate if the text is not in English, then refine — the pair of
-    /// model stages, in the one order that works.
+    /// Translate if the text is not in the target language, then refine — the
+    /// pair of model stages, in the one order that works.
     ///
     /// Translation runs FIRST because refinement depends on its result. The
     /// on-device model reads 23 locales; Vision now recognises 30. For a
     /// clip in the gap — Arabic, Russian, Thai — the model cannot clean the
     /// original text, cannot title it and cannot tag it, so refining the
     /// original would produce a note whose every field was a fallback. Given
-    /// the translation it can do all three, and the note ends up with an
-    /// English title, an English summary and English tags over text that is
+    /// the translation it can do all three, and the note ends up with a title,
+    /// a summary and tags in the language the user reads, over text that is
     /// still in the language it was captured in.
     ///
     /// The original is never overwritten. `refinedTextToStore` is nil
@@ -296,12 +306,14 @@ final class NoteCoordinator {
             return ProcessedClip(refined: refined, translation: nil, refinedTextToStore: refined.cleanedText)
         }
 
-        // Refine the TRANSLATION. Its language is English by construction, so
-        // this is the one path where the model is guaranteed to be able to
-        // read what it is given.
+        // Refine the TRANSLATION, and say which language it came out in:
+        // `FoundationModelsRefiner.supportsLanguage` is what stops the model
+        // being handed a target it cannot read, and it can only answer if it
+        // is told the target that was actually used rather than the one that
+        // was asked for.
         var translated = job.input
-        translated.rawText = translation.text
-        translated.language = NoteTranslation.target
+        translated.rawText = translation.translated.text
+        translated.language = translation.target
         let refined = await refiner.refine(translated)
 
         return ProcessedClip(
@@ -311,14 +323,14 @@ final class NoteCoordinator {
             // which the raw OCR on the clip still records.
             translation: TranslatedText(
                 text: refined.cleanedText,
-                sourceLanguage: translation.sourceLanguage
+                sourceLanguage: translation.translated.sourceLanguage
             ),
             refinedTextToStore: nil
         )
     }
 
     /// The language identifier to store on the clip: the detected one when
-    /// the text was not English, nil otherwise.
+    /// the text was not already in the target language, nil otherwise.
     ///
     /// Stored even when translation did not happen — off, unsupported, or the
     /// assets are not downloaded — because "this note is in Arabic" is true
@@ -329,33 +341,52 @@ final class NoteCoordinator {
         return LanguageDetector.identifier(for: language)
     }
 
-    /// The English rendering of this clip, when it needs one and the Mac can
-    /// make it.
+    /// This clip rendered into the language the user reads, when it needs
+    /// rendering and the Mac can do it.
     ///
-    /// Returns nil for the ordinary case — English text — without touching
-    /// the translator at all, so the common path costs one language
-    /// identification and nothing else.
+    /// Returns nil for the ordinary case — text already in the target —
+    /// without touching the translator at all, so the common path costs one
+    /// language identification and nothing else.
     ///
     /// The gate is the readiness of the pair, not the list of languages
     /// ticked in Settings — that list downloads assets and biases detection.
     /// A pair that would need a download is recorded rather than attempted:
     /// nothing outside a view can fetch one.
-    private func translateIfWanted(_ input: RefinementInput) async -> TranslatedText? {
+    private func translateIfWanted(_ input: RefinementInput) async -> NoteTranslationResult? {
         guard Self.isTranslationEnabled else { return nil }
         guard let language = input.language, LanguageDetector.needsTranslation(language) else { return nil }
+        guard let target = await usableTarget(for: language) else { return nil }
+        guard let translated = await translator.translate(input.rawText, from: language, to: target) else { return nil }
+        return NoteTranslationResult(translated: translated, target: target)
+    }
+
+    /// The first of `NoteTranslation.targetPreference` this Mac can reach from
+    /// `language`, or nil when none of them is installed.
+    ///
+    /// Only the chosen target's failure is remembered for Settings. The
+    /// pending list is a to-do the download button acts on, and that button
+    /// fetches the pair `source → NoteTranslation.target`, so recording the
+    /// fallback's failure would put a language there that ticking cannot fix.
+    private func usableTarget(for language: Locale.Language) async -> Locale.Language? {
+        var chosen: TranslationReadiness?
+        for target in NoteTranslation.targetPreference
+            where LanguageDetector.needsTranslation(language, into: target) {
+            let readiness = await translator.readiness(from: language, to: target)
+            if chosen == nil { chosen = readiness }
+            if readiness == .ready { return target }
+        }
 
         let identifier = LanguageDetector.identifier(for: language)
-        switch await translator.readiness(for: language) {
-        case .ready:
-            return await translator.translate(input.rawText, from: language)
+        switch chosen {
         case .needsDownload:
             NoteTranslation.notePendingDownload(identifier)
             log.notice("Translation skipped: \(identifier, privacy: .public) assets are not downloaded")
-            return nil
         case .unsupported:
             log.notice("Translation skipped: \(identifier, privacy: .public) is not supported by this Mac")
-            return nil
+        case .ready, nil:
+            break
         }
+        return nil
     }
 
     // MARK: - Notes

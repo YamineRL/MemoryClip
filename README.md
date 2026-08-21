@@ -16,7 +16,7 @@
 
 A local-first menu-bar clipboard manager for macOS: keyboard-first history of everything
 you copy. It also notices your screenshots, reads the text out of them — 30 languages,
-translated into English when it is not one you read — and turns one into a note in
+translated into your own when it is not one you read — and turns one into a note in
 **[Obsidian](https://obsidian.md)**, any other folder of Markdown, Apple Notes, or a
 Shortcut.
 
@@ -118,7 +118,7 @@ files of whatever you had filtered, and the one you stop on is the one selected 
 come back out.
 
 **Search** matches clip text, text recognised inside images, the model's summary, title
-and tags, an English translation, colour values, file names and the source app, with chips
+and tags, the translation, colour values, file names and the source app, with chips
 for **All, Text, Images, Links, Files, Colors**. It runs in the database over an index, a
 page at a time, so tens of thousands of clips filter like an empty store — paging bounds
 what is *drawn*, never what is *findable*.
@@ -197,12 +197,14 @@ model** first fixes OCR slips, rejoins wrapped lines, drops interface chrome and
 title, summary and tags. The raw recognition is kept alongside it, and is used outright
 when the model is unavailable or when a rewrite drops or invents too much of the text.
 
-A screenshot that is not in English is **translated on this Mac** and the note carries
-both — the text as it was on screen, and an English translation under it. Always English,
-whatever language the preview translates clips into: title, summary and tags come from it,
-so a note captured in Arabic is findable in a vault you search in English. Tick the
-languages you want in **Settings → Translation → Notes** (22 on macOS 26) and macOS
-fetches what it needs; with none ticked it handles whatever this Mac already can.
+A screenshot that is not in the language you read is **translated on this Mac** and the
+note carries both — the text as it was on screen, and the translation under it. It goes
+into the language set under **Settings → Translation**, the same one the preview pane
+uses, and falls back to English when this Mac has no assets for that pair — `xx→en` is the
+pairing macOS ships most widely. Title, summary and tags are written from the translation,
+so a note captured in Arabic is findable in the vault you search. Tick the languages you
+want in **Settings → Translation → Notes** (22 on macOS 26) and macOS fetches what it
+needs; with none ticked it handles whatever this Mac already can.
 
 Three destinations, in **Settings → Notes**:
 
@@ -265,7 +267,10 @@ screenshot: "/Users/you/Desktop/Screenshot 2026-08-13 at 14.22.01.png"
 ```
 
 Every string is quoted because a heading with a colon in it would otherwise rewrite the
-note's own metadata. `screenshot:` points at the original file even when a copy was made,
+note's own metadata. `lang:` is the language of the text in the body — what you
+photographed, not what it was translated into — and is written only when that differs from
+the language notes are translated into, so `lang: ar` finds everything you captured in
+Arabic. `screenshot:` points at the original file even when a copy was made,
 `memoryclip-uuid` lets an update find the note it wrote last time, and `created` is UTC
 for Dataview while the file name is local time, for you.
 

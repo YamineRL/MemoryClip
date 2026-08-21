@@ -4,24 +4,24 @@ import Foundation
 ///
 /// # What this is, and what it is not
 ///
-/// `NoteTranslation` translates a *screenshot* into English on its way into a
-/// note, because the rest of the note pipeline — the on-device model, the
-/// refinement guard, a vault the user searches in English — is built on
-/// English. This is the other direction of the same idea and shares none of
-/// those constraints: it translates a clip the user just copied into the
-/// language the user reads, which is whatever their Mac is set to, and shows
-/// it in the preview pane. Nothing downstream consumes it, so the target is
-/// theirs to pick.
+/// `NoteTranslation` translates a *screenshot* on its way into a note. This is
+/// the other direction of the same idea: it translates a clip the user just
+/// copied and shows it in the preview pane, where nothing downstream consumes
+/// it.
 ///
-/// The two features share the translator, the language detector and the
-/// catalog, and nothing else. In particular `NoteTranslation.target` stays
-/// English: changing the language a preview is shown in must not change what
-/// a note says.
+/// The two features share the translator, the language detector, the catalog
+/// and — since the target became a setting — the language itself:
+/// `NoteTranslation.target` reads `targetIdentifier` below, so the app cannot
+/// hold two answers to "which language do you read". What still differs is
+/// what the answer costs. A preview target only changes what a pane shows,
+/// while a note target is handed to a model that reads 23 locales and to a
+/// guard tuned on English, which is why `NoteTranslation` keeps English as a
+/// floor and this type does not need one.
 ///
 /// Every clip with text in it is in scope, a picture included: what is read
 /// from a screenshot is what was recognised in it, cleaned up by the model
-/// where that has happened. The English rendering a screenshot may already
-/// carry in `translatedText` is deliberately NOT reused, even when English is
+/// where that has happened. The rendering a screenshot may already carry in
+/// `translatedText` is deliberately NOT reused, even when its language is
 /// what the user asked for. That one is a translation of the raw recognition
 /// rather than of the cleaned text, so the two are not the same string, and
 /// reusing it would leave the pane taking its translation from one place for

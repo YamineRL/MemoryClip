@@ -33,14 +33,14 @@ struct NoteDraft: Sendable, Equatable {
     /// string twice) — see `NoteComposer.markdown(for:)` for why it is emitted
     /// at all.
     var rawText: String?
-    /// The English rendering of `body`, when the text was captured in another
-    /// language. nil for an English clip, and for one whose language this Mac
-    /// cannot translate.
+    /// `body` rendered into the language the user reads, when it was captured
+    /// in another one. nil for a clip already in that language, and for one
+    /// whose language this Mac cannot translate.
     ///
     /// It sits alongside `body` rather than replacing it for the same reason
     /// `rawText` does: the note is a record of what was on screen, and a
     /// translation is a second reading of it. A reader who knows the original
-    /// language should not have to read the machine's English to check what
+    /// language should not have to read the machine's version to check what
     /// it said.
     var translation: String?
     /// What `body` is written in, as a BCP-47 identifier ("ar", "ja"), when
