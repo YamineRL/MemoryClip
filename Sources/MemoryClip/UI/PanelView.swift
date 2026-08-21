@@ -1,4 +1,5 @@
 import AppKit
+import NaturalLanguage
 import SwiftUI
 import SwiftData
 
@@ -109,6 +110,13 @@ protocol ClipDisplayable {
     /// The local model's cleaned-up version of `ocrText`, when one was
     /// produced.
     var refinedText: String? { get }
+    /// The local model's one- or two-sentence summary of the clip.
+    var refinedSummary: String? { get }
+    /// The topic tags the local model suggested for the clip.
+    var refinedTags: [String] { get }
+    /// `ocrText` rendered into English by the on-device translator, for a
+    /// clip that arrived in another language.
+    var translatedText: String? { get }
     /// Whether this file clip is a screenshot picked up from the screenshot
     /// folder.
     var isScreenshot: Bool { get }
@@ -117,12 +125,15 @@ protocol ClipDisplayable {
 extension ClipItem: ClipDisplayable {}
 
 extension ClipDisplayable {
-    // Defaults for the three properties above, so the test doubles that
-    // conform to this protocol (and predate the note pipeline) keep
-    // compiling. `ClipItem`'s stored properties satisfy the requirements
-    // directly and shadow these.
+    // Defaults for the properties above, so the test doubles that conform to
+    // this protocol (and predate the note pipeline) keep compiling.
+    // `ClipItem`'s stored properties satisfy the requirements directly and
+    // shadow these.
     var refinedTitle: String? { nil }
     var refinedText: String? { nil }
+    var refinedSummary: String? { nil }
+    var refinedTags: [String] { [] }
+    var translatedText: String? { nil }
     var isScreenshot: Bool { false }
 
     /// One-line description used for VoiceOver announcements.
@@ -156,12 +167,119 @@ extension ClipDisplayable {
     }
 }
 
+/// What was typed into the search box, read as terms rather than as one
+/// string.
+///
+/// People type sentences at a search box — "that error about the deploy
+/// failing" — and testing that whole string as a substring finds nothing,
+/// because no clip contains the sentence. The words are what was meant, and
+/// the clip carrying all of them is the one being looked for. So the string
+/// is split, the words that carry no signal are dropped, and what is left is
+/// required together.
+///
+/// Each word is then reduced to what it shares with its lemma, which is what
+/// lets "failing" find "failed" and "copiés" find "copier". The shared prefix
+/// rather than the lemma itself: a lemma can be a different word ("ran" →
+/// "run", "mice" → "mouse"), and searching for that in place of what was
+/// typed would lose the clips holding the typed form. A prefix can only widen
+/// the search — whatever contains the word contains the prefix — and that is
+/// the property `ClipFilter.predicate` leans on to push one term into SQL.
+///
+/// Split on whitespace and nothing finer. `%20` stays one term rather than
+/// becoming a `20` that finds every clip from 2026, and `#FF00AA` stays a
+/// colour rather than a hex fragment.
+struct ClipQuery: Equatable {
+    /// The terms a clip has to carry, all of them. Empty when nothing has
+    /// been typed.
+    let terms: [String]
+
+    init(_ search: String) {
+        let trimmed = search.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            terms = []
+            return
+        }
+        let parsed = ClipQuery.parse(trimmed)
+        // A query that is nothing but stop words is a query for those words:
+        // someone who types "the" and nothing else means the letters, not
+        // "show me everything".
+        terms = parsed.isEmpty ? [trimmed] : parsed
+    }
+
+    /// The one term the SQL predicate narrows on: the longest, and so the
+    /// most selective of them.
+    var narrowing: String { terms.max { $0.count < $1.count } ?? "" }
+
+    /// Words that carry no signal in a clipboard search, in the two languages
+    /// the app speaks. Dropped so that the sentence built around the words
+    /// that matter does not have to appear in the clip as well.
+    private static let stopWords: Set<String> = [
+        "a", "about", "all", "an", "and", "any", "are", "as", "at", "be", "been", "but", "by",
+        "for", "from", "had", "has", "have", "i", "in", "into", "is", "it", "its", "me", "my",
+        "of", "on", "or", "so", "some", "that", "the", "their", "them", "then", "there", "these",
+        "they", "this", "to", "was", "were", "what", "when", "which", "with", "you", "your",
+        "à", "au", "aux", "avec", "ce", "ces", "cet", "cette", "dans", "de", "des", "du", "elle",
+        "en", "est", "et", "il", "ils", "je", "la", "le", "les", "ma", "mes", "mon", "ne", "par",
+        "pas", "pour", "que", "qui", "sa", "se", "ses", "son", "sont", "sur", "un", "une"
+    ]
+
+    /// The typed words, minus the stop words, each reduced to its stem.
+    private static func parse(_ query: String) -> [String] {
+        var lemmas: [Range<String.Index>: String] = [:]
+        let tagger = NLTagger(tagSchemes: [.lemma])
+        tagger.string = query
+        tagger.enumerateTags(
+            in: query.startIndex..<query.endIndex,
+            unit: .word,
+            scheme: .lemma,
+            options: [.omitPunctuation, .omitWhitespace]
+        ) { tag, range in
+            if let lemma = tag?.rawValue, !lemma.isEmpty { lemmas[range] = lemma }
+            return true
+        }
+        return query.split(whereSeparator: \.isWhitespace).compactMap { word in
+            guard !stopWords.contains(word.lowercased()) else { return nil }
+            // Only a word the tagger read whole has a lemma to offer. A term
+            // it read in pieces — `hello.example`, `%20` — is taken as typed,
+            // which is the same thing as having no lemma for it.
+            return stem(String(word), lemma: lemmas[word.startIndex..<word.endIndex])
+        }
+    }
+
+    /// A word cut back to what it and its lemma agree on.
+    ///
+    /// Below three characters there is nothing left worth searching for and
+    /// the word stands as typed — which is also what happens to an irregular
+    /// form, whose lemma shares no useful prefix with it.
+    private static func stem(_ word: String, lemma: String?) -> String {
+        guard let lemma else { return word }
+        let shared = word.commonPrefix(with: lemma, options: [.caseInsensitive, .diacriticInsensitive])
+        return shared.count >= 3 && shared.count < word.count ? shared : word
+    }
+}
+
 /// The panel's three filters (search text, content type, source app) as one
 /// value. Pure: no SwiftUI, no model context.
 struct ClipFilter: Equatable {
-    var search: String = ""
+    var search: String = "" {
+        didSet { query = ClipQuery(search) }
+    }
+
     var type: TypeFilter = .all
     var source: String?
+
+    /// `search`, parsed. Held rather than derived on demand: the panel
+    /// rebuilds this filter on every keystroke and then matches it against a
+    /// whole page of clips, so the tagger runs once per edit (0.3 ms) instead
+    /// of once per row.
+    private(set) var query: ClipQuery
+
+    init(search: String = "", type: TypeFilter = .all, source: String? = nil) {
+        self.search = search
+        self.type = type
+        self.source = source
+        query = ClipQuery(search)
+    }
 
     /// True when nothing is being narrowed down.
     var isIdentity: Bool { search.isEmpty && type == .all && source == nil }
@@ -175,26 +293,46 @@ struct ClipFilter: Equatable {
         return item.sourceAppName == source
     }
 
+    /// Whether a clip carries every term of the query.
+    ///
+    /// AND across the terms, OR across the fields: the words are allowed to
+    /// be spread over the text, the model's summary of it and the app it came
+    /// from, which is how "invoice safari" finds the invoice copied out of
+    /// Safari.
     func matchesSearch(_ item: some ClipDisplayable) -> Bool {
-        guard !search.isEmpty else { return true }
-        if item.text?.localizedStandardContains(search) == true { return true }
-        // Image clips are searchable through their extracted text.
-        if item.ocrText?.localizedStandardContains(search) == true { return true }
-        // …and through what the local model made of it. Note the asymmetry
-        // with `predicate` below, which does NOT carry these two clauses:
-        // that expression is at the documented limit of what the Swift type
-        // checker will compile in reasonable time, and the clips this
-        // actually matters for — screenshots, which are `.file` kind — are
-        // admitted by the predicate wholesale and re-checked here by
-        // `refine(_:)` regardless. The cost is that a pasteboard IMAGE clip
-        // is not searchable by a word that appears only in its refined text,
-        // which is close to no cost at all: refinement is derived from
-        // `ocrText`, and that is indexed.
-        if item.refinedText?.localizedStandardContains(search) == true { return true }
-        if item.refinedTitle?.localizedStandardContains(search) == true { return true }
-        if item.colorHex?.localizedStandardContains(search) == true { return true }
-        if ClipDisplay.fileURLsMatch(item.fileURLStrings, search: search) { return true }
-        if item.sourceAppName?.localizedStandardContains(search) == true { return true }
+        guard !query.terms.isEmpty else { return true }
+        return query.terms.allSatisfy { carries(item, $0) }
+    }
+
+    /// Every place one term can be found in a clip.
+    ///
+    /// Note the asymmetry with `predicate` below, which carries only `text`,
+    /// `ocrText`, `colorHex` and `sourceAppName`: that expression is at the
+    /// documented limit of what the Swift type checker will compile in
+    /// reasonable time, and the clips the rest of these matter for —
+    /// screenshots, which are `.file` kind — are admitted by the predicate
+    /// wholesale and re-checked here by `refine(_:)` regardless. The cost is
+    /// that a pasteboard IMAGE clip is not searchable by a word that appears
+    /// only in what the local model made of it, which is close to no cost at
+    /// all: all of that is derived from `ocrText`, and that is indexed.
+    private func carries(_ item: some ClipDisplayable, _ term: String) -> Bool {
+        if item.text?.localizedStandardContains(term) == true { return true }
+        // Image clips are searchable through their extracted text…
+        if item.ocrText?.localizedStandardContains(term) == true { return true }
+        // …and through everything the local model made of it: the tidied
+        // text, the title, the summary, the tags, and the English rendering
+        // of a screenshot that was not in English. That is a second telling
+        // of the clip in other words — already written, already stored — and
+        // it is what lets a clip be found by a word that was never on the
+        // screen it came from.
+        if item.refinedText?.localizedStandardContains(term) == true { return true }
+        if item.refinedTitle?.localizedStandardContains(term) == true { return true }
+        if item.refinedSummary?.localizedStandardContains(term) == true { return true }
+        if item.translatedText?.localizedStandardContains(term) == true { return true }
+        if item.refinedTags.contains(where: { $0.localizedStandardContains(term) }) { return true }
+        if item.colorHex?.localizedStandardContains(term) == true { return true }
+        if ClipDisplay.fileURLsMatch(item.fileURLStrings, search: term) { return true }
+        if item.sourceAppName?.localizedStandardContains(term) == true { return true }
         return false
     }
 
@@ -325,8 +463,15 @@ extension ClipFilter {
     /// constant `true` short-circuits its whole branch inside SQLite. That is
     /// not cosmetic — at 50k clips an unguarded `kindRaw IN (…)` costs 10 ms
     /// on every fetch, a guarded one nothing.
+    ///
+    /// A multi-word query puts only ONE of its terms in here — the longest,
+    /// and so the most selective — for the same reason: a term is four more
+    /// clauses, and the expression has no room for them. That is a widening
+    /// and never a narrowing, so nothing findable is lost. A clip carrying
+    /// every term carries that one, so the fetch returns a superset of the
+    /// answer and `refine(_:)` asks the rest of the question over the page.
     var predicate: Predicate<ClipItem> {
-        let needle = search
+        let needle = query.narrowing
         let searching = !search.isEmpty
         let source = source
         let anySource = source == nil
@@ -367,16 +512,22 @@ extension ClipFilter {
     /// The part of the filter the predicate could not express, applied to
     /// rows the predicate already returned.
     ///
-    /// Two things SQL waved through. The type, because Images admits file
+    /// Three things SQL waved through. The type, because Images admits file
     /// rows in order to reach the screenshots among them, and the ones that
-    /// are not screenshots have to go. And the search over file clips, whose
+    /// are not screenshots have to go. The search over file clips, whose
     /// searchable content lives in `fileURLStrings` — one opaque blob to
     /// SwiftData — so they are admitted unconditionally while a search is
-    /// active and sifted here.
+    /// active and sifted here. And every other term of a multi-word query,
+    /// since the predicate only ever asked about one of them.
+    ///
+    /// A row a single-term search returned is still taken on trust: SQL was
+    /// asked the whole question, and the fields `matchesSearch` adds to it
+    /// only ever admit more.
     func refine<T: ClipDisplayable>(_ items: [T]) -> [T] {
         items.filter { item in
             guard matchesType(item) else { return false }
-            guard !search.isEmpty, item.kind == .file else { return true }
+            guard !search.isEmpty else { return true }
+            guard query.terms.count > 1 || item.kind == .file else { return true }
             return matchesSearch(item)
         }
     }
