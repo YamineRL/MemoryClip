@@ -502,6 +502,32 @@ final class NoteTranslationTargetTests: XCTestCase {
         XCTAssertEqual(NoteTranslation.targetIdentifier, "en")
     }
 
+    /// The registered default is this Mac's own language, and `registerDefaults`
+    /// makes `string(forKey:)` return it as though somebody had chosen it. A
+    /// note must not change language, nor an English screenshot start taking
+    /// the slow path through the translator, until the language is picked by
+    /// hand.
+    func testARegisteredDefaultIsNotAChoice() {
+        UserDefaults.standard.removeObject(forKey: key)
+        UserDefaults.standard.register(defaults: [key: "fr"])
+        XCTAssertEqual(
+            UserDefaults.standard.string(forKey: key),
+            "fr",
+            "precondition: the merged domain answers with the registered default"
+        )
+        XCTAssertNil(NoteTranslation.chosenTargetIdentifier, "nothing was chosen")
+        XCTAssertEqual(NoteTranslation.targetIdentifier, "en", "so notes stay English")
+    }
+
+    /// Choosing the same language the default suggested still counts, because
+    /// it lands in the persistent domain.
+    func testChoosingALanguageOverridesTheRegisteredDefault() {
+        UserDefaults.standard.register(defaults: [key: "fr"])
+        UserDefaults.standard.set("de", forKey: key)
+        XCTAssertEqual(NoteTranslation.chosenTargetIdentifier, "de")
+        XCTAssertEqual(NoteTranslation.targetIdentifier, "de")
+    }
+
     func testAnEmptySettingIsEnglish() {
         UserDefaults.standard.set("", forKey: key)
         XCTAssertEqual(NoteTranslation.targetIdentifier, "en")

@@ -183,7 +183,7 @@ enum NoteTranslation {
     /// names a different language — so the two properties always agree about
     /// which language was picked.
     static var targetIdentifier: String {
-        let stored = UserDefaults.standard.string(forKey: NoteSettingsKeys.clipTranslationTarget) ?? ""
+        let stored = chosenTargetIdentifier ?? ""
         let language = Locale.Language(identifier: stored)
         // The shape is checked rather than trusted. `Locale.Language` parses
         // anything it is handed — "!!!" comes back with "!!!" as its language
@@ -196,6 +196,22 @@ enum NoteTranslation {
               code != "und"
         else { return fallbackTargetIdentifier }
         return ClipTranslation.identity(of: language)
+    }
+
+    /// The target the user actually picked, or nil when they never have.
+    ///
+    /// Read from the persistent domain rather than through
+    /// `UserDefaults.standard.string(forKey:)`, which cannot tell a value
+    /// somebody chose from the one `registerDefaults` supplied. That key is
+    /// registered with this Mac's own language, so the merged domain answers
+    /// "fr" on a French Mac from first launch — and a note quietly changing
+    /// language, plus every English screenshot taking the slow path through
+    /// the translator, is not something anyone asked for. Notes stay English
+    /// until the language is chosen in Settings.
+    static var chosenTargetIdentifier: String? {
+        UserDefaults.standard.persistentDomain(forName: Bundle.main.bundleIdentifier ?? "")?[
+            NoteSettingsKeys.clipTranslationTarget
+        ] as? String
     }
 
     /// The language a note falls back to: the setting's floor, and the second
