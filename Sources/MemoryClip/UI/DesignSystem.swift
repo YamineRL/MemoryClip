@@ -468,6 +468,35 @@ struct ScrollMoreIndicator: View {
     }
 }
 
+/// A glass capsule naming the key that does the thing the user is reaching
+/// for right now.
+///
+/// The same material, hairline and shadow as `ScrollMoreIndicator`, because
+/// it says the same kind of thing: a note about the content underneath
+/// rather than a control of its own. It floats over that content instead of
+/// taking a row in the layout, so nothing moves when it comes and goes, and
+/// it never takes a click — the key it names is the way to answer it.
+struct HintBubble: View {
+    let text: String
+
+    var body: some View {
+        Text(text)
+            .font(Design.Typography.chip)
+            .foregroundStyle(Color(nsColor: .secondaryLabelColor))
+            .lineLimit(1)
+            .padding(.horizontal, Design.Space.roomy)
+            .padding(.vertical, Design.Space.snug)
+            .background(.ultraThinMaterial, in: Capsule(style: .continuous))
+            .overlay(
+                Capsule(style: .continuous)
+                    .strokeBorder(Design.Palette.hairline, lineWidth: Design.Stroke.hairline)
+            )
+            .shadow(color: Design.Palette.cardShadow, radius: 3, y: 1)
+            .allowsHitTesting(false)
+            .transition(.opacity)
+    }
+}
+
 /// Fades a scroll view's trailing edge out under a `ScrollMoreIndicator`,
 /// and shows both only while there is more to scroll to.
 ///

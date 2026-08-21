@@ -822,6 +822,46 @@ enum PanelInputMode: Equatable {
     var readsVimKeys: Bool { self != .insert }
 }
 
+// MARK: - Hints
+
+/// Which hint the panel floats over its content, and when.
+///
+/// The panel answers to keys that nothing on screen names: the arrows walk
+/// the deck while the caret is busy with the query, Escape is the way back
+/// out of insert mode, a second Space goes to Quick Look, and Return pastes
+/// a whole multi-selection at once. Each is a keystroke away and invisible
+/// until someone guesses it, so each gets a bubble for as long as it is the
+/// thing the user is reaching for.
+///
+/// Pure, and here rather than inline in the view, so the precedence between
+/// them is something a test can pin down.
+enum PanelHint {
+    /// The one bubble over the card deck. One at a time, most specific
+    /// first: a multi-selection changes what Return does and says so whether
+    /// or not the arrows have been found yet; insert mode owns the letters,
+    /// so the way back to them outranks the arrows; a query on its own only
+    /// has to say which keys walk the matches.
+    static func overStrip(
+        selectedCount: Int,
+        vimInsertMode: Bool,
+        hasQuery: Bool,
+        dismissed: Bool
+    ) -> String? {
+        if selectedCount > 1 { return loc("↩ pastes %d clips", selectedCount) }
+        guard !dismissed else { return nil }
+        if vimInsertMode { return loc("↑ ↓ to pick · esc for h j k l") }
+        guard hasQuery else { return nil }
+        return loc("↑ ↓ to pick · ↩ to paste")
+    }
+
+    /// The bubble over the preview pane: the second Space, on the clips that
+    /// have somewhere to escalate to.
+    static func overPreview(canQuickLook: Bool, dismissed: Bool) -> String? {
+        guard canQuickLook, !dismissed else { return nil }
+        return loc("space for Quick Look")
+    }
+}
+
 /// Callbacks the panel UI uses to talk back to controllers.
 struct PanelActions {
     var paste: (ClipItem, Bool) -> Void
@@ -933,6 +973,13 @@ struct PanelContentView: View {
     /// Cached choices for the source-app menu. Derived from the whole store,
     /// so it is refreshed when the panel opens rather than per render.
     @State private var sourceAppNames: [String] = []
+    /// Whether the deck's navigation hint has been answered. Set by the first
+    /// movement of any kind, cleared when the query goes and when the panel
+    /// reopens: the bubble is there to be dismissed by using the keys it
+    /// names, not to be read twice.
+    @State private var navHintDismissed = false
+    /// The same, for the preview pane's Quick Look bubble.
+    @State private var quickLookHintDismissed = false
     @FocusState private var searchFocused: Bool
 
     init(
@@ -987,6 +1034,19 @@ struct PanelContentView: View {
         let visible = visibleItems
         let chosen = Set(selection.selectedIDs(in: visible.map(\.uuid)))
         return visible.filter { chosen.contains($0.uuid) }
+    }
+
+    /// The bubble over the deck, if the keyboard is doing something the
+    /// cards do not name. `isExtended` is asked first because resolving the
+    /// whole selection is a pass over the page and a lone cursor never
+    /// needs one.
+    private var stripHint: String? {
+        PanelHint.overStrip(
+            selectedCount: selection.isExtended ? selectedItems.count : 1,
+            vimInsertMode: vimModeEnabled && inputMode == .insert,
+            hasQuery: !filter.search.isEmpty,
+            dismissed: navHintDismissed
+        )
     }
 
     /// True while keystrokes should be read as vim commands.
@@ -1079,6 +1139,14 @@ struct PanelContentView: View {
                         paneHeight: resolvedPreviewHeight
                     )
                     .frame(height: resolvedPreviewHeight)
+                    .overlay(alignment: .bottom) {
+                        hintBubble(
+                            PanelHint.overPreview(
+                                canQuickLook: QuickLook.canPreview(item),
+                                dismissed: quickLookHintDismissed
+                            )
+                        )
+                    }
                 }
 
                 footer(visible)
@@ -1126,12 +1194,17 @@ struct PanelContentView: View {
             vim.reset()
             pacer.reset()
             inputMode = .normal
+            navHintDismissed = false
+            quickLookHintDismissed = false
             searchFocused = true
             refreshSourceAppNames()
         }
         .onChange(of: filter) {
             resetPaging()
             selection.clear()
+            // A query typed from scratch asks the question again; refining
+            // one that is already there does not.
+            if filter.search.isEmpty { navHintDismissed = false }
             syncPreviewItem()
         }
         .onChange(of: selection) {
@@ -1412,6 +1485,20 @@ struct PanelContentView: View {
         actions.close()
     }
 
+    /// A hint in its place at the bottom edge of whatever it floats over,
+    /// or nothing at all. One helper for both bubbles so they sit the same
+    /// distance off the edge and fade in and out the same way.
+    @ViewBuilder
+    private func hintBubble(_ text: String?) -> some View {
+        ZStack {
+            if let text {
+                HintBubble(text: text)
+                    .padding(.bottom, Design.Space.normal)
+            }
+        }
+        .animation(Design.Motion.standard, value: text)
+    }
+
     // MARK: Card strip
 
     /// The panel's content: one horizontally scrolling row of square cards.
@@ -1512,6 +1599,7 @@ struct PanelContentView: View {
                 // that there are more clips to the right.
                 .scrollMoreHint(.horizontal)
                 .frame(height: Design.Size.cardStripHeight)
+                .overlay(alignment: .bottom) { hintBubble(stripHint) }
                 .onChange(of: selection) {
                     // Re-resolved rather than reusing `selected`: the action
                     // must see the selection it is reacting to.
@@ -1688,6 +1776,7 @@ struct PanelContentView: View {
     /// second Escape then closes the pane, so the way out retraces the way in.
     private func showQuickLook(from item: ClipItem) {
         guard let plan = QuickLook.plan(for: visibleItems, startingAt: item.uuid) else { return }
+        quickLookHintDismissed = true
         announce(loc("Quick Look, %@", item.announcementSummary))
         actions.quickLook(plan.items, plan.index) { uuid in
             // Quick Look leaves the panel on whichever clip the user landed
@@ -1808,6 +1897,7 @@ struct PanelContentView: View {
         case .down, .up, .top, .bottom, .halfPageDown, .halfPageUp:
             let step = pacer.step(isRepeat: phase.contains(.repeat), now: Self.now())
             guard step != .drop else { return }
+            navHintDismissed = true
             let ids = visibleIDs
             let index = VimNavigator.newIndex(
                 for: command,
@@ -1896,6 +1986,7 @@ struct PanelContentView: View {
     private func moveSelection(_ delta: Int, extending: Bool = false, phase: KeyPress.Phases = .down) {
         let step = pacer.step(isRepeat: phase.contains(.repeat), now: Self.now())
         guard step != .drop else { return }
+        navHintDismissed = true
         let ids = visibleIDs
         if extending {
             selection.extend(by: delta, in: ids)

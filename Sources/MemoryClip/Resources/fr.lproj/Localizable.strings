@@ -118,6 +118,10 @@
 "Search mode" = "Mode recherche";
 "Vim normal mode — press / or i to search" = "Mode NORMAL de vim — appuyez sur / ou i pour chercher";
 "Search mode — press Esc for vim navigation" = "Mode recherche — appuyez sur Échap pour la navigation vim";
+"↑ ↓ to pick · ↩ to paste" = "↑ ↓ pour choisir · ↩ pour coller";
+"↑ ↓ to pick · esc for h j k l" = "↑ ↓ pour choisir · échap pour h j k l";
+"↩ pastes %d clips" = "↩ colle %d clips";
+"space for Quick Look" = "espace pour Coup d’œil";
 "Filter by type" = "Filtrer par type";
 "Show only %@" = "N’afficher que : %@";
 "No Clips Yet" = "Aucun clip pour l’instant";
