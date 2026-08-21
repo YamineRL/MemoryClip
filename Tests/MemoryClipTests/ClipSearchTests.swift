@@ -84,6 +84,16 @@ final class ClipSearchTests: XCTestCase {
             app: "Finder",
             createdAt: base.addingTimeInterval(5)
         )
+        insert(
+            "japanese",
+            kind: .file,
+            files: ["file:///Users/me/Desktop/Screenshot%202026-03-05%20at%2009.14.00.png"],
+            app: "Screenshots",
+            createdAt: base.addingTimeInterval(8),
+            ocrText: "会議の議事録",
+            isScreenshot: true,
+            clipTranslationText: "Minutes of the planning meeting"
+        )
         insert("color", kind: .color, colorHex: "#FF00AA", app: "Figma", createdAt: base.addingTimeInterval(6))
         insert("noise", kind: .text, text: "unrelated chatter", app: "Mail", createdAt: base.addingTimeInterval(7))
     }
@@ -102,7 +112,8 @@ final class ClipSearchTests: XCTestCase {
         refinedTitle: String? = nil,
         refinedSummary: String? = nil,
         refinedTags: [String] = [],
-        translatedText: String? = nil
+        translatedText: String? = nil,
+        clipTranslationText: String? = nil
     ) -> ClipItem {
         let item = ClipItem(
             kind: kind,
@@ -117,7 +128,8 @@ final class ClipSearchTests: XCTestCase {
             refinedTitle: refinedTitle,
             refinedSummary: refinedSummary,
             refinedTags: refinedTags,
-            translatedText: translatedText
+            translatedText: translatedText,
+            clipTranslationText: clipTranslationText
         )
         context.insert(item)
         return item
@@ -150,14 +162,18 @@ final class ClipSearchTests: XCTestCase {
             ("renewal", ["invoice"]),
             // …only its tags say "billing"…
             ("billing", ["invoice"]),
-            // …and only the translation says "quarter".
+            // …and only the note translation says "quarter"…
             ("quarter", ["arabic"]),
+            // …and only the preview's own translation says "minutes", which
+            // is the one a clip gets by being looked at rather than refined.
+            ("minutes", ["japanese"]),
+            ("planning meeting", ["japanese"]),
             // "report" alone would find the PDF too; "sales" is what settles
             // which of the two was meant.
             ("sales report", ["arabic"]),
             ("q3 report", ["report"]),
             // A plural finds the singular: the source app is "Screenshots".
-            ("screenshots", ["arabic", "invoice"]),
+            ("screenshots", ["arabic", "invoice", "japanese"]),
             ("ff00", ["color"]),
             ("#FF00AA", ["color"]),
             // Both words exist in the store, no clip holds both.

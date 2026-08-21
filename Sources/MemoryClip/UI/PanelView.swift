@@ -117,6 +117,9 @@ protocol ClipDisplayable {
     /// `ocrText` rendered into English by the on-device translator, for a
     /// clip that arrived in another language.
     var translatedText: String? { get }
+    /// The preview pane's own translation, into whatever language this Mac
+    /// reads rather than into English.
+    var clipTranslationText: String? { get }
     /// Whether this file clip is a screenshot picked up from the screenshot
     /// folder.
     var isScreenshot: Bool { get }
@@ -134,6 +137,7 @@ extension ClipDisplayable {
     var refinedSummary: String? { nil }
     var refinedTags: [String] { [] }
     var translatedText: String? { nil }
+    var clipTranslationText: String? { nil }
     var isScreenshot: Bool { false }
 
     /// One-line description used for VoiceOver announcements.
@@ -329,6 +333,7 @@ struct ClipFilter: Equatable {
         if item.refinedTitle?.localizedStandardContains(term) == true { return true }
         if item.refinedSummary?.localizedStandardContains(term) == true { return true }
         if item.translatedText?.localizedStandardContains(term) == true { return true }
+        if item.clipTranslationText?.localizedStandardContains(term) == true { return true }
         if item.refinedTags.contains(where: { $0.localizedStandardContains(term) }) { return true }
         if item.colorHex?.localizedStandardContains(term) == true { return true }
         if ClipDisplay.fileURLsMatch(item.fileURLStrings, search: term) { return true }
