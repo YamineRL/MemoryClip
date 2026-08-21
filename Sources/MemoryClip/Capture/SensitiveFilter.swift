@@ -278,6 +278,26 @@ public enum SensitiveFilter {
         return false
     }
 
+    /// Whether a copy from this app must never be captured: a known
+    /// credential manager, or an app the user excluded themselves.
+    ///
+    /// The two halves answer to different switches, and deliberately so. The
+    /// built-in list is a guess MemoryClip makes on the user's behalf, so it
+    /// holds only while the sensitive-content filter is on — turning that off
+    /// is how a user says they will take the guessing from here. The exclusion
+    /// list is not a guess: it is a sentence the user wrote by hand, one app at
+    /// a time, and the only thing that takes it back is removing the app from
+    /// it. A switch labelled "skip sensitive content" quietly resuming capture
+    /// from an app they named would be the app deciding it knows better.
+    static func isExcludedSource(
+        bundleID: String?,
+        name: String?,
+        userExclusions: ExcludedApps = ExcludedApps()
+    ) -> Bool {
+        if userExclusions.contains(bundleID) { return true }
+        return isFilteringEnabled && isBlocked(bundleID: bundleID, name: name)
+    }
+
     /// Anchored bundle-identifier match: equal, or a dotted descendant of the
     /// listed id (`com.1password.1password.helper`). A plain substring test —
     /// what this used to do — also blocked unrelated apps whose identifier

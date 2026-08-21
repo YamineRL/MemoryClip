@@ -85,18 +85,18 @@ final class PasteboardWatcher {
         sourceBundleID: String?,
         sourceAppName: String?
     ) -> Bool {
-        // Phase 2 sensitive-data guard: never capture from credential
-        // managers. App-identity based (no window titles — we hold no
-        // Accessibility/Screen Recording permissions; see SensitiveFilter).
+        // Phase 2 sensitive-data guard: never capture from credential managers
+        // or from an app the user excluded. App-identity based (no window
+        // titles — we hold no Accessibility/Screen Recording permissions; see
+        // SensitiveFilter).
         //
         // The app name is logged `.private`: the unified log keeps a durable,
         // timestamped record that survives nukeAll, and a public name would
         // turn it into a history of every time the user opened their password
         // manager plus an inventory of which ones are installed.
-        if SensitiveFilter.isFilteringEnabled,
-           SensitiveFilter.isBlocked(bundleID: sourceBundleID, name: sourceAppName) {
+        if SensitiveFilter.isExcludedSource(bundleID: sourceBundleID, name: sourceAppName) {
             log.notice(
-                "Skipped capture: credential app (\(sourceAppName ?? "unknown", privacy: .private))"
+                "Skipped capture: excluded app (\(sourceAppName ?? "unknown", privacy: .private))"
             )
             return false
         }

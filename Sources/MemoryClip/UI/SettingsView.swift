@@ -367,6 +367,18 @@ private struct PanelSettingsPane: View {
 // MARK: - Privacy
 
 private struct PrivacySettingsPane: View {
+    /// The exclusion list, re-read after every edit.
+    ///
+    /// Held in `@State` rather than bound with `@AppStorage`, which has no
+    /// array form, and resolved once per edit rather than per render because
+    /// every row asks the filesystem what its identifier still points at.
+    @State private var excluded: [ExcludedApp] = []
+
+    /// Whether the last app picked declared no bundle identifier. There is
+    /// then nothing to store, and a panel that closes with the list unchanged
+    /// and nothing said reads as a bug.
+    @State private var pickedUnidentifiedApp = false
+
     var body: some View {
         Form {
             Section(loc("Lock")) {
@@ -393,11 +405,74 @@ private struct PrivacySettingsPane: View {
                 SettingsHint(loc("Skips likely card numbers (Luhn-validated) and anything copied in a known password manager. Pasteboard opt-out markers (transient, auto-generated, concealed) are always respected."))
             }
 
+            Section(loc("Excluded apps")) {
+                // One button per labelled row, for the reason spelled out over
+                // the History pane's export rows: a LabeledContent hands its
+                // label to everything it contains, so a row carrying both a
+                // Remove and a Choose button would announce two controls with
+                // the same name.
+                ForEach(excluded) { app in
+                    LabeledContent {
+                        Button(loc("Remove")) { remove(app) }
+                    } label: {
+                        Label {
+                            VStack(alignment: .leading, spacing: Design.Space.hair) {
+                                Text(app.displayName)
+                                if !app.isInstalled {
+                                    Text(loc("No longer installed"))
+                                        .font(.caption)
+                                        .foregroundStyle(Color(nsColor: .secondaryLabelColor))
+                                }
+                            }
+                        } icon: {
+                            ExcludedAppIcon(app: app)
+                        }
+                    }
+                }
+                LabeledContent {
+                    Button(loc("Choose…")) { addApp() }
+                } label: {
+                    Label {
+                        Text(loc("Never capture from"))
+                    } icon: {
+                        SettingsIcon(symbol: "nosign", tint: Color(nsColor: .systemPink))
+                    }
+                }
+                if pickedUnidentifiedApp {
+                    SettingsCallout(text: loc("That app declares no bundle identifier, so MemoryClip has nothing to recognise it by."))
+                }
+                SettingsHint(loc("Nothing copied in these apps is kept: the clip is dropped before it reaches your history, whatever it contains, and helper processes of an excluded app count as the app. The list stands on its own — it applies whether or not the switch above is on, and an app you uninstall stays on it until you remove it here."))
+            }
+
             Section(loc("Permissions")) {
                 SettingsHint(loc("Detection is based on the source app's identity — MemoryClip never reads window titles or the screen, so it needs no Screen Recording or Accessibility permission. Accessibility is optional and only affects the synthetic ⌘V used for auto-paste."))
             }
         }
         .formStyle(.grouped)
+        .onAppear { reloadExcluded() }
+    }
+
+    private func reloadExcluded() {
+        excluded = ExcludedApps().apps
+    }
+
+    private func addApp() {
+        switch ExcludedApps.chooseApp() {
+        case .cancelled:
+            return
+        case .app(let bundleID):
+            pickedUnidentifiedApp = false
+            ExcludedApps().add(bundleID)
+            reloadExcluded()
+        case .unidentified:
+            pickedUnidentifiedApp = true
+        }
+    }
+
+    private func remove(_ app: ExcludedApp) {
+        pickedUnidentifiedApp = false
+        ExcludedApps().remove(app.bundleID)
+        reloadExcluded()
     }
 
     /// Manual binding to the @MainActor AppLockService singleton.
@@ -415,6 +490,35 @@ private struct PrivacySettingsPane: View {
             get: { UserDefaults.standard.bool(forKey: SensitiveFilter.filteringEnabledKey) },
             set: { UserDefaults.standard.set($0, forKey: SensitiveFilter.filteringEnabledKey) }
         )
+    }
+}
+
+/// An excluded app's own icon, filling the leading slot the tinted
+/// `SettingsIcon` glyph holds in every other row.
+///
+/// The row names one particular app on this Mac, and its icon is what
+/// identifies it before the name has been read — which is the same argument
+/// that put icons on the panel's cards. An app that is no longer installed has
+/// no artwork left, and the generic application icon macOS would hand back
+/// would say it is still there, so the dashed placeholder the cards use for
+/// the same case stands in.
+private struct ExcludedAppIcon: View {
+    let app: ExcludedApp
+
+    var body: some View {
+        Group {
+            if let icon = AppIconCache.icon(forBundleID: app.bundleID) {
+                Image(nsImage: icon)
+                    .resizable()
+                    .interpolation(.high)
+            } else {
+                Image(systemName: "app.dashed")
+                    .font(.system(size: Design.Size.settingsIcon * 0.8))
+                    .foregroundStyle(Color(nsColor: .secondaryLabelColor))
+            }
+        }
+        .frame(width: Design.Size.settingsIcon, height: Design.Size.settingsIcon)
+        .accessibilityHidden(true)
     }
 }
 

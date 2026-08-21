@@ -55,8 +55,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             SettingsKeys.vimMode: false
         ])
 
-        // Phase-2 defaults: sensitive-content filter (on) and app lock (off).
+        // Phase-2 defaults: sensitive-content filter (on), the user's own
+        // per-app exclusions (none) and app lock (off).
         SensitiveFilter.registerDefaults()
+        ExcludedApps.registerDefaults()
         AppLockService.registerDefaults()
 
         // Phase-3 default: on-device OCR of image clips (on).
