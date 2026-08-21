@@ -88,7 +88,8 @@ irreversible one kept a separator away from the item people actually come to cli
 | Key | Does |
 | --- | --- |
 | `↑` `↓` | Move through the list (`←` `→` as well, while the search field is empty) |
-| `Return` | Paste the selected clip |
+| `⇧`+`↑` `↓` | Extend the selection; `⇧`-click and `⌘`-click do the same with the mouse |
+| `Return` | Paste the selected clip, or the whole selection in order |
 | `⇧Return` | Paste it as **plain text**, dropping fonts and colours |
 | `⌘1`–`⌘9` | Paste any of the first nine results directly |
 | `⌘C` | Copy the selected clip, leaving the panel open |
@@ -100,6 +101,11 @@ irreversible one kept a separator away from the item people actually come to cli
 Pasting puts the clip on the clipboard, reactivates your previous app and sends a ⌘V. If
 macOS blocks that synthetic keystroke the clip is still on the clipboard — see
 [Permissions](#permissions).
+
+Some apps never want the fonts and colours a rich-text clip carries. **Settings → General →
+Pasting** keeps a list of them — terminals, editors and the like, seeded with the obvious
+ones and every entry removable — and a clip pasted into one arrives as plain text without
+you reaching for ⇧Return.
 
 Hold `←` or `→` and the list walks at about eight clips a second — MemoryClip's own pace
 rather than the key-repeat rate in your Keyboard settings, which at its fastest is a blur
@@ -152,6 +158,7 @@ in the search bar. In NORMAL:
 | `⌃d` `⌃u` | Half-page down / up |
 | `o` | Paste (`⇧O` pastes as plain text) |
 | `p` | Pin the clip |
+| `v` | Visual mode — `j` and `k` extend the selection, `Esc` leaves |
 | `dd` | Delete the clip, after a confirmation |
 | `q` `⇧Q` | Add to the queue / paste the whole queue |
 | `n` | Save the clip as a note (`⌘S` does the same in either mode) |
@@ -391,7 +398,7 @@ notes and the panel's preview alike, which is why its two halves are headed **No
 ./Scripts/make_app.sh    # release build + dist/MemoryClip.app (ad-hoc signed)
 ./Scripts/make_dmg.sh    # the above, plus dist/MemoryClip-<version>.dmg
 swift build && swift run # debug build, run from it
-swift test               # 1017 unit tests (benchmarks skipped)
+swift test               # 1064 unit tests (benchmarks skipped)
 ```
 
 `make_app.sh` regenerates `Resources/AppIcon.icns` if it is missing, so
