@@ -388,6 +388,22 @@ final class PermissionRecoveryTests: XCTestCase {
         }
     }
 
+    // MARK: The update offer
+
+    func testTheUpdateCheckIsOfferedAfterAnUpdate() {
+        // The one window whose readers all installed this version by hand
+        // minutes ago, and the one place the offer follows from what is
+        // already on screen.
+        XCTAssertTrue(PermissionRecoveryView.offersUpdateCheck(for: .update))
+    }
+
+    func testTheUpdateCheckIsNotOfferedToAnyoneElse() {
+        // Nothing on either of these windows is about updating, so the same
+        // panel would be an upsell in a window opened to repair something.
+        XCTAssertFalse(PermissionRecoveryView.offersUpdateCheck(for: .review))
+        XCTAssertFalse(PermissionRecoveryView.offersUpdateCheck(for: .blocked))
+    }
+
     func testOnlyAccessibilityRefusesToPromptInPlace() {
         // The one permission macOS gives no way to ask for, which is why the
         // window has a second kind of button at all.

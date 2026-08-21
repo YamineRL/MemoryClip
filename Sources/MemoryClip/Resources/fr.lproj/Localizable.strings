@@ -481,6 +481,7 @@
 "Permissions…" = "Autorisations…";
 "A feature you have switched on is blocked" = "Une fonction activée est bloquée";
 "macOS has not given MemoryClip the permission it needs, so the feature is switched on and quietly doing nothing. Allowing it here is all that is missing." = "macOS n’a pas accordé à MemoryClip l’autorisation nécessaire : la fonction est activée mais reste sans effet. Il ne manque que votre accord ici.";
+"Unless you install with Homebrew, nothing in MemoryClip will tell you when the next version is out. Off by default: switch it on and MemoryClip asks github.com once a day what the newest release is — nothing about you is sent, and it never installs anything itself." = "À moins d’installer avec Homebrew, rien dans MemoryClip ne vous préviendra de la sortie de la prochaine version. Désactivé par défaut : activez-le et MemoryClip demande à github.com, une fois par jour, quelle est la dernière version — rien vous concernant n’est envoyé, et rien n’est jamais installé tout seul.";
 
 /* Per-app capture exclusions. */
 "Excluded apps" = "Apps exclues";

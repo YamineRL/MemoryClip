@@ -481,6 +481,7 @@
 "Permissions…" = "Permissions…";
 "A feature you have switched on is blocked" = "A feature you have switched on is blocked";
 "macOS has not given MemoryClip the permission it needs, so the feature is switched on and quietly doing nothing. Allowing it here is all that is missing." = "macOS has not given MemoryClip the permission it needs, so the feature is switched on and quietly doing nothing. Allowing it here is all that is missing.";
+"Unless you install with Homebrew, nothing in MemoryClip will tell you when the next version is out. Off by default: switch it on and MemoryClip asks github.com once a day what the newest release is — nothing about you is sent, and it never installs anything itself." = "Unless you install with Homebrew, nothing in MemoryClip will tell you when the next version is out. Off by default: switch it on and MemoryClip asks github.com once a day what the newest release is — nothing about you is sent, and it never installs anything itself.";
 
 /* Per-app capture exclusions. */
 "Excluded apps" = "Excluded apps";

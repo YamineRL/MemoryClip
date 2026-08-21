@@ -12,8 +12,9 @@ import SwiftUI
 /// it was, and Permissions… in the menu bar opens it again; this exists so
 /// that the user is *told*, not so that they are stopped.
 struct PermissionRecoveryView: View {
-    /// Why the window is on screen, which is all that separates the two
-    /// headers: an update took something away, or the user came looking.
+    /// Why the window is on screen: an update took something away, or the user
+    /// came looking. It picks the header, and it decides whether the daily
+    /// update check is offered underneath the rows.
     enum Reason {
         /// Opened by `showIfNeeded` after an update dropped grants.
         case update
@@ -57,6 +58,9 @@ struct PermissionRecoveryView: View {
                 ForEach(permissions) { permission in
                     row(permission)
                 }
+            }
+            if Self.offersUpdateCheck(for: reason) {
+                updateOffer
             }
             Spacer(minLength: 0)
             HStack {
@@ -106,6 +110,45 @@ struct PermissionRecoveryView: View {
         case .blocked:
             return loc("macOS has not given MemoryClip the permission it needs, so the feature is switched on and quietly doing nothing. Allowing it here is all that is missing.")
         }
+    }
+
+    /// Whether the window offers the daily update check as well as the rows.
+    ///
+    /// `.update` only. Everyone reading that window installed the running
+    /// version by hand minutes ago, which makes them the one audience the
+    /// offer is honestly for — and the window's own sentence about updates
+    /// dropping grants is what earns it a hearing. On `.review` and `.blocked`
+    /// nothing on screen is about updating, so the same panel would be an
+    /// upsell in a window the user opened to repair something.
+    ///
+    /// Static and pure so the rule is testable without a window server.
+    static func offersUpdateCheck(for reason: Reason) -> Bool {
+        switch reason {
+        case .update: return true
+        case .review, .blocked: return false
+        }
+    }
+
+    /// The offer itself: one sentence and the Settings switch, unchanged.
+    ///
+    /// Dressed the way the first-run tour dresses the same control — the
+    /// quieter `chrome` fill, the tighter radius — rather than as a fifth row.
+    /// Everything above it is a repair the user came here for; this is the one
+    /// thing on the window asking for something, and it should not be able to
+    /// pass for a permission.
+    private var updateOffer: some View {
+        VStack(alignment: .leading, spacing: Design.Space.roomy) {
+            Text(loc("Unless you install with Homebrew, nothing in MemoryClip will tell you when the next version is out. Off by default: switch it on and MemoryClip asks github.com once a day what the newest release is — nothing about you is sent, and it never installs anything itself."))
+                .font(.callout)
+                .foregroundStyle(Color(nsColor: .secondaryLabelColor))
+                .fixedSize(horizontal: false, vertical: true)
+            // The hint is off because the line above already names the host and
+            // says what is sent, and one window does not print that twice.
+            UpdateCheckToggle(showsHint: false)
+        }
+        .padding(Design.Space.roomy)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .designPane(radius: Design.Radius.control, fill: Design.Palette.chrome)
     }
 
     private func row(_ permission: RecoverablePermission) -> some View {
