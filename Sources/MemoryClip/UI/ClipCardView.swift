@@ -109,6 +109,12 @@ struct ClipCardView: View {
         .shadow(color: Design.Palette.cardShadow, radius: 3, x: 0, y: 1)
         .onHover { isHovering = $0 }
         .task(id: contentKey) { await refreshCalc() }
+        // The third way out of the panel, beside Return and ⌘C. It sits on the
+        // whole card rather than on the content well so the picture the
+        // pointer carries is the card, and it starts on the drag threshold —
+        // the tap that pastes, the right-click menu and the header's own
+        // buttons all still see their events.
+        .onDrag { ClipDragProvider.itemProvider(for: item) ?? NSItemProvider() }
         .contextMenu {
             Button(loc("Paste")) { onPaste(false) }
             Button(loc("Paste as Plain Text")) { onPaste(true) }
