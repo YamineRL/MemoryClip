@@ -61,6 +61,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         ExcludedApps.registerDefaults()
         AppLockService.registerDefaults()
 
+        // The apps a paste is always stripped to plain text for, seeded with
+        // the terminals and editors (`PlainPasteApps.defaultBundleIDs`).
+        PlainPasteApps.registerDefaults()
+
         // Phase-3 default: on-device OCR of image clips (on).
         OCRCoordinator.registerDefaults()
 

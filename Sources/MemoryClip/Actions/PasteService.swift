@@ -192,7 +192,7 @@ final class PasteService {
     /// should use `pasteAndWait` instead.
     @discardableResult
     func paste(_ item: ClipItem, plainOnly: Bool, target: NSRunningApplication?) -> Bool {
-        guard writeAndMarkUsed(item, plainOnly: plainOnly) else { return false }
+        guard writeAndMarkUsed(item, plainOnly: Self.plainOnly(plainOnly, for: target)) else { return false }
         guard Self.isAutoPasteEnabled, let target else { return true }
         Task { @MainActor [weak self] in
             _ = await self?.activateAndPost(target: target)
@@ -209,7 +209,7 @@ final class PasteService {
         plainOnly: Bool,
         target: NSRunningApplication?
     ) async -> PasteOutcome {
-        guard writeAndMarkUsed(item, plainOnly: plainOnly) else { return .failed }
+        guard writeAndMarkUsed(item, plainOnly: Self.plainOnly(plainOnly, for: target)) else { return .failed }
         guard Self.isAutoPasteEnabled, let target else { return .copiedOnly }
         guard await activateAndPost(target: target) else { return .targetLost }
         try? await Task.sleep(for: .seconds(Self.settleDelay))
@@ -218,6 +218,16 @@ final class PasteService {
 
     private static var isAutoPasteEnabled: Bool {
         UserDefaults.standard.bool(forKey: SettingsKeys.autoPaste)
+    }
+
+    /// What the paste is actually written as, once the user's per-app rules
+    /// have had their say about where it is going.
+    ///
+    /// Consulted here rather than in `payload` because this is the only layer
+    /// that knows the destination: `payload` is pure and a drag has no
+    /// destination at all until it lands.
+    private static func plainOnly(_ requested: Bool, for target: NSRunningApplication?) -> Bool {
+        PlainPasteApps().forcesPlainText(requested: requested, into: target?.bundleIdentifier)
     }
 
     private func writeAndMarkUsed(_ item: ClipItem, plainOnly: Bool) -> Bool {

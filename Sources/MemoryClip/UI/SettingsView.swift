@@ -206,6 +206,17 @@ private struct ShortcutCap: View {
 private struct GeneralSettingsPane: View {
     @AppStorage(SettingsKeys.appearance) private var appearance: AppearanceSetting = .system
 
+    /// The plain-paste list, re-read after every edit — held and resolved the
+    /// way the Privacy pane holds its exclusions, and for the reason written
+    /// there: `@AppStorage` has no array form, and every row asks the
+    /// filesystem what its identifier still points at.
+    @State private var plainPasteApps: [ExcludedApp] = []
+
+    /// Whether the last app picked declared no bundle identifier. There is
+    /// then nothing to store, and a panel that closes with the list unchanged
+    /// and nothing said reads as a bug.
+    @State private var pickedUnidentifiedApp = false
+
     var body: some View {
         Form {
             Section(loc("Startup")) {
@@ -230,14 +241,75 @@ private struct GeneralSettingsPane: View {
 
             Section(loc("Pasting")) {
                 AutoPasteToggle()
+
+                // One button per labelled row, for the reason spelled out over
+                // the History pane's export rows: a LabeledContent hands its
+                // label to everything it contains, so a row carrying both a
+                // Remove and a Choose button would announce two controls with
+                // the same name.
+                ForEach(plainPasteApps) { app in
+                    LabeledContent {
+                        Button(loc("Remove")) { removePlainPasteApp(app) }
+                    } label: {
+                        Label {
+                            VStack(alignment: .leading, spacing: Design.Space.hair) {
+                                Text(app.displayName)
+                                if !app.isInstalled {
+                                    Text(loc("No longer installed"))
+                                        .font(.caption)
+                                        .foregroundStyle(Color(nsColor: .secondaryLabelColor))
+                                }
+                            }
+                        } icon: {
+                            ExcludedAppIcon(app: app)
+                        }
+                    }
+                }
+                LabeledContent {
+                    Button(loc("Choose…")) { addPlainPasteApp() }
+                } label: {
+                    Label {
+                        Text(loc("Always paste as plain text into"))
+                    } icon: {
+                        SettingsIcon(symbol: "textformat", tint: Color(nsColor: .systemBrown))
+                    }
+                }
+                if pickedUnidentifiedApp {
+                    SettingsCallout(text: loc("That app declares no bundle identifier, so MemoryClip has nothing to recognise it by."))
+                }
+                SettingsHint(loc("Rich text pasted into these apps arrives stripped of its fonts and colours, which is what a terminal or a code editor wants anyway. Helper processes of a listed app count as the app, a clip that carries no formatting is unaffected, and ⇧Return still pastes plain text everywhere else."))
             }
         }
         .formStyle(.grouped)
+        .onAppear { reloadPlainPasteApps() }
         // `@AppStorage` persists the choice but nothing acts on it; the app's
         // appearance is AppKit state that has to be pushed to `NSApp`.
         .onChange(of: appearance) { _, newValue in
             applyAppearanceSetting(newValue)
         }
+    }
+
+    private func reloadPlainPasteApps() {
+        plainPasteApps = PlainPasteApps().apps
+    }
+
+    private func addPlainPasteApp() {
+        switch PlainPasteApps.chooseApp() {
+        case .cancelled:
+            return
+        case .app(let bundleID):
+            pickedUnidentifiedApp = false
+            PlainPasteApps().add(bundleID)
+            reloadPlainPasteApps()
+        case .unidentified:
+            pickedUnidentifiedApp = true
+        }
+    }
+
+    private func removePlainPasteApp(_ app: ExcludedApp) {
+        pickedUnidentifiedApp = false
+        PlainPasteApps().remove(app.bundleID)
+        reloadPlainPasteApps()
     }
 }
 

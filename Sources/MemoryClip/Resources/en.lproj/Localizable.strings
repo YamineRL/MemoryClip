@@ -454,3 +454,8 @@
 "Pick an app MemoryClip should never capture from." = "Pick an app MemoryClip should never capture from.";
 "That app declares no bundle identifier, so MemoryClip has nothing to recognise it by." = "That app declares no bundle identifier, so MemoryClip has nothing to recognise it by.";
 "Nothing copied in these apps is kept: the clip is dropped before it reaches your history, whatever it contains, and helper processes of an excluded app count as the app. The list stands on its own — it applies whether or not the switch above is on, and an app you uninstall stays on it until you remove it here." = "Nothing copied in these apps is kept: the clip is dropped before it reaches your history, whatever it contains, and helper processes of an excluded app count as the app. The list stands on its own — it applies whether or not the switch above is on, and an app you uninstall stays on it until you remove it here.";
+
+/* Per-app paste rules. */
+"Always paste as plain text into" = "Always paste as plain text into";
+"Pick an app MemoryClip should always paste plain text into." = "Pick an app MemoryClip should always paste plain text into.";
+"Rich text pasted into these apps arrives stripped of its fonts and colours, which is what a terminal or a code editor wants anyway. Helper processes of a listed app count as the app, a clip that carries no formatting is unaffected, and ⇧Return still pastes plain text everywhere else." = "Rich text pasted into these apps arrives stripped of its fonts and colours, which is what a terminal or a code editor wants anyway. Helper processes of a listed app count as the app, a clip that carries no formatting is unaffected, and ⇧Return still pastes plain text everywhere else.";
