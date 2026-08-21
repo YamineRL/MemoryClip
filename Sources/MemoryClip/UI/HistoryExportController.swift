@@ -179,6 +179,108 @@ final class HistoryExportController {
         return written
     }
 
+    // MARK: Import
+
+    /// Authenticate, spell out what an import does, then merge a JSON export
+    /// into the history.
+    func importHistory() {
+        NSApp.activate()
+        // Writes into the same thing the export reads out of — behind the
+        // same lock, for the same reason.
+        authenticating(reason: loc("Unlock MemoryClip to import clipboard history")) { [weak self] in
+            self?.performImport()
+        }
+    }
+
+    /// What reading an export back in did.
+    struct ImportOutcome: Sendable, Equatable {
+        /// Clips written into the history.
+        var inserted: Int
+        /// Records the history already held, left exactly as they were.
+        var skipped: Int
+    }
+
+    private func performImport() {
+        WindowFocus.restoreAfterSystemPrompt()
+        guard let store else {
+            log.error("Import skipped: no store")
+            return
+        }
+        guard confirmImport() else { return }
+
+        // No `FolderBookmark`: the panel is itself the grant, and it covers
+        // the one read that happens before this function returns. Bookmarks
+        // are for the folders MemoryClip goes back to later without asking —
+        // the vault, the screenshot folder — which this file is not.
+        let openPanel = NSOpenPanel()
+        openPanel.allowsMultipleSelection = false
+        openPanel.canChooseDirectories = false
+        openPanel.allowedContentTypes = [.json]
+        openPanel.prompt = loc("Import")
+        guard openPanel.runModal() == .OK, let url = openPanel.url else { return }
+
+        do {
+            let outcome = try Self.readImport(from: url, store: store)
+            // Counts only, and the file name stays private, exactly as the
+            // export logs it: the name is the user's and the unified log
+            // outlives the history it describes.
+            log.notice("Imported \(outcome.inserted) clips, \(outcome.skipped) already stored, from \(url.lastPathComponent, privacy: .private)")
+            presentImportOutcome(outcome)
+        } catch {
+            log.error("Import failed: \(error.localizedDescription)")
+            presentError(
+                message: loc("Import failed."),
+                informative: error.localizedDescription
+            )
+        }
+    }
+
+    /// Read the JSON export at `url` into `store`. Returns what it did.
+    ///
+    /// Read whole, where the export streams. `JSONDecoder` has no incremental
+    /// array API, so a history exported with its images costs its own size in
+    /// memory for the length of the import — which is the price of the
+    /// all-or-nothing contract: a file that fails to decode has changed
+    /// nothing, and there is no half-restored history to explain.
+    static func readImport(from url: URL, store: ClipStore) throws -> ImportOutcome {
+        let text = try String(contentsOf: url, encoding: .utf8)
+        let items = try ExportService.items(from: ExportService.imports(fromJSON: text))
+        let inserted = store.insertImported(items)
+        return ImportOutcome(inserted: inserted, skipped: items.count - inserted)
+    }
+
+    /// Say what an import will and will not touch before the panel opens.
+    private func confirmImport() -> Bool {
+        let alert = NSAlert()
+        alert.alertStyle = .informational
+        alert.messageText = loc("Import clips from a JSON export?")
+        alert.informativeText = loc(
+            "The clips in the file are added to this Mac's history, keeping the dates and pins they were exported with.\n\nNothing is deleted or replaced: a clip already in your history is left exactly as it is, and importing the same file twice adds it once."
+        )
+        alert.addButton(withTitle: loc("Choose File…"))
+        alert.addButton(withTitle: loc("Cancel"))
+        return alert.runModal() == .alertFirstButtonReturn
+    }
+
+    /// Report what the import added, and what it recognised and left alone.
+    ///
+    /// An alert rather than a log line, on the pattern the panel reports a
+    /// failed note with: the user pressed something and the Settings window in
+    /// front of them shows no history, so an import that says nothing is an
+    /// import that looks like it did nothing.
+    private func presentImportOutcome(_ outcome: ImportOutcome) {
+        NSApp.activate()
+        let alert = NSAlert()
+        alert.alertStyle = .informational
+        alert.messageText = loc("Imported %d clips.", outcome.inserted)
+        alert.informativeText = loc(
+            "%d clips in the file were already in your history and were left as they are.",
+            outcome.skipped
+        )
+        alert.addButton(withTitle: loc("OK"))
+        alert.runModal()
+    }
+
     /// Spell out exactly what the exported file contains before writing it.
     private func confirmExport(asCSV: Bool) -> Bool {
         let alert = NSAlert()

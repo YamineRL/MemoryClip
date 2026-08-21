@@ -34,6 +34,31 @@ enum ExportService {
         case utf8EncodingFailed
     }
 
+    /// Errors thrown while reading an export back in.
+    ///
+    /// `LocalizedError` rather than a bare `Error`: each of these is shown to
+    /// the person who picked the file, so each has to say, in their language,
+    /// what is wrong with it.
+    enum ImportError: LocalizedError, Equatable {
+        /// Not the JSON array `json(from:)` writes.
+        case malformedDocument
+        /// A record names a `kind` no version of MemoryClip has written.
+        case unknownKind(String)
+        /// A Base64 payload does not decode.
+        case malformedPayload
+
+        var errorDescription: String? {
+            switch self {
+            case .malformedDocument:
+                return loc("This is not a MemoryClip JSON export.")
+            case .unknownKind(let kind):
+                return loc("The file holds a clip of an unknown kind (%@).", kind)
+            case .malformedPayload:
+                return loc("The file holds a clip whose image or rich-text payload is damaged.")
+            }
+        }
+    }
+
     // MARK: Mapping
 
     /// Flatten a stored clip into its export record.
@@ -183,6 +208,116 @@ enum ExportService {
     /// ISO 8601 dates. Includes `richTextBase64` / `imageBase64` when present.
     static func json(from clips: [ClipExport]) throws -> String {
         try document(from: clips, format: .json)
+    }
+
+    // MARK: Import
+
+    /// Decode the document `json(from:)` writes.
+    ///
+    /// All-or-nothing: one record the decoder cannot read fails the whole
+    /// file. A partial import is the worst outcome on offer — a history that
+    /// looks restored, is not, and says nothing about where it stopped.
+    static func imports(fromJSON json: String) throws -> [ClipExport] {
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        guard let records = try? decoder.decode([ClipExport].self, from: Data(json.utf8)) else {
+            throw ImportError.malformedDocument
+        }
+        return records
+    }
+
+    /// Rebuild a stored clip from its export record.
+    ///
+    /// The inverse of `export(from:)`, with one asymmetry: `contentHash` is
+    /// DERIVED rather than read, because the export format has never carried
+    /// it. Deriving it under `ContentParser`'s rules is what lands an imported
+    /// clip on the identity the Mac it came from captured it with, so a clip
+    /// this history already holds is recognised as the same clip.
+    @MainActor
+    static func item(from clip: ClipExport) throws -> ClipItem {
+        guard let kind = ClipKind(rawValue: clip.kind) else {
+            throw ImportError.unknownKind(clip.kind)
+        }
+        let richTextData = try payload(clip.richTextBase64)
+        let imageData = try payload(clip.imageBase64)
+        return ClipItem(
+            kind: kind,
+            text: clip.text,
+            richTextData: richTextData,
+            imageData: imageData,
+            fileURLStrings: clip.fileURLs,
+            colorHex: clip.colorHex,
+            contentHash: contentHash(
+                for: clip, kind: kind, richTextData: richTextData, imageData: imageData
+            ),
+            sourceBundleID: clip.sourceAppBundleID,
+            sourceAppName: clip.sourceAppName,
+            createdAt: clip.createdAt,
+            lastUsedAt: clip.lastUsedAt,
+            isPinned: clip.isPinned
+        )
+    }
+
+    /// Rebuild a whole history, preserving order.
+    @MainActor
+    static func items(from clips: [ClipExport]) throws -> [ClipItem] {
+        try clips.map(item(from:))
+    }
+
+    /// Bytes for a Base64 field, treating absent and empty alike as no payload
+    /// — the same equivalence `base64(_:)` writes them out under.
+    private static func payload(_ base64: String?) throws -> Data? {
+        guard let base64, !base64.isEmpty else { return nil }
+        guard let data = Data(base64Encoded: base64) else { throw ImportError.malformedPayload }
+        return data
+    }
+
+    /// The identity an imported clip is deduplicated on.
+    ///
+    /// One branch per branch of `ContentParser.parse`, and it has to stay that
+    /// way: the prefixes ("text:", "link:", …) are inside the hash, so a clip
+    /// hashed here under a rule other than the one it was captured with lands
+    /// in the history as a second copy of itself.
+    @MainActor
+    static func contentHash(
+        for clip: ClipExport,
+        kind: ClipKind,
+        richTextData: Data?,
+        imageData: Data?
+    ) -> String {
+        switch kind {
+        case .file:
+            return ContentParser.hashText("file:" + clip.fileURLs.joined(separator: "\n"))
+        case .color:
+            return ContentParser.hashText("color:" + (clip.colorHex ?? clip.text ?? ""))
+        case .link:
+            return ContentParser.hashText("link:" + (clip.text ?? ""))
+        case .text:
+            return ContentParser.hashText("text:" + (clip.text ?? ""))
+        case .richText:
+            guard let richTextData else { return recordHash(clip) }
+            return ContentParser.hashData(richTextData)
+        case .image:
+            guard let imageData else { return recordHash(clip) }
+            return ContentParser.hashData(imageData)
+        }
+    }
+
+    /// The identity for a clip whose payload the file did not carry: an image
+    /// or rich-text record with its Base64 stripped out.
+    ///
+    /// There are no bytes to match a capture against, so it hashes the fields
+    /// the record does hold. That is enough for the property that matters —
+    /// importing the same file twice adds it once.
+    @MainActor
+    private static func recordHash(_ clip: ClipExport) -> String {
+        ContentParser.hashText([
+            clip.kind,
+            clip.text ?? "",
+            clip.colorHex ?? "",
+            clip.fileURLs.joined(separator: "\n"),
+            ISO8601DateFormatter().string(from: clip.createdAt),
+        ].joined(separator: "\u{1F}"))
     }
 
     // MARK: CSV

@@ -235,6 +235,43 @@ final class ClipStore {
         }
     }
 
+    /// Add clips restored from an export file, keeping everything already here.
+    ///
+    /// Identity is `contentHash`, the same rule `insert` deduplicates a
+    /// re-copied clip by — but a clip the history already holds is DROPPED
+    /// here rather than floated to the top. An import restores clips that were
+    /// copied long ago, so stamping them `.now` would reorder a history nobody
+    /// just copied into, and rewriting the stored row would take a pin with
+    /// it. Nothing already in the store is written to at all.
+    ///
+    /// The cap is deliberately not enforced: a trim would delete stored clips
+    /// to make room for imported ones, which is not what "import" may do. The
+    /// maintenance pass that runs every 15 minutes applies it on its own terms.
+    ///
+    /// - Parameter items: clips built by `ExportService.item(from:)`, each
+    ///   already carrying its derived hash.
+    /// - Returns: how many were new.
+    @discardableResult
+    func insertImported(_ items: [ClipItem]) -> Int {
+        var inserted = 0
+        // A file can hold the same clip twice, and a pending insert is not
+        // reliably visible to the fetch below, so identity is tracked here as
+        // well as in the store.
+        var seen = Set<String>()
+        for item in items {
+            guard seen.insert(item.contentHash).inserted else { continue }
+            guard fetchByHash(item.contentHash).isEmpty else { continue }
+            context.insert(item)
+            inserted += 1
+        }
+        guard inserted > 0 else { return 0 }
+        save()
+        if items.contains(where: { $0.kind == .image }) {
+            scheduleThumbnailBackfill()
+        }
+        return inserted
+    }
+
     /// Record a screenshot that landed in the screenshot folder.
     ///
     /// The clip stores a REFERENCE — `fileURLStrings` holds the path and

@@ -313,7 +313,17 @@ private struct HistorySettingsPane: View {
                         SettingsIcon(symbol: "tablecells", tint: Color(nsColor: .systemGreen))
                     }
                 }
+                LabeledContent {
+                    Button(loc("Import…")) { HistoryExportController.shared.importHistory() }
+                } label: {
+                    Label {
+                        Text(loc("Every clip from JSON"))
+                    } icon: {
+                        SettingsIcon(symbol: "square.and.arrow.down", tint: Color(nsColor: .systemOrange))
+                    }
+                }
                 SettingsHint(loc("Writes every clip to one unencrypted file, readable by your user account only. JSON carries images and rich text as Base64; CSV is text, source app and timestamps only. MemoryClip spells out what the file will contain before writing it, and — with the Touch ID lock on — asks you to authenticate every time, even if you unlocked it a moment ago."))
+                SettingsHint(loc("Importing adds the clips in a JSON export to this history, keeping the times they were first copied. A clip already here is left alone, so importing the same file twice changes nothing."))
             }
         }
         .formStyle(.grouped)
