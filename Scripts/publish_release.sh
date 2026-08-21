@@ -76,8 +76,20 @@ echo "    $(basename "$ZIP")  sha256 $ZIP_SHA"
 # --- 3. Create or update the release. ----------------------------------------
 NOTES_FILE="$(mktemp)"
 trap 'rm -f "$NOTES_FILE"' EXIT
+# A hand-written changelog for this version, if there is one. Kept beside the
+# script rather than generated from git log: a release note is written for the
+# people installing the app, and a commit subject is written for the people
+# reading the diff.
+CHANGES=""
+CHANGES_FILE="$ROOT/Scripts/release-notes/$VERSION.md"
+[ -f "$CHANGES_FILE" ] && CHANGES="$(cat "$CHANGES_FILE")
+
+"
+
 cat > "$NOTES_FILE" <<NOTES
 MemoryClip $VERSION for macOS 26 (Apple silicon).
+
+$CHANGES
 
 **Install**: open the DMG and drag MemoryClip to Applications. The app is
 **ad-hoc signed only** — no Developer ID, no notarisation — so Gatekeeper will
