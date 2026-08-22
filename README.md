@@ -93,7 +93,8 @@ first-run tour:
 - If there is something newer you get **one notification** — once per version, not once a
   day until you give in. Take it and MemoryClip downloads that release's `.dmg` to a
   temporary folder and opens it, leaving you the same drag onto `/Applications` as the
-  first install.
+  first install. That window asks you to quit MemoryClip before you drag, because macOS
+  refuses to replace an application while it is running.
 - **It never installs anything itself.** This app is ad-hoc signed, so a silent
   self-replacing updater would be asking you to trust a binary swap you never saw.
 
@@ -432,9 +433,12 @@ swift test               # 1064 unit tests (benchmarks skipped)
 ```
 
 `make_app.sh` regenerates `Resources/AppIcon.icns` if it is missing, so
-`Scripts/make_icon.swift` only needs running when the artwork changes. Everything lands in
-gitignored `dist/`: **no build output is ever committed.** The benchmarks build stores of
-up to 50k clips and are skipped unless `MEMORYCLIP_BENCH=1` is set.
+`Scripts/make_icon.swift` only needs running when the artwork changes. The DMG window's
+background art is committed the same way, at `Resources/dmg-background.png` and its `@2x`
+twin, and `Scripts/make_dmg_background.swift` redraws the pair when its wording or layout
+changes. Everything lands in gitignored `dist/`: **no build output is ever committed.** The
+benchmarks build stores of up to 50k clips and are skipped unless `MEMORYCLIP_BENCH=1` is
+set.
 
 ### Cutting a release
 
