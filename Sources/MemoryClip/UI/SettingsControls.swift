@@ -664,9 +664,10 @@ struct UpdateCheckToggle: View {
                 .font(.caption)
                 .foregroundStyle(Color(nsColor: .secondaryLabelColor))
         case .opened:
-            // The disk image is in Finder now, so the next move is a drag and
-            // not another button here.
-            Text(loc("Drag MemoryClip to Applications in the window that opened, then relaunch."))
+            // The disk image is in Finder now, and the drag it is open for
+            // cannot succeed while this app is the one being replaced — so the
+            // line says the quit first, and the button beside it does it.
+            Text(loc("Quit MemoryClip, then drag the new version onto Applications in the window that opened."))
                 .font(.caption)
                 .foregroundStyle(Color(nsColor: .secondaryLabelColor))
                 .fixedSize(horizontal: false, vertical: true)
@@ -678,12 +679,21 @@ struct UpdateCheckToggle: View {
         }
     }
 
-    /// Check Now, or — once there is something to take — Download.
+    /// Check Now, then Download, then the quit that lets the drag land.
     @ViewBuilder
     private var action: some View {
         switch checker.status {
         case let .available(update):
             Button(loc("Download")) { checker.download(update) }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.small)
+        case .opened:
+            // macOS will not replace a running application, so the install
+            // the disk image is open for needs this app gone. Offered as the
+            // button rather than left to the disk image's own instructions:
+            // whoever took the update from this window is looking here, not
+            // at the menu bar.
+            Button(loc("Quit MemoryClip")) { NSApp.terminate(nil) }
                 .buttonStyle(.borderedProminent)
                 .controlSize(.small)
         case .checking, .downloading:

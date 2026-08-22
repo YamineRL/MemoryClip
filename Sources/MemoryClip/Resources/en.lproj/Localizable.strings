@@ -138,7 +138,7 @@
 "MemoryClip is up to date" = "MemoryClip is up to date";
 "MemoryClip %@ is available" = "MemoryClip %@ is available";
 "Download it and MemoryClip will open the disk image for you to drag across." = "Download it and MemoryClip will open the disk image for you to drag across.";
-"Drag MemoryClip to Applications in the window that opened, then relaunch." = "Drag MemoryClip to Applications in the window that opened, then relaunch.";
+"Quit MemoryClip, then drag the new version onto Applications in the window that opened." = "Quit MemoryClip, then drag the new version onto Applications in the window that opened.";
 "This build does not report a version to compare." = "This build does not report a version to compare.";
 "The release information could not be read." = "The release information could not be read.";
 "The latest release is tagged “%@”, which is not a version." = "The latest release is tagged “%@”, which is not a version.";
