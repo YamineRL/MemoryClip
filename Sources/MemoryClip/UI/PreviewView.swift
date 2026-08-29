@@ -70,6 +70,8 @@ struct PreviewView: View {
                 .padding(Design.Space.roomy)
                 .designPane(radius: Design.Radius.pane, fill: Design.Palette.chrome)
 
+            cleanedRow
+
             if let calc = calcResult {
                 // The answer the user came for: full label colour, not the
                 // secondary grey it used to be given.
@@ -106,14 +108,52 @@ struct PreviewView: View {
                 Button(option.title) { PreviewCopy.perform(option, using: onCopy) }
             }
         }
+        // A selection belongs to the clip it was made in.
+        .onChange(of: contentKey) { report(nil) }
+        .onDisappear { report(nil) }
         .task(id: contentKey) { await refreshAnalysis() }
         .task(id: contentKey) { await loadFullImage() }
         .task(id: translationKey) { await refreshTranslation() }
     }
 
+    /// The one line a cleaned link gets: what was taken off it, and the way
+    /// back.
+    ///
+    /// `Use original` writes the untouched URL to the pasteboard, so the next
+    /// ⌘V pastes it — the stored clip keeps the cleaned form and the badge.
+    /// That is the escape hatch for a parameter that turns out to matter: a
+    /// campaign the user is actually reading, a share link that is genuinely
+    /// per-recipient.
+    @ViewBuilder
+    private var cleanedRow: some View {
+        if let original = item.originalText {
+            HStack(spacing: Design.Space.snug) {
+                DetectionChip(text: cleanedLabel)
+                Spacer(minLength: Design.Space.normal)
+                Button(loc("Use original")) { PreviewCopy.write(original, using: onCopy) }
+                    .buttonStyle(.bordered)
+            }
+            .controlSize(.small)
+        }
+    }
+
+    /// `Cleaned · removed igsh`, or plain `Cleaned` for a clip stored before
+    /// the removed names were recorded.
+    private var cleanedLabel: String {
+        let removed = LinkCleaner.clean(item.originalText ?? "", options: LinkSettings.options)?.removed ?? []
+        guard !removed.isEmpty else { return loc("Cleaned") }
+        return loc("Cleaned · removed %@", removed.joined(separator: ", "))
+    }
+
     /// What the right-click menu offers for this clip.
     private var copyOptions: [PreviewCopyOption] {
-        PreviewCopy.options(for: item, translation: presenter.translation?.text)
+        PreviewCopy.options(for: item, translation: presenter.translation?.text, selection: selection)
+    }
+
+    /// Record a selection and hand it to the panel.
+    private func report(_ text: String?) {
+        selection = text
+        onSelectionChange?(text)
     }
 
     // MARK: Cached analysis
