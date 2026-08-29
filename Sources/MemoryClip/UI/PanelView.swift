@@ -962,6 +962,9 @@ struct PanelContentView: View {
     @State private var pendingDeletes: [ClipItem] = []
     @State private var previewVisible = false
     @State private var previewItem: ClipItem?
+    /// What is selected with the mouse in the open preview pane, so ⌘C can
+    /// copy it instead of the whole clip. Nil when nothing is selected.
+    @State private var previewSelection: String?
     @State private var vim = VimNavigator()
     /// Paces the movement keys while one is held down, and says when the
     /// preview pane is allowed to follow — see `HeldKeyPacer`.
@@ -1136,7 +1139,8 @@ struct PanelContentView: View {
                         item: item,
                         onTransform: { actions.applyTransform(item, $0) },
                         onCopy: { actions.copyText(item, $0) },
-                        paneHeight: resolvedPreviewHeight
+                        paneHeight: resolvedPreviewHeight,
+                        onSelectionChange: { previewSelection = $0 }
                     )
                     .frame(height: resolvedPreviewHeight)
                     .overlay(alignment: .bottom) {
@@ -1793,6 +1797,7 @@ struct PanelContentView: View {
         guard previewVisible else { return }
         previewVisible = false
         previewItem = nil
+        previewSelection = nil
         announce(loc("Preview hidden"))
     }
 
@@ -2061,6 +2066,13 @@ struct PanelContentView: View {
     private func copySelected() {
         let chosen = selectedItems
         guard let first = chosen.first else { return }
+        // A visible selection in the preview is what ⌘C means while it is
+        // there: copy exactly it, and leave the panel open.
+        if previewVisible, let selected = PreviewCopy.copyTarget(selection: previewSelection, clipText: nil) {
+            actions.copyText(first, selected)
+            announce(loc("Copied"))
+            return
+        }
         guard chosen.count > 1 else {
             actions.copyOnly(first)
             announce(loc("Copied"))

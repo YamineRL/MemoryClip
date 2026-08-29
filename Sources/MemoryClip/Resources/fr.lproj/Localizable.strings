@@ -177,6 +177,7 @@
 "Preview height" = "Hauteur de l’aperçu";
 "%d points" = "%d points";
 "Drag up for a taller preview" = "Faites glisser vers le haut pour agrandir l’aperçu";
+"Copy Selection" = "Copier la sélection";
 "Copy Text" = "Copier le texte";
 "Copy Hex" = "Copier le code hexadécimal";
 "Copy Translation" = "Copier la traduction";
