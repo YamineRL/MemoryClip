@@ -288,6 +288,17 @@ struct ClipFilter: Equatable {
     /// True when nothing is being narrowed down.
     var isIdentity: Bool { search.isEmpty && type == .all && source == nil }
 
+    /// Whether `refine(_:)` can still drop rows the predicate returned.
+    ///
+    /// The two places the predicate is deliberately wider than the filter:
+    /// Images admits every file row in order to reach the screenshots among
+    /// them, and a search admits every file row — their searchable content
+    /// is a blob SQL cannot look inside — as well as clips carrying only the
+    /// one term of a multi-word query that the expression had room for.
+    /// Everywhere else the predicate is the whole question, and a COUNT of
+    /// it is the answer.
+    var needsSwiftSideRefinement: Bool { type == .image || !search.isEmpty }
+
     func matchesType(_ item: some ClipDisplayable) -> Bool {
         type.matches(item.kind, isScreenshot: item.isScreenshot)
     }
@@ -991,6 +1002,11 @@ struct PanelContentView: View {
     /// movement of any kind, cleared when the query goes and when the panel
     /// reopens: the bubble is there to be dismissed by using the keys it
     /// names, not to be read twice.
+    /// How many clips the filter matches across the whole store, or nil
+    /// while that is not worth the pass it would cost. Re-counted off the
+    /// filter rather than derived from the page, which only ever holds one
+    /// page.
+    @State private var matchCount: Int?
     @State private var navHintDismissed = false
     /// The same, for the preview pane's Quick Look bubble.
     @State private var quickLookHintDismissed = false
@@ -1123,6 +1139,40 @@ struct PanelContentView: View {
     /// How many distinct source apps the footer menu will list.
     private static let sourceAppLimit = 50
 
+    /// The whole store's answer to the filter, or nil when finding it would
+    /// cost more than a footer number is worth.
+    ///
+    /// `fetchCount` is a SQL COUNT and flat in store size, so wherever the
+    /// predicate *is* the filter that is the end of it. Where it is not —
+    /// see `needsSwiftSideRefinement` — the rows have to be looked at, and
+    /// that is bounded: a search matching half a 50k store is exactly the
+    /// pass the paging exists to avoid, and there the footer goes back to
+    /// saying what it has rather than guessing at what it has not.
+    private func countMatches() -> Int? {
+        let descriptor = FetchDescriptor<ClipItem>(predicate: filter.predicate)
+        guard let admitted = try? modelContext.fetchCount(descriptor) else { return nil }
+        guard filter.needsSwiftSideRefinement else { return admitted }
+        guard admitted <= Self.countScanLimit else { return nil }
+        var scan = descriptor
+        scan.fetchLimit = Self.countScanLimit
+        guard let rows = try? modelContext.fetch(scan) else { return nil }
+        return filter.refine(rows).count
+    }
+
+    /// How many rows the footer's count may sift before it gives up.
+    private static let countScanLimit = 2000
+
+    /// How long the typing has to stop before the count is redone.
+    private static let countSettleDelay: TimeInterval = 0.15
+
+    /// What the count is keyed on: the question asked, and the fact that the
+    /// store answered differently — a capture or a delete while the panel is
+    /// open moves the number without touching the filter.
+    private struct MatchCountKey: Equatable {
+        let filter: ClipFilter
+        let loaded: Int
+    }
+
     // MARK: Body
 
     var body: some View {
@@ -1198,6 +1248,14 @@ struct PanelContentView: View {
             try? await Task.sleep(for: .seconds(HeldKeyPacer.previewSettleDelay))
             guard !Task.isCancelled else { return }
             syncPreviewItem()
+        }
+        // Debounced for the same reason the preview pane is: the filter is
+        // rebuilt on every keystroke, and counting once the typing comes to
+        // rest is one pass instead of one per character.
+        .task(id: MatchCountKey(filter: filter, loaded: items.count)) {
+            try? await Task.sleep(for: .seconds(Self.countSettleDelay))
+            guard !Task.isCancelled else { return }
+            matchCount = countMatches()
         }
         .defaultFocus($searchFocused, true)
         .onChange(of: uiState.focusToken) {
@@ -1686,9 +1744,12 @@ struct PanelContentView: View {
 
             Spacer(minLength: Design.Space.tight)
 
-            // "200+" rather than a plain count: the list is paged, so the
-            // number shown is what has been loaded, not the whole store.
-            Text(hasMorePages ? loc("%d+ clips", visible.count) : loc("%d clips", visible.count))
+            // The whole store's count when it could be had, and the loaded
+            // page with a "+" only when it could not: the list is paged, so
+            // `visible.count` on its own is what is on screen rather than
+            // what matches.
+            Text(matchCount.map { loc("%d clips", $0) }
+                ?? (hasMorePages ? loc("%d+ clips", visible.count) : loc("%d clips", visible.count)))
                 .font(Design.Typography.footnote)
                 .monospacedDigit()
                 .foregroundStyle(Color(nsColor: .secondaryLabelColor))
