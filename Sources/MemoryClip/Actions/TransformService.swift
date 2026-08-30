@@ -17,6 +17,7 @@ enum Transform: String, CaseIterable, Identifiable, Sendable {
     case epochToDate, dateToEpoch
     case trimLines, stripTrailingSpace, collapseBlankLines
     case sortLines, dedupeLines, reverseLines, numberLines
+    case cleanLink
 
     var id: String { rawValue }
 
@@ -51,6 +52,7 @@ enum Transform: String, CaseIterable, Identifiable, Sendable {
         case .dedupeLines: loc("Deduplicate Lines")
         case .reverseLines: loc("Reverse Lines")
         case .numberLines: loc("Number Lines")
+        case .cleanLink: loc("Clean Link")
         }
     }
 
@@ -69,6 +71,7 @@ enum Transform: String, CaseIterable, Identifiable, Sendable {
         case .epochToDate, .dateToEpoch: .time
         case .trimLines, .stripTrailingSpace, .collapseBlankLines,
              .sortLines, .dedupeLines, .reverseLines, .numberLines: .lines
+        case .cleanLink: .link
         }
     }
 }
@@ -80,7 +83,7 @@ enum Transform: String, CaseIterable, Identifiable, Sendable {
 /// question a clip raises — what case is this, what encoding, what colour —
 /// rather than the order the cases happen to be declared in.
 enum TransformGroup: String, CaseIterable, Identifiable, Sendable {
-    case caseStyle, json, encoding, color, time, lines
+    case caseStyle, json, encoding, color, time, lines, link
 
     var id: String { rawValue }
 
@@ -92,6 +95,7 @@ enum TransformGroup: String, CaseIterable, Identifiable, Sendable {
         case .color: loc("Color")
         case .time: loc("Time")
         case .lines: loc("Lines")
+        case .link: loc("Link")
         }
     }
 
@@ -135,6 +139,7 @@ enum TransformService {
         case .dedupeLines: return dedupeLines(text)
         case .reverseLines: return reverseLines(text)
         case .numberLines: return numberLines(text)
+        case .cleanLink: return LinkCleaner.clean(text, options: LinkSettings.options)?.url
         }
     }
 

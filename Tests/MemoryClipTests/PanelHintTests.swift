@@ -75,6 +75,28 @@ final class PanelHintTests: XCTestCase {
         )
     }
 
+    // MARK: Asking again
+
+    /// The bug this pins: the arrows are usually found by browsing before a
+    /// search is ever typed, and that dismissal used to carry into every
+    /// query for the rest of the session — so the one moment the bubble
+    /// exists for was the one moment it never appeared.
+    func testAQueryTypedFromScratchAsksAgain() {
+        XCTAssertTrue(PanelHint.asksAgain(previousQuery: "", currentQuery: "inv"))
+    }
+
+    func testRefiningAQueryDoesNotAskAgain() {
+        XCTAssertFalse(PanelHint.asksAgain(previousQuery: "inv", currentQuery: "invo"))
+        XCTAssertFalse(PanelHint.asksAgain(previousQuery: "invo", currentQuery: "inv"))
+    }
+
+    /// Clearing the field is not a question, and the next keystroke is the
+    /// one that asks it.
+    func testClearingTheQueryDoesNotAskAgain() {
+        XCTAssertFalse(PanelHint.asksAgain(previousQuery: "inv", currentQuery: ""))
+        XCTAssertFalse(PanelHint.asksAgain(previousQuery: "", currentQuery: ""))
+    }
+
     // MARK: The preview pane
 
     func testQuickLookIsOfferedOnlyWhereItHasSomethingToShow() {

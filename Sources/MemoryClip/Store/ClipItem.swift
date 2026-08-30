@@ -151,6 +151,14 @@ final class ClipItem {
     /// lightweight migration adds a nullable column to rows that predate it,
     /// which a mandatory attribute without a default cannot.
     var calendarEventID: String?
+    /// The URL as it was copied, when `text` holds a cleaned version of it.
+    /// nil on every clip that was not cleaned, which is what the badge and
+    /// the preview's restore row read.
+    ///
+    /// Optional, so an existing store migrates in place: SwiftData's
+    /// lightweight migration adds a nullable column to rows that predate it,
+    /// which a mandatory attribute without a default cannot.
+    var originalText: String?
 
     var kind: ClipKind {
         get { ClipKind(rawValue: kindRaw) ?? .text }
@@ -188,7 +196,8 @@ final class ClipItem {
         clipTranslationTarget: String? = nil,
         notePath: String? = nil,
         noteExportedAt: Date? = nil,
-        calendarEventID: String? = nil
+        calendarEventID: String? = nil,
+        originalText: String? = nil
     ) {
         self.uuid = uuid
         self.kindRaw = kind.rawValue
@@ -221,6 +230,7 @@ final class ClipItem {
         self.notePath = notePath
         self.noteExportedAt = noteExportedAt
         self.calendarEventID = calendarEventID
+        self.originalText = originalText
     }
 
     // MARK: - Image payloads
