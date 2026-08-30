@@ -854,6 +854,17 @@ enum PanelHint {
         return loc("↑ ↓ to pick · ↩ to paste")
     }
 
+    /// Whether a change to the query puts the deck's bubble back.
+    ///
+    /// Only when a query starts from nothing. Someone who has just asked a
+    /// new question is looking at a set of matches they have not walked, so
+    /// the keys are worth naming again even if the bubble was answered and
+    /// dismissed earlier in the same session; refining a query that is
+    /// already there is the same question, and is not asked twice.
+    static func asksAgain(previousQuery: String, currentQuery: String) -> Bool {
+        previousQuery.isEmpty && !currentQuery.isEmpty
+    }
+
     /// The bubble over the preview pane: the second Space, on the clips that
     /// have somewhere to escalate to.
     static func overPreview(canQuickLook: Bool, dismissed: Bool) -> String? {
@@ -1203,12 +1214,14 @@ struct PanelContentView: View {
             searchFocused = true
             refreshSourceAppNames()
         }
-        .onChange(of: filter) {
+        .onChange(of: filter) { previous, current in
             resetPaging()
             selection.clear()
             // A query typed from scratch asks the question again; refining
             // one that is already there does not.
-            if filter.search.isEmpty { navHintDismissed = false }
+            if PanelHint.asksAgain(previousQuery: previous.search, currentQuery: current.search) {
+                navHintDismissed = false
+            }
             syncPreviewItem()
         }
         .onChange(of: selection) {
