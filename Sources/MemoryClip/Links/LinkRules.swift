@@ -54,22 +54,66 @@ enum LinkRules {
     /// the same name elsewhere may well be load-bearing — `si` is Spotify's
     /// share identifier and somebody else's sort index.
     static let hostRules: [LinkHostRule] = [
-        LinkHostRule(domain: "instagram.com", parameters: ["igsh", "igshid", "img_index"]),
-        LinkHostRule(domain: "youtube.com", parameters: ["si", "pp", "feature"]),
-        LinkHostRule(domain: "youtu.be", parameters: ["si", "pp", "feature"]),
-        LinkHostRule(domain: "x.com", parameters: ["s", "t", "ref_src", "ref_url"]),
-        LinkHostRule(domain: "twitter.com", parameters: ["s", "t", "ref_src", "ref_url"]),
+        LinkHostRule(domain: "instagram.com", parameters: ["igsh", "igshid", "img_index", "stkn"]),
+        LinkHostRule(domain: "threads.net", parameters: ["igsh", "igshid", "xmt"]),
+        LinkHostRule(domain: "threads.com", parameters: ["igsh", "igshid", "xmt"]),
+        LinkHostRule(domain: "youtube.com", parameters: ["si", "pp", "feature", "kw"]),
+        LinkHostRule(domain: "youtu.be", parameters: ["si", "pp", "feature", "kw"]),
+        LinkHostRule(domain: "x.com", parameters: ["s", "t", "src", "refsrc", "cn", "ref_src", "ref_url"]),
+        LinkHostRule(domain: "twitter.com", parameters: ["s", "t", "src", "refsrc", "cn", "ref_src", "ref_url"]),
         LinkHostRule(
             domain: "amazon.*",
-            parameters: ["ref_", "th", "psc", "pd_rd_*", "pf_rd_*", "qid", "sr", "dib*"]
+            parameters: [
+                "ref_", "th", "psc", "pd_rd_*", "pf_rd_*", "qid", "sr", "dib*", "tag", "linkcode",
+                "ascsubtag", "crid", "sprefix", "_encoding", "content-id", "refrid", "rnid", "camp",
+                "creative", "creativeasin", "colid", "coliid", "qualifier", "dchild", "__mk_*",
+            ]
         ),
-        LinkHostRule(domain: "tiktok.com", parameters: ["is_from_webapp", "sender_device", "web_id"]),
-        LinkHostRule(domain: "facebook.com", parameters: ["mibextid", "rdid"]),
-        LinkHostRule(domain: "linkedin.com", parameters: ["trackingId", "originalSubdomain", "rcm"]),
-        LinkHostRule(domain: "spotify.com", parameters: ["si"]),
-        LinkHostRule(domain: "reddit.com", parameters: ["share_id", "correlation_id", "ref", "ref_source"]),
-        LinkHostRule(domain: "ebay.*", parameters: ["hash", "_trkparms", "_trksid"]),
-        LinkHostRule(domain: "aliexpress.*", parameters: ["spm", "algo_*", "pdp_*"]),
+        LinkHostRule(
+            domain: "tiktok.com",
+            parameters: [
+                "is_from_webapp", "sender_device", "web_id", "_t", "_r", "_d",
+                "share_app_name", "share_iid", "u_code", "preview_pb",
+            ]
+        ),
+        LinkHostRule(
+            domain: "facebook.com",
+            parameters: [
+                "mibextid", "rdid", "__tn__", "__cft__*", "_rdr", "comment_tracking", "sfnsn",
+                "paipv", "dti", "eav", "ls_ref", "referral_code", "referral_story_type",
+                "video_source", "hc_*", "idorvanity",
+            ]
+        ),
+        LinkHostRule(
+            domain: "linkedin.com",
+            parameters: ["trackingid", "originalsubdomain", "rcm", "refid", "trk", "lipi", "li_fat_id"]
+        ),
+        LinkHostRule(domain: "spotify.com", parameters: ["si", "nd", "dlsi"]),
+        LinkHostRule(
+            domain: "reddit.com",
+            parameters: ["share_id", "correlation_id", "ref", "ref_source", "ref_campaign", "rdt"]
+        ),
+        LinkHostRule(domain: "ebay.*", parameters: ["hash", "_trkparms", "_trksid", "_from"]),
+        LinkHostRule(
+            domain: "aliexpress.*",
+            parameters: [
+                "spm", "algo_*", "pdp_*", "aff_request_id", "gps-id", "scm*", "ws_ab_test",
+                "btsid", "mall_affr", "terminal_id", "af",
+            ]
+        ),
+        LinkHostRule(domain: "twitch.tv", parameters: ["tt_content", "tt_medium"]),
+        LinkHostRule(domain: "snapchat.com", parameters: ["sc_referrer", "sc_ua"]),
+        LinkHostRule(domain: "etsy.com", parameters: ["click_key", "click_sum", "organic_search_click"]),
+        LinkHostRule(domain: "walmart.com", parameters: ["u1", "ath*"]),
+        LinkHostRule(domain: "imdb.com", parameters: ["ref_", "pf_rd_*"]),
+        LinkHostRule(domain: "netflix.com", parameters: ["trackid", "tctx"]),
+        LinkHostRule(
+            domain: "google.*",
+            parameters: [
+                "ved", "usg", "sca_esv", "sca_upv", "sxsrf", "ei", "oq", "gs_*", "iflsig",
+                "uact", "sourceid", "rlz", "aqs", "gws_*", "sei", "cshid", "pcampaignid",
+            ]
+        ),
     ]
 
     /// Tier 3a: hosts whose query string is never touched. The parameters are

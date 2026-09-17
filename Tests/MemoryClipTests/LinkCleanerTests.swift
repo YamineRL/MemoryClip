@@ -48,6 +48,46 @@ final class LinkCleanerTests: XCTestCase {
         )
     }
 
+    /// The share token Instagram attaches to a post link copied from the app.
+    func testTheInstagramShareToken() throws {
+        XCTAssertEqual(
+            try cleaned("https://www.instagram.com/p/DdTbXa6jrpe/?stkn=Zm9hMnlsNTQ0MG93"),
+            "https://www.instagram.com/p/DdTbXa6jrpe/"
+        )
+    }
+
+    /// Share and affiliate parameters the platforms attach, one per host.
+    func testTheShareParametersEachPlatformAttaches() throws {
+        let cases = [
+            ("https://vm.tiktok.com/ZGeabc/?_t=8kQ&_r=1", "https://vm.tiktok.com/ZGeabc/"),
+            ("https://open.spotify.com/track/abc?si=xyz&nd=1", "https://open.spotify.com/track/abc"),
+            ("https://www.linkedin.com/posts/abc?trk=public_post&refId=zz", "https://www.linkedin.com/posts/abc"),
+            ("https://www.amazon.com/dp/B0CX?tag=aff-20&linkCode=ll1", "https://www.amazon.com/dp/B0CX"),
+            ("https://x.com/a/status/1?src=typed_query&s=20", "https://x.com/a/status/1"),
+            ("https://www.facebook.com/p/abc?__tn__=-R&sfnsn=wiwspmo", "https://www.facebook.com/p/abc"),
+            ("https://www.twitch.tv/abc?tt_content=v&tt_medium=m", "https://www.twitch.tv/abc"),
+            ("https://www.etsy.com/listing/1?click_key=aa&click_sum=bb", "https://www.etsy.com/listing/1"),
+        ]
+        for (dirty, expected) in cases {
+            XCTAssertEqual(try cleaned(dirty), expected, dirty)
+        }
+    }
+
+    /// Parameters that decide what the page shows, on hosts that also carry
+    /// tracking ones. Removing any of these is a broken link.
+    func testTheParametersThatChooseThePageSurvive() throws {
+        let cases = [
+            "https://www.youtube.com/watch?v=abc123&t=42",
+            "https://www.google.com/search?q=swift+regex&hl=en",
+            "https://www.amazon.com/s?k=usb+c+cable",
+            "https://open.spotify.com/playlist/abc?pt=xyz",
+            "https://www.reddit.com/r/swift/comments/abc/title/?sort=new",
+        ]
+        for url in cases {
+            assertUnchanged(url)
+        }
+    }
+
     // MARK: Tier 1 — global parameters
 
     func testGlobalIdentifiersAreRemovedOnAnyHost() throws {
