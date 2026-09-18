@@ -20,7 +20,7 @@ final class PanelHintTests: XCTestCase {
             hasQuery: true,
             dismissed: false
         )
-        XCTAssertEqual(hint, loc("↑ ↓ to pick · ↩ to paste"))
+        XCTAssertEqual(hint, loc("↑ ↓ to pick · ⌘Y to preview · ↩ to paste"))
     }
 
     /// The bubble is answered by using the keys it names, so a movement

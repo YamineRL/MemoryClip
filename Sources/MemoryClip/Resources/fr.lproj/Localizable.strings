@@ -144,7 +144,7 @@
 "The latest release is tagged “%@”, which is not a version." = "La dernière version porte l’étiquette « %@ », qui n’est pas un numéro de version.";
 "Release %@ has no disk image to download." = "La version %@ n’a aucune image disque à télécharger.";
 "GitHub answered %d." = "GitHub a répondu %d.";
-"↑ ↓ to pick · ↩ to paste" = "↑ ↓ pour choisir · ↩ pour coller";
+"↑ ↓ to pick · ⌘Y to preview · ↩ to paste" = "↑ ↓ pour choisir · ⌘Y pour l’aperçu · ↩ pour coller";
 "↑ ↓ to pick · esc for h j k l" = "↑ ↓ pour choisir · échap pour h j k l";
 "↩ pastes %d clips" = "↩ colle %d clips";
 "space for Quick Look" = "espace pour Coup d’œil";
