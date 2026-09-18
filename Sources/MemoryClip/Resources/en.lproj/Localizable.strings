@@ -144,7 +144,7 @@
 "The latest release is tagged “%@”, which is not a version." = "The latest release is tagged “%@”, which is not a version.";
 "Release %@ has no disk image to download." = "Release %@ has no disk image to download.";
 "GitHub answered %d." = "GitHub answered %d.";
-"↑ ↓ to pick · ↩ to paste" = "↑ ↓ to pick · ↩ to paste";
+"↑ ↓ to pick · ⌘Y to preview · ↩ to paste" = "↑ ↓ to pick · ⌘Y to preview · ↩ to paste";
 "↑ ↓ to pick · esc for h j k l" = "↑ ↓ to pick · esc for h j k l";
 "↩ pastes %d clips" = "↩ pastes %d clips";
 "space for Quick Look" = "space for Quick Look";

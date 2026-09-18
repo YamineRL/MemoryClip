@@ -862,7 +862,7 @@ enum PanelHint {
         guard !dismissed else { return nil }
         if vimInsertMode { return loc("↑ ↓ to pick · esc for h j k l") }
         guard hasQuery else { return nil }
-        return loc("↑ ↓ to pick · ↩ to paste")
+        return loc("↑ ↓ to pick · ⌘Y to preview · ↩ to paste")
     }
 
     /// Whether a change to the query puts the deck's bubble back.
@@ -979,6 +979,9 @@ struct PanelContentView: View {
     private var storedPreviewHeight = Double(Design.Size.previewPaneHeight)
 
     @State private var selection = ClipSelection()
+    /// The card strip's scroll offset, held only so that reopening the panel
+    /// can put it back at the newest clip.
+    @State private var stripPosition = ScrollPosition()
     @State private var inputMode: PanelInputMode = .normal
     @State private var showNukeConfirmation = false
     @State private var pendingDeletes: [ClipItem] = []
@@ -1533,6 +1536,15 @@ struct PanelContentView: View {
                         copySelected()
                         return .handled
                     }
+                    // ⌘Y is what Finder binds Quick Look to, and here it is
+                    // the only way into the preview once something has been
+                    // typed: a bare Space belongs to the search field for as
+                    // long as the field has a query in it. It escalates the
+                    // same way Space does, so both keys are one habit.
+                    if press.characters.lowercased() == "y" {
+                        escalatePreview()
+                        return .handled
+                    }
                 }
                 return handleVimKey(press)
             }
@@ -1668,6 +1680,16 @@ struct PanelContentView: View {
                     .padding(.bottom, Design.Size.cardBottomPadding)
                 }
                 .scrollIndicators(.never)
+                .scrollPosition($stripPosition)
+                // Reopening the panel puts the deck back at the newest clip.
+                // The filter and the selection are already reset on this
+                // token; the strip's offset is not, and a panel that reopens
+                // halfway down yesterday's history is one the newest clip is
+                // missing from. An edge rather than an item id: it is the
+                // same instruction whatever the reset leaves in the strip.
+                .onChange(of: uiState.focusToken) {
+                    stripPosition.scrollTo(edge: .leading)
+                }
                 // The same fading edge and chevron the preview pane uses for
                 // text that runs past its bottom. The strip hides its scroll
                 // bar and cuts its cards evenly, so nothing else in it says
