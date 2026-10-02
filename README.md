@@ -410,7 +410,7 @@ where you left it.
 | General | **General** | Launch at login, theme, auto-paste, the daily update check |
 | General | **Shortcuts** | The global hotkey recorder (⇧⌘V is only the default), plus a key reference |
 | Clipboard | **History** | History cap, retention window, export |
-| Clipboard | **Screenshots** | Screenshot capture, the folder to watch, image OCR |
+| Clipboard | **Screenshots** | Screenshot capture, the folder to watch |
 | Clipboard | **Panel** | Image OCR, vim navigation |
 | Clipboard | **Privacy** | Touch ID lock, sensitive-content filtering, permission notes |
 | Clip actions | **Notes** | The on-device model, note destination, automatic notes |

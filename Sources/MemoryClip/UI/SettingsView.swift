@@ -422,7 +422,7 @@ private struct PanelSettingsPane: View {
                         SettingsIcon(symbol: "text.viewfinder", tint: Color(nsColor: .systemPurple))
                     }
                 }
-                SettingsHint(loc("Runs on-device with the Vision framework, in the background, so image clips can be found by the text inside them."))
+                SettingsHint(loc("Runs on-device with the Vision framework, in the background, so copied images and screenshots can be found by the text inside them."))
             }
 
             Section(loc("Navigation")) {
@@ -766,18 +766,21 @@ private struct ScreenshotSettingsPane: View {
 
             Section(loc("What gets stored")) {
                 SettingsHint(loc("A link, not a copy: the clip points at the screenshot where it already is, plus a small thumbnail. Deleting a clip — or letting it expire — never deletes your file."))
-                Toggle(isOn: $ocrEnabled) {
-                    Label {
-                        Text(loc("Extract text from images (OCR)"))
-                    } icon: {
-                        SettingsIcon(symbol: "text.viewfinder", tint: Color(nsColor: .systemPurple))
-                    }
-                }
-                SettingsHint(loc("Reads the text in each screenshot on-device so you can search for it. The same setting as the one in the Panel pane; it is repeated here because it is what makes a screenshot findable."))
+                // The OCR switch itself lives once, in the Panel pane: it
+                // governs copied images as much as screenshots, and two
+                // toggles bound to one key read as two settings. This pane
+                // only says which way it is set and where to change it.
+                SettingsHint(ocrHint)
             }
         }
         .formStyle(.grouped)
         .onAppear { folder = ScreenshotWatcher.resolvedFolder() }
+    }
+
+    private var ocrHint: String {
+        ocrEnabled
+            ? loc("Text inside each screenshot is read on-device, so you can search for it. Settings → Panel → Extract text from images (OCR) turns this off.")
+            : loc("Text inside screenshots is not being read, so a screenshot is found by its file name only. Turn on Settings → Panel → Extract text from images (OCR) to search it.")
     }
 
     private var folderDisplayPath: String {
