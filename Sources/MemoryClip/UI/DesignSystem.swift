@@ -363,6 +363,25 @@ enum Design {
             dark: NSColor.black.withAlphaComponent(0.42)
         )
 
+        /// The hint bubble, inverted against the appearance.
+        ///
+        /// A bubble floats over a card, and a card is near-white in Light and
+        /// near-black in Dark — so any material or grey it is given takes the
+        /// colour of the exact thing it has to be seen against. Flipping with
+        /// the appearance is the one treatment that keeps its contrast in
+        /// both, and unlike an accent it survives greyscale and whatever
+        /// colour the user has chosen.
+        static let hintFill = adaptive(
+            light: NSColor(white: 0.13, alpha: 0.94),
+            dark: NSColor(white: 0.93, alpha: 0.94)
+        )
+
+        /// The hint bubble's text, on `hintFill`.
+        static let hintLabel = adaptive(
+            light: NSColor(white: 1.0, alpha: 1.0),
+            dark: NSColor(white: 0.08, alpha: 1.0)
+        )
+
         /// Pins. `.orange` on its own fails contrast on a light background;
         /// the system colour is tuned per appearance.
         static let pin = Color(nsColor: .systemOrange)
@@ -481,17 +500,13 @@ struct HintBubble: View {
 
     var body: some View {
         Text(text)
-            .font(Design.Typography.chip)
-            .foregroundStyle(Color(nsColor: .secondaryLabelColor))
+            .font(Design.Typography.chip.weight(.semibold))
+            .foregroundStyle(Design.Palette.hintLabel)
             .lineLimit(1)
             .padding(.horizontal, Design.Space.roomy)
             .padding(.vertical, Design.Space.snug)
-            .background(.ultraThinMaterial, in: Capsule(style: .continuous))
-            .overlay(
-                Capsule(style: .continuous)
-                    .strokeBorder(Design.Palette.hairline, lineWidth: Design.Stroke.hairline)
-            )
-            .shadow(color: Design.Palette.cardShadow, radius: 3, y: 1)
+            .background(Design.Palette.hintFill, in: Capsule(style: .continuous))
+            .shadow(color: Design.Palette.cardShadow, radius: 6, y: 2)
             .allowsHitTesting(false)
             .transition(.opacity)
     }

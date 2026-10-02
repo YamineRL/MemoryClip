@@ -101,6 +101,64 @@ final class ContentParserTests: XCTestCase {
         XCTAssertEqual(clip?.richTextData, rtf)
     }
 
+    /// A link copied out of a rich editor carries RTF next to the string; it
+    /// must still capture as `.link` so the cleaner runs on it.
+    func testRichTextCarryingBareURLIsALink() {
+        let pasteboard = makePasteboard()
+        let dirty = "https://www.instagram.com/reel/DbGys85Oyxx/?igsh=MXhkbjFxcjlxNHJvdQ=="
+        let attributed = NSAttributedString(
+            string: dirty,
+            attributes: [.link: URL(string: dirty)!]
+        )
+        let rtf = attributed.rtf(
+            from: NSRange(location: 0, length: attributed.length),
+            documentAttributes: [.documentType: NSAttributedString.DocumentType.rtf]
+        )!
+        pasteboard.setString(dirty, forType: .string)
+        pasteboard.setData(rtf, forType: .rtf)
+
+        let clip = ContentParser.parse(pasteboard)
+
+        XCTAssertEqual(clip?.kind, .link)
+        XCTAssertNil(clip?.richTextData)
+    }
+
+    func testRichTextWithURLAmongWordsStaysRichText() {
+        let pasteboard = makePasteboard()
+        let text = "see https://example.com/?utm_source=x for details"
+        let attributed = NSAttributedString(string: text)
+        let rtf = attributed.rtf(
+            from: NSRange(location: 0, length: attributed.length),
+            documentAttributes: [.documentType: NSAttributedString.DocumentType.rtf]
+        )!
+        pasteboard.setString(text, forType: .string)
+        pasteboard.setData(rtf, forType: .rtf)
+
+        let clip = ContentParser.parse(pasteboard)
+
+        XCTAssertEqual(clip?.kind, .richText)
+        XCTAssertEqual(clip?.text, text)
+        XCTAssertEqual(clip?.richTextData, rtf)
+    }
+
+    func testMultiLineRichTextStaysRichText() {
+        let pasteboard = makePasteboard()
+        let text = "https://example.com/?utm_source=x\nsecond line"
+        let attributed = NSAttributedString(string: text)
+        let rtf = attributed.rtf(
+            from: NSRange(location: 0, length: attributed.length),
+            documentAttributes: [.documentType: NSAttributedString.DocumentType.rtf]
+        )!
+        pasteboard.setString(text, forType: .string)
+        pasteboard.setData(rtf, forType: .rtf)
+
+        let clip = ContentParser.parse(pasteboard)
+
+        XCTAssertEqual(clip?.kind, .richText)
+        XCTAssertEqual(clip?.text, text)
+        XCTAssertEqual(clip?.richTextData, rtf)
+    }
+
     func testImage() {
         let pasteboard = makePasteboard()
         guard

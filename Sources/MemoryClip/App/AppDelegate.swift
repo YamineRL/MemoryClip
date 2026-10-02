@@ -99,6 +99,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // writing (off).
         NoteSettingsKeys.registerDefaults()
 
+        // Link defaults: cleaning a copied link (on) and taking `utm_*` with
+        // the rest of the identifiers (on).
+        LinkSettingsKeys.registerDefaults()
+
         // Calendar defaults: automatic creation (off) and its notification
         // (on). Registered here because the notification default is read as
         // false when its key was never registered, which would let an
