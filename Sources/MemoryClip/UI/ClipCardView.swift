@@ -43,6 +43,8 @@ struct ClipCardView: View {
     let isSavingNote: Bool
     let onPaste: (Bool) -> Void
     let onCopyOnly: () -> Void
+    /// Open this clip's text for editing in the preview pane.
+    let onEdit: () -> Void
     let onCopyExtractedText: () -> Void
     let onTransform: (Transform) -> Void
     let onShowQR: () -> Void
@@ -65,6 +67,7 @@ struct ClipCardView: View {
         isSavingNote: Bool = false,
         onPaste: @escaping (Bool) -> Void,
         onCopyOnly: @escaping () -> Void,
+        onEdit: @escaping () -> Void = {},
         onCopyExtractedText: @escaping () -> Void = {},
         onTransform: @escaping (Transform) -> Void,
         onShowQR: @escaping () -> Void,
@@ -81,6 +84,7 @@ struct ClipCardView: View {
         self.isSavingNote = isSavingNote
         self.onPaste = onPaste
         self.onCopyOnly = onCopyOnly
+        self.onEdit = onEdit
         self.onCopyExtractedText = onCopyExtractedText
         self.onTransform = onTransform
         self.onShowQR = onShowQR
@@ -119,6 +123,9 @@ struct ClipCardView: View {
             Button(loc("Paste")) { onPaste(false) }
             Button(loc("Paste as Plain Text")) { onPaste(true) }
             Button(loc("Copy Only")) { onCopyOnly() }
+            if canEdit {
+                Button(loc("Edit…")) { onEdit() }
+            }
             Divider()
             if item.kind == .link {
                 Button(loc("Show QR Code")) { onShowQR() }
@@ -188,6 +195,9 @@ struct ClipCardView: View {
                 Button(loc("Copy Extracted Text")) { onCopyExtractedText() }
             }
             Button(loc("Copy Only")) { onCopyOnly() }
+            if canEdit {
+                Button(loc("Edit…")) { onEdit() }
+            }
         }
     }
 
@@ -537,6 +547,15 @@ struct ClipCardView: View {
     /// on exactly the clips this menu does.
     private var canSaveNote: Bool {
         ClipDisplay.canSaveNote(item)
+    }
+
+    /// Whether this clip may be edited in place.
+    ///
+    /// Shared with the panel's ⌘I / `e` keys and the preview's Edit button:
+    /// the one predicate, so menu, key and button agree about which clips
+    /// show the action at all.
+    private var canEdit: Bool {
+        ClipDisplay.canEdit(item)
     }
 
     /// Whether this clip is worth offering the calendar for.

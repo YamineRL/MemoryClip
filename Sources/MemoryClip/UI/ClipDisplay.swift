@@ -60,6 +60,28 @@ enum ClipDisplay {
         return !(item.text ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
+    // MARK: - Editing
+
+    /// Whether this clip may be edited in place in the preview pane.
+    ///
+    /// The editable kinds are the ones whose payload is plain text: `.text`,
+    /// `.richText` (which saves flattened), `.link` and `.color`. Images,
+    /// files and screenshots have nothing a text editor can rewrite, and
+    /// secrets are excluded on their flag rather than their kind: a secret
+    /// stays `.text`, and the ciphertext it holds must not be rewritten by
+    /// hand.
+    ///
+    /// Shared by every entry point for the same reason `canSaveNote` is: the
+    /// menus hide the item where it does not apply, while a key press can
+    /// only decline, and two copies would eventually disagree.
+    static func canEdit(_ item: some ClipDisplayable) -> Bool {
+        guard !item.isSecret else { return false }
+        switch item.kind {
+        case .text, .richText, .link, .color: return true
+        case .image, .file: return false
+        }
+    }
+
     // MARK: - Calendar
 
     /// Longest prefix of a clip's text the calendar gate reads.

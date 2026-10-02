@@ -461,6 +461,12 @@ final class PanelController: NSObject, NSWindowDelegate {
             },
             quickLook: { [weak self] items, index, onClose in
                 self?.quickLookController.show(items: items, startingAt: index, onClose: onClose)
+            },
+            applyEdit: { [weak self] item, text in
+                self?.store.applyEdit(item, newText: text)
+            },
+            undoEdit: { [weak self] snapshot in
+                self?.store.restoreEdit(snapshot)
             }
         )
     }

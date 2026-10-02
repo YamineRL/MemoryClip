@@ -301,11 +301,12 @@ enum ShortcutReference {
             ),
             ShortcutEntry(keys: "⌘S", detail: loc("Save the selected clip as a note")),
             ShortcutEntry(keys: "⌘E", detail: loc("Add the selected clip to the calendar")),
+            ShortcutEntry(keys: "⌘I", detail: loc("Edit the selected clip in the preview pane")),
             ShortcutEntry(
                 keys: "Space",
                 detail: loc("Open the preview; press again to Quick Look a screenshot, image or file, or to close the preview (search field empty)")
             ),
-            ShortcutEntry(keys: "Esc", detail: loc("Close Quick Look, then the preview, then the panel")),
+            ShortcutEntry(keys: "Esc", detail: loc("Leave the editor, then Quick Look, then the preview, then the panel")),
             ShortcutEntry(keys: "⌘W", detail: loc("Close the panel"))
         ]
     )
@@ -328,6 +329,7 @@ enum ShortcutReference {
             ShortcutEntry(keys: "p", detail: loc("Pin or unpin the selected clip")),
             ShortcutEntry(keys: "n", detail: loc("Save the selected clip as a note")),
             ShortcutEntry(keys: "c", detail: loc("Add the selected clip to the calendar")),
+            ShortcutEntry(keys: "e", detail: loc("Edit the selected clip in the preview pane")),
             ShortcutEntry(
                 keys: "v",
                 detail: loc("Visual mode: j and k extend the selection, Esc leaves")

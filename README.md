@@ -115,8 +115,9 @@ irreversible one kept a separator away from the item people actually come to cli
 | `⌘C` | Copy the selected clip, leaving the panel open |
 | `⌘S` | Save the selected clip as a note, if it carries any text |
 | `⌘E` | Add the selected clip to the calendar, if it names a date |
+| `⌘I` | Edit the selected clip in the preview pane |
 | `Space` | Open the preview pane; press it again on a picture or a file for full-size **Quick Look** |
-| `Esc` | Close Quick Look, then the preview, then the panel |
+| `Esc` | Leave the editor, then Quick Look, then the preview, then the panel |
 
 Pasting puts the clip on the clipboard, reactivates your previous app and sends a ⌘V. If
 macOS blocks that synthetic keystroke the clip is still on the clipboard — see
@@ -183,7 +184,20 @@ in the search bar. In NORMAL:
 | `q` `⇧Q` | Add to the queue / paste the whole queue |
 | `n` | Save the clip as a note (`⌘S` does the same in either mode) |
 | `c` | Add the clip to the calendar (`⌘E` does the same in either mode) |
+| `e` | Edit the clip in the preview pane (`⌘I` does the same in either mode) |
 | `/` `i` | Fresh search / edit the existing query → INSERT |
+
+**Editing**: `⌘I` (or `e` in vim NORMAL mode) turns the preview pane into an
+editor for a text, rich-text, link or colour clip. `⌘Return` saves and pastes,
+`⌘S` saves and stays, and `Esc` leaves; on a dirty draft the first press asks
+and the second discards. What you save is read again the way a fresh copy is: a
+clip edited into `#RRGGBB` becomes a colour, an `https://` line becomes a link,
+and a draft that matches a clip already in history merges into it rather than
+duplicating. Rich text is stored flattened, and the preview says so before you
+save. `⌘Z` restores the clip as it was before your last edit, for as long as
+the panel session lives. Images, files and screenshots are not editable, and a
+dirty draft kept open when the panel closes is still there when you come back
+to that clip, held in memory and never written to disk.
 
 **Housekeeping.** The newest 200 clips are kept and anything older than 30 days is swept,
 both adjustable in **Settings → History**, both exempting pins. Re-copying bumps a clip to

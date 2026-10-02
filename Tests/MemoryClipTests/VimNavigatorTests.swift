@@ -53,6 +53,25 @@ final class VimNavigatorTests: XCTestCase {
         XCTAssertFalse(vim.hasPending)
     }
 
+    /// `e` is vim's word-forward motion, free here because the rows are the
+    /// words, so it opens the editor. Like `c` it must fire alone rather
+    /// than arm a sequence no second key completes.
+    func testEditKeyIsBoundAndNotASequence() {
+        var vim = VimNavigator()
+        XCTAssertEqual(vim.command(for: "e"), .edit)
+        XCTAssertFalse(vim.hasPending)
+    }
+
+    /// `e` inside a pending sequence is an aborted sequence, not an edit:
+    /// `ge` would otherwise open the editor on a keypair vim reads as one.
+    func testEditKeyInsideAPendingSequenceAbortsIt() {
+        var vim = VimNavigator()
+        _ = vim.command(for: "g")
+        XCTAssertNil(vim.command(for: "e"), "g followed by e is not a binding")
+        XCTAssertFalse(vim.hasPending)
+        XCTAssertEqual(vim.command(for: "e"), .edit, "the aborted sequence is over")
+    }
+
     func testAddToCalendarKeyLeavesTheTwoKeySequencesAlone() {
         var vim = VimNavigator()
         _ = vim.command(for: "d")
