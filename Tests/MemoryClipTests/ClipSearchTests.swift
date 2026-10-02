@@ -230,6 +230,25 @@ final class ClipSearchTests: XCTestCase {
         XCTAssertNotEqual(ClipFilter(search: "a"), ClipFilter(search: "b"))
     }
 
+    // MARK: When a COUNT is the whole answer
+
+    /// The footer counts the whole store with a SQL COUNT, which is only the
+    /// truth where the predicate asked the whole question. These are the two
+    /// cases where it did not.
+    func testASearchAndImagesAreTheFiltersThePredicateOverAdmits() {
+        XCTAssertTrue(ClipFilter(search: "invoice").needsSwiftSideRefinement)
+        XCTAssertTrue(ClipFilter(type: .image).needsSwiftSideRefinement)
+        XCTAssertTrue(ClipFilter(search: "a", type: .image).needsSwiftSideRefinement)
+    }
+
+    func testEveryOtherFilterIsAnsweredBySQLAlone() {
+        XCTAssertFalse(ClipFilter().needsSwiftSideRefinement)
+        XCTAssertFalse(ClipFilter(source: "Safari").needsSwiftSideRefinement)
+        for type in [TypeFilter.all, .text, .link, .file, .color] {
+            XCTAssertFalse(ClipFilter(type: type).needsSwiftSideRefinement, "\(type)")
+        }
+    }
+
     // MARK: The two halves have to agree
 
     /// The pagination promise, for a sentence: the predicate narrows on one

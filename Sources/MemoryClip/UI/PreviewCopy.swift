@@ -13,15 +13,23 @@ struct PreviewCopyOption: Equatable, Identifiable {
 /// What the preview pane's right-click menu offers, and what a chosen entry
 /// does.
 enum PreviewCopy {
-    /// The copy entries for one clip, in menu order: the previewed body
-    /// first, then the translation on screen, then the file paths and names.
+    /// The copy entries for one clip, in menu order: the pane's current
+    /// selection first when there is one, then the previewed body, then the
+    /// translation on screen, then the file paths and names.
     ///
     /// Pure and view-free so it can be tested directly.
     static func options(
         for item: some ClipDisplayable,
-        translation: String? = nil
+        translation: String? = nil,
+        selection: String? = nil
     ) -> [PreviewCopyOption] {
         var options: [PreviewCopyOption] = []
+
+        // First, because it is what the user is pointing at — and built from
+        // the same value ⌘C reads, so the menu and the shortcut agree.
+        if let selection = present(selection) {
+            options.append(PreviewCopyOption(title: loc("Copy Selection"), text: selection))
+        }
 
         if item.kind == .image || item.isScreenshot {
             if let extracted = ClipDisplay.extractedText(for: item) {
@@ -63,6 +71,12 @@ enum PreviewCopy {
         return options
     }
 
+    /// What ⌘C puts on the pasteboard: the preview pane's selection when
+    /// there is one, the whole clip when there is not.
+    static func copyTarget(selection: String?, clipText: String?) -> String? {
+        present(selection) ?? present(clipText)
+    }
+
     /// The string when it has something in it, nil when it is absent or blank.
     private static func present(_ text: String?) -> String? {
         guard let text, !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
@@ -74,10 +88,16 @@ enum PreviewCopy {
     ///
     /// Writes the pasteboard directly when absent (SwiftUI previews, tests).
     static func perform(_ option: PreviewCopyOption, using onCopy: ((String) -> Void)?) {
+        write(option.text, using: onCopy)
+    }
+
+    /// The same write for text the pane offers outside the copy menu — the
+    /// cleaned link's `Use original`.
+    static func write(_ text: String, using onCopy: ((String) -> Void)?) {
         guard let onCopy else {
-            PasteService.Payload(entries: [.string(.string, option.text)]).apply(to: .general)
+            PasteService.Payload(entries: [.string(.string, text)]).apply(to: .general)
             return
         }
-        onCopy(option.text)
+        onCopy(text)
     }
 }
