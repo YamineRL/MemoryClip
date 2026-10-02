@@ -251,7 +251,7 @@ struct ClipQuery: Equatable {
                 words.append(trimmed[token.range])
             }
         }
-        let parsed = ClipQuery.parse(words, in: trimmed)
+        let parsed = ClipQuery.parse(words)
         self.constraints = constraints
         operatorTokens = operators
         // A query that is nothing but stop words is a query for those words:
@@ -279,15 +279,25 @@ struct ClipQuery: Equatable {
     ]
 
     /// The scanned words, minus the stop words, each reduced to its stem.
-    /// `words` are the non-operator tokens of `query`, which the tagger
-    /// still sees whole: a lemma it found inside an operator's range is
-    /// looked up but never lands, since no word range matches it.
-    private static func parse(_ words: [Substring], in query: String) -> [String] {
+    /// `words` are the non-operator tokens of the query, rejoined for the
+    /// tagger: left in place they keep their operators as sentence context,
+    /// which changes what the tagger reads ("deploy failing is:pinned"
+    /// lemmatizes "failing" to itself, a gerund ahead of "is"), and operator
+    /// text has no lemma worth knowing anyway.
+    private static func parse(_ words: [Substring]) -> [String] {
+        var joined = ""
+        var wordRanges: [Range<String.Index>] = []
+        for word in words {
+            if !joined.isEmpty { joined.append(" ") }
+            let start = joined.endIndex
+            joined.append(contentsOf: word)
+            wordRanges.append(start..<joined.endIndex)
+        }
         var lemmas: [Range<String.Index>: String] = [:]
         let tagger = NLTagger(tagSchemes: [.lemma])
-        tagger.string = query
+        tagger.string = joined
         tagger.enumerateTags(
-            in: query.startIndex..<query.endIndex,
+            in: joined.startIndex..<joined.endIndex,
             unit: .word,
             scheme: .lemma,
             options: [.omitPunctuation, .omitWhitespace]
@@ -295,12 +305,12 @@ struct ClipQuery: Equatable {
             if let lemma = tag?.rawValue, !lemma.isEmpty { lemmas[range] = lemma }
             return true
         }
-        return words.compactMap { word in
+        return zip(words, wordRanges).compactMap { word, range in
             guard !stopWords.contains(word.lowercased()) else { return nil }
             // Only a word the tagger read whole has a lemma to offer. A term
             // it read in pieces — `hello.example`, `%20` — is taken as typed,
             // which is the same thing as having no lemma for it.
-            return stem(String(word), lemma: lemmas[word.startIndex..<word.endIndex])
+            return stem(String(word), lemma: lemmas[range])
         }
     }
 
@@ -512,11 +522,11 @@ private func clipFlag(
 }
 
 /// `item[keyPath:] <op> value` - `after:`/`before:`'s `createdAt` bounds.
-private func clipCompare<T: Comparable>(
+private func clipCompare(
     _ item: ClipVariable,
-    _ keyPath: any KeyPath<ClipItem, T> & Sendable,
+    _ keyPath: any KeyPath<ClipItem, Date> & Sendable,
     _ op: PredicateExpressions.ComparisonOperator,
-    _ value: T
+    _ value: Date
 ) -> some StandardPredicateExpression<Bool> {
     PredicateExpressions.build_Comparison(
         lhs: PredicateExpressions.build_KeyPath(root: PredicateExpressions.build_Arg(item), keyPath: keyPath),
@@ -1442,6 +1452,18 @@ struct PanelContentView: View {
         filter.type = .all
     }
 
+    /// `app:` from a preview's source badge. The clicked clip keeps its
+    /// place while the constraint lands: the filter change clears the
+    /// selection and re-syncs the preview, so both are re-pinned after it
+    /// settles.
+    private func filterToApp(_ name: String, keeping item: ClipItem) {
+        filter.source = name
+        Task { @MainActor in
+            selection = ClipSelection(id: item.uuid)
+            previewItem = item
+        }
+    }
+
     // MARK: Body
 
     var body: some View {
@@ -1470,17 +1492,7 @@ struct PanelContentView: View {
                         onTransform: { actions.applyTransform(item, $0) },
                         onCopy: { actions.copyText(item, $0) },
                         paneHeight: resolvedPreviewHeight,
-                        onFilterApp: { name in
-                            // The clicked clip keeps its place while the
-                            // `app:` constraint lands: the filter change
-                            // clears the selection and re-syncs the preview,
-                            // so both are re-pinned after it settles.
-                            filter.source = name
-                            Task { @MainActor in
-                                selection = ClipSelection(id: item.uuid)
-                                previewItem = item
-                            }
-                        }
+                        onFilterApp: { name in filterToApp(name, keeping: item) }
                     )
                     .frame(height: resolvedPreviewHeight)
                     .overlay(alignment: .bottom) {
@@ -1570,8 +1582,8 @@ struct PanelContentView: View {
         }
         // `app:` suggestions are ordered by clip count, and the counts cost
         // a scan per app - so they are only fetched once `app:` is typed.
-        .task(id: suggestionContext?.key == .app) { wantsCounts in
-            guard wantsCounts, sourceAppCounts.isEmpty else { return }
+        .task(id: suggestionContext?.key == .app) {
+            guard suggestionContext?.key == .app, sourceAppCounts.isEmpty else { return }
             refreshAppCounts()
         }
         .onChange(of: inputMode) {

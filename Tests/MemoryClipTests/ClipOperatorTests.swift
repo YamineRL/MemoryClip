@@ -77,6 +77,7 @@ final class ClipOperatorTests: XCTestCase {
         isScreenshot: Bool = false,
         notePath: String? = nil,
         calendarEventID: String? = nil,
+        ocrText: String? = nil,
         translatedText: String? = nil
     ) -> ClipItem {
         let item = ClipItem(
@@ -87,6 +88,7 @@ final class ClipOperatorTests: XCTestCase {
             sourceAppName: app,
             createdAt: createdAt,
             isPinned: isPinned,
+            ocrText: ocrText,
             isScreenshot: isScreenshot,
             translatedText: translatedText,
             notePath: notePath,
@@ -123,8 +125,9 @@ final class ClipOperatorTests: XCTestCase {
                    app: "Finder", createdAt: on(day: 11)),
             insert("event", kind: .text, text: "meeting at 3", app: "Mail",
                    createdAt: on(day: 10), calendarEventID: "evt-1"),
-            insert("translated", kind: .image, ocrText: "Bonjour",
-                   app: "Photos", createdAt: on(day: 9), translatedText: "Hello")
+            insert("translated", kind: .image,
+                   app: "Photos", createdAt: on(day: 9),
+                   ocrText: "Bonjour", translatedText: "Hello")
         ]
     }
 
@@ -332,13 +335,16 @@ final class ClipOperatorTests: XCTestCase {
     func testAppMatchingIsAnAnchoredPrefix() {
         let query = ClipQuery("app:saf", now: now, calendar: calendar)
         XCTAssertTrue(query.constraints.matches(
-            OpClip(sourceAppName: "Safari")))
+            OpClip(sourceAppName: "Safari")
+        ))
         XCTAssertTrue(query.constraints.matches(
-            OpClip(sourceAppName: "Safari Technology Preview")),
-            "the prefix rule is why `app:saf` reaches Safari")
+            OpClip(sourceAppName: "Safari Technology Preview")
+        ),
+                      "the prefix rule is why `app:saf` reaches Safari")
         XCTAssertFalse(query.constraints.matches(
-            OpClip(sourceAppName: "Pro Safari")),
-            "it is a prefix, not a substring")
+            OpClip(sourceAppName: "Pro Safari")
+        ),
+                       "it is a prefix, not a substring")
         XCTAssertFalse(query.constraints.matches(OpClip(sourceAppName: nil)))
     }
 
@@ -346,7 +352,8 @@ final class ClipOperatorTests: XCTestCase {
         let query = ClipQuery("is:noted is:event", now: now, calendar: calendar)
         XCTAssertFalse(query.constraints.matches(OpClip(notePath: "/vault/a")))
         XCTAssertTrue(query.constraints.matches(
-            OpClip(notePath: "/vault/a", calendarEventID: "e")))
+            OpClip(notePath: "/vault/a", calendarEventID: "e")
+        ))
         XCTAssertTrue(ClipQuery("is:translated", now: now, calendar: calendar)
             .constraints.matches(OpClip(translatedText: "hello")))
         XCTAssertTrue(ClipQuery("is:translated", now: now, calendar: calendar)
@@ -508,22 +515,26 @@ final class ClipOperatorTests: XCTestCase {
 
     func testSuggestionsOfferTheKeysVocabulary() {
         let all = ClipQuery.suggestions(
-            for: context("is:")!, apps: [], now: now, calendar: calendar)
+            for: context("is:")!, apps: [], now: now, calendar: calendar
+        )
         XCTAssertEqual(all.map(\.value), ClipStateValue.allCases.map(\.rawValue))
 
         let filtered = ClipQuery.suggestions(
-            for: context("is:s")!, apps: [], now: now, calendar: calendar)
+            for: context("is:s")!, apps: [], now: now, calendar: calendar
+        )
         XCTAssertEqual(filtered.map(\.value), ["screenshot"])
 
         let kinds = ClipQuery.suggestions(
-            for: context("type:l")!, apps: [], now: now, calendar: calendar)
+            for: context("type:l")!, apps: [], now: now, calendar: calendar
+        )
         XCTAssertEqual(kinds.map(\.value), ["link"])
     }
 
     func testAppSuggestionsComeFromTheStoreInOrderAndCapped() {
         let apps = (0..<12).map { (name: "App\($0)", count: $0) }
         let rows = ClipQuery.suggestions(
-            for: context("app:")!, apps: apps, now: now, calendar: calendar)
+            for: context("app:")!, apps: apps, now: now, calendar: calendar
+        )
         XCTAssertEqual(rows.count, 8, "the list caps at eight")
         XCTAssertEqual(rows.first?.token, "app:App0",
                        "the caller's order - most-used first - is kept")
@@ -531,7 +542,8 @@ final class ClipOperatorTests: XCTestCase {
         let spaced = ClipQuery.suggestions(
             for: context("app:Go")!,
             apps: [(name: "Google Chrome", count: 4), (name: "Mail", count: 9)],
-            now: now, calendar: calendar)
+            now: now, calendar: calendar
+        )
         XCTAssertEqual(spaced.map(\.token), ["app:\"Google Chrome\""],
                        "a name with a space completes quoted")
     }
@@ -551,7 +563,8 @@ final class ClipOperatorTests: XCTestCase {
     /// A date suggestion says what it resolves to, so "7d" is not a leap.
     func testDateSuggestionsNameTheDay() {
         let rows = ClipQuery.suggestions(
-            for: context("on:")!, apps: [], now: now, calendar: calendar)
+            for: context("on:")!, apps: [], now: now, calendar: calendar
+        )
         XCTAssertEqual(rows.map(\.value), ["today", "yesterday", "7d"])
         XCTAssertEqual(rows.first?.detail,
                        ClipConstraints.dayLabel(dayInterval(15), now: now, calendar: calendar))

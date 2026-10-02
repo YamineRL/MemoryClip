@@ -103,7 +103,7 @@ enum ExportService {
     /// The CSV header row, in exact column order.
     static let csvHeader = [
         "kind",
-        "text",
+        "text", // loc:skip - a CSV column name, not the type:text filter phrase
         "colorHex",
         "fileURLs",
         "sourceAppName",
