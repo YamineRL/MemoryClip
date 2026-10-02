@@ -1,6 +1,6 @@
 cask "memoryclip" do
-  version "0.5.2"
-  sha256 "8d451f65acf920ebd0a1eb5595a66cca42d36c2d1addb7faaa41c2481175a2e2"
+  version "0.6.1"
+  sha256 "02e164beca0d2bc242163bc4486f8820d4ca2fa1baccf0c5d856f69674fc13d8"
 
   url "https://github.com/YamineRL/MemoryClip/releases/download/v#{version}/MemoryClip-#{version}.zip"
   name "MemoryClip"
@@ -15,8 +15,8 @@ cask "memoryclip" do
   # The app is built for macOS 26 (Tahoe) on Apple silicon, and uses on-device
   # models that exist nowhere else — so refuse the install rather than land a
   # bundle that cannot launch.
-  depends_on macos: :tahoe
   depends_on arch: :arm64
+  depends_on macos: :tahoe
 
   app "MemoryClip.app"
 
@@ -26,9 +26,8 @@ cask "memoryclip" do
   # right-click → Open gets past it. Stripping the flag here is what makes
   # `brew install` actually install something you can run; it is the same
   # `xattr -dr` the release notes ask you to type by hand.
-  postflight do
-    system_command "/usr/bin/xattr",
-                   args: ["-dr", "com.apple.quarantine", "#{appdir}/MemoryClip.app"]
+  postflight_steps do
+    run "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "{{appdir}}/MemoryClip.app"]
   end
 
   uninstall quit: "app.memoryclip"

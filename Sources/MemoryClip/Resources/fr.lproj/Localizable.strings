@@ -144,7 +144,7 @@
 "The latest release is tagged “%@”, which is not a version." = "La dernière version porte l’étiquette « %@ », qui n’est pas un numéro de version.";
 "Release %@ has no disk image to download." = "La version %@ n’a aucune image disque à télécharger.";
 "GitHub answered %d." = "GitHub a répondu %d.";
-"↑ ↓ to pick · ↩ to paste" = "↑ ↓ pour choisir · ↩ pour coller";
+"↑ ↓ to pick · ⌘Y to preview · ↩ to paste" = "↑ ↓ pour choisir · ⌘Y pour l’aperçu · ↩ pour coller";
 "↑ ↓ to pick · esc for h j k l" = "↑ ↓ pour choisir · échap pour h j k l";
 "↩ pastes %d clips" = "↩ colle %d clips";
 "space for Quick Look" = "espace pour Coup d’œil";
@@ -177,6 +177,7 @@
 "Preview height" = "Hauteur de l’aperçu";
 "%d points" = "%d points";
 "Drag up for a taller preview" = "Faites glisser vers le haut pour agrandir l’aperçu";
+"Copy Selection" = "Copier la sélection";
 "Copy Text" = "Copier le texte";
 "Copy Hex" = "Copier le code hexadécimal";
 "Copy Translation" = "Copier la traduction";
@@ -530,3 +531,14 @@
 "Clip edited · Undo (⌘Z)" = "Clip modifié · Annuler (⌘Z)";
 "Edit undone" = "Modification annulée";
 "Unsaved draft restored." = "Brouillon non enregistré restauré.";
+/* The link cleaner. */
+"Cleaned" = "Nettoyé";
+"Cleaned · removed %@" = "Nettoyé · retiré : %@";
+"Use original" = "Utiliser l’original";
+"Clean Link" = "Nettoyer le lien";
+"Clean tracking parameters from copied links" = "Retirer les paramètres de suivi des liens copiés";
+"Also remove campaign parameters (utm_*)" = "Retirer aussi les paramètres de campagne (utm_*)";
+"Never clean links from these sites" = "Ne jamais nettoyer les liens de ces sites";
+"example.com" = "exemple.com";
+"Add" = "Ajouter";
+"A copied web address loses the identifiers that name who forwarded it — igsh, fbclid, utm_source and the rest — before it reaches the clipboard, so what you paste is the clean address. Every cleaned clip keeps the original, which the panel's preview can hand back. Addresses carrying a token, a code or a signature are never touched." = "Une adresse web copiée perd les identifiants qui disent qui l’a transmise — igsh, fbclid, utm_source et les autres — avant d’arriver dans le presse-papiers : ce que vous collez est l’adresse nettoyée. Chaque clip nettoyé conserve l’original, que l’aperçu du panneau peut vous rendre. Les adresses portant un token, un code ou une signature ne sont jamais touchées.";

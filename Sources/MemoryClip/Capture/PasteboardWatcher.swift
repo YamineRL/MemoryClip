@@ -17,7 +17,9 @@ final class PasteboardWatcher {
 
     private let store: ClipStore
     private let pasteboard: NSPasteboard
-    private var lastChangeCount: Int
+    /// The last `changeCount` the watcher has accounted for. Readable so a
+    /// test can tell that a write of our own is already suppressed.
+    private(set) var lastChangeCount: Int
     private var timer: Timer?
 
     /// - Parameter pasteboard: injectable so tests can drive the full capture
@@ -114,6 +116,8 @@ final class PasteboardWatcher {
             return false
         }
 
+        rewriteCleanedLink(clip, on: pasteboard)
+
         store.insert(
             clip,
             sourceBundleID: sourceBundleID,
@@ -122,6 +126,27 @@ final class PasteboardWatcher {
         log.notice("Captured \(clip.kind.rawValue, privacy: .public) clip")
         onCapture?(clip.kind)
         return true
+    }
+
+    /// Put a cleaned link back on the pasteboard it was copied from, so the
+    /// user's next ⌘V pastes the cleaned URL without opening the panel.
+    ///
+    /// `originalText` is set only when the cleaner actually removed
+    /// something, which it never does while cleaning is switched off, so a
+    /// link nothing was taken out of leaves the pasteboard untouched.
+    ///
+    /// The write is the same pair of representations `PasteService` writes
+    /// for a `.link` clip, over a cleared pasteboard: the copy came in as a
+    /// plain URL string, and leaving any other representation of it behind
+    /// would paste the tracking parameters back in wherever the destination
+    /// prefers RTF or HTML over plain text.
+    private func rewriteCleanedLink(_ clip: CapturedClip, on pasteboard: NSPasteboard) {
+        guard clip.kind == .link, clip.originalText != nil, let cleaned = clip.text else { return }
+        PasteService.Payload(entries: [
+            .string(.string, cleaned),
+            .string(NSPasteboard.PasteboardType("public.url"), cleaned),
+        ]).apply(to: pasteboard)
+        noteOwnWrite()
     }
 
     /// Best-effort resolution of the app the copy originated from.

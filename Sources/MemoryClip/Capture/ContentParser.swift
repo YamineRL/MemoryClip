@@ -76,7 +76,12 @@ enum ContentParser {
         }
 
         // 5. Rich text (RTF).
-        if let rtf = pasteboard.data(forType: .rtf) {
+        //
+        // A hyperlink copied out of a browser page, a share sheet or any rich
+        // editor arrives as RTF alongside the plain string. When that string
+        // is on its own a bare web URL, it is a link the user copied, not a
+        // rich-text document, so step 6 takes it and cleans it.
+        if let rtf = pasteboard.data(forType: .rtf), !plainStringIsBareWebURL(pasteboard) {
             let text = pasteboard.string(forType: .string)
                 ?? NSAttributedString(rtf: rtf, documentAttributes: nil)?.string
                 ?? ""
@@ -120,14 +125,21 @@ enum ContentParser {
         }
 
         if isWebURL(trimmed) {
+            // The stored text is the cleaned URL and the hash follows it, so
+            // two copies of the same link carrying different tracking
+            // identifiers deduplicate to one clip. `PasteboardWatcher` puts
+            // the cleaned URL back on the pasteboard the copy came from.
+            let cleaned = LinkSettings.cleanOnCapture(trimmed)
+            let text = cleaned?.url ?? trimmed
             return CapturedClip(
                 kind: .link,
-                text: trimmed,
+                text: text,
                 richTextData: nil,
                 imageData: nil,
                 fileURLStrings: [],
                 colorHex: nil,
-                hash: hashText("link:" + trimmed)
+                hash: hashText("link:" + text),
+                originalText: cleaned == nil ? nil : trimmed
             )
         }
 
@@ -140,6 +152,12 @@ enum ContentParser {
             colorHex: nil,
             hash: hashText("text:" + string)
         )
+    }
+
+    /// True when the pasteboard's plain string, trimmed, is a bare web URL.
+    private static func plainStringIsBareWebURL(_ pasteboard: NSPasteboard) -> Bool {
+        guard let string = pasteboard.string(forType: .string) else { return false }
+        return isWebURL(string.trimmingCharacters(in: .whitespacesAndNewlines))
     }
 
     /// Detect a hex color literal (e.g. "#ff0000", "#AABBCCDD") inside a string.

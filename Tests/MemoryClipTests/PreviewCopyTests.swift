@@ -47,6 +47,46 @@ final class PreviewCopyTests: XCTestCase {
         XCTAssertTrue(PreviewCopy.options(for: FakeClip(text: "   \n ")).isEmpty)
     }
 
+    // MARK: - Selection
+
+    func testSelectionIsOfferedFirst() {
+        let options = PreviewCopy.options(
+            for: FakeClip(text: "the whole clip"),
+            translation: "traduit",
+            selection: "whole"
+        )
+        XCTAssertEqual(titles(options), ["Copy Selection", "Copy Text", "Copy Translation"])
+        XCTAssertEqual(text(options, "Copy Selection"), "whole")
+    }
+
+    func testNoSelectionEntryWithoutASelection() {
+        let clip = FakeClip(text: "the whole clip")
+        XCTAssertFalse(titles(PreviewCopy.options(for: clip)).contains("Copy Selection"))
+        XCTAssertFalse(titles(PreviewCopy.options(for: clip, selection: "")).contains("Copy Selection"))
+        XCTAssertFalse(titles(PreviewCopy.options(for: clip, selection: " \n ")).contains("Copy Selection"))
+    }
+
+    func testSelectionIsOfferedForKindsWithNoBodyEntry() {
+        let clip = FakeClip(kind: .image, ocrText: "recognised")
+        let options = PreviewCopy.options(for: clip, selection: "recog")
+        XCTAssertEqual(titles(options), ["Copy Selection", "Copy Extracted Text"])
+    }
+
+    // MARK: - What ⌘C copies
+
+    func testSelectionWinsOverTheClip() {
+        XCTAssertEqual(PreviewCopy.copyTarget(selection: "three words here", clipText: "all of it"), "three words here")
+    }
+
+    func testNoSelectionFallsBackToTheClip() {
+        XCTAssertEqual(PreviewCopy.copyTarget(selection: nil, clipText: "all of it"), "all of it")
+        XCTAssertEqual(PreviewCopy.copyTarget(selection: "  ", clipText: "all of it"), "all of it")
+    }
+
+    func testNothingToCopyIsNil() {
+        XCTAssertNil(PreviewCopy.copyTarget(selection: nil, clipText: nil))
+    }
+
     // MARK: - Translation
 
     func testTranslationIsASeparateEntryUnderTheBody() {
