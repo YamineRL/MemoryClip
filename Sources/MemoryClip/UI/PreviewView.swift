@@ -20,6 +20,9 @@ struct PreviewView: View {
     /// clicking the source app in the meta line inserts `app:"Name"` in the
     /// search field. The name renders plain when absent.
     var onFilterApp: ((String) -> Void)? = nil
+    /// The pane's current text selection, published upward so the panel's ⌘C
+    /// can copy it. Nil when nothing is selected.
+    var onSelectionChange: ((String?) -> Void)? = nil
 
     /// Detection/calc results are cached per content change rather than
     /// recomputed on every body pass — scanning a multi-megabyte clip on the
@@ -36,6 +39,9 @@ struct PreviewView: View {
     /// SwiftUI task dies with the pane, and this pane is put away every time
     /// the app stops being frontmost.
     @State private var presenter = ClipTranslationPresenter()
+    /// What is selected in the pane right now, so the right-click menu can
+    /// offer it. Written by every `SelectableText` in the pane.
+    @State private var selection: String?
     /// How tall the translated text actually is, so the block can shrink to
     /// it — see `translationBodyHeight`. Zero means "not measured yet".
     @State private var translationTextHeight: CGFloat = 0
@@ -92,6 +98,8 @@ struct PreviewView: View {
                 .padding(Design.Space.roomy)
                 .designPane(radius: Design.Radius.pane, fill: Design.Palette.chrome)
 
+            cleanedRow
+
             if let calc = calcResult {
                 // The answer the user came for: full label colour, not the
                 // secondary grey it used to be given.
@@ -128,14 +136,52 @@ struct PreviewView: View {
                 Button(option.title) { PreviewCopy.perform(option, using: onCopy) }
             }
         }
+        // A selection belongs to the clip it was made in.
+        .onChange(of: contentKey) { report(nil) }
+        .onDisappear { report(nil) }
         .task(id: contentKey) { await refreshAnalysis() }
         .task(id: contentKey) { await loadFullImage() }
         .task(id: translationKey) { await refreshTranslation() }
     }
 
+    /// The one line a cleaned link gets: what was taken off it, and the way
+    /// back.
+    ///
+    /// `Use original` writes the untouched URL to the pasteboard, so the next
+    /// ⌘V pastes it — the stored clip keeps the cleaned form and the badge.
+    /// That is the escape hatch for a parameter that turns out to matter: a
+    /// campaign the user is actually reading, a share link that is genuinely
+    /// per-recipient.
+    @ViewBuilder
+    private var cleanedRow: some View {
+        if let original = item.originalText {
+            HStack(spacing: Design.Space.snug) {
+                DetectionChip(text: cleanedLabel)
+                Spacer(minLength: Design.Space.normal)
+                Button(loc("Use original")) { PreviewCopy.write(original, using: onCopy) }
+                    .buttonStyle(.bordered)
+            }
+            .controlSize(.small)
+        }
+    }
+
+    /// `Cleaned · removed igsh`, or plain `Cleaned` for a clip stored before
+    /// the removed names were recorded.
+    private var cleanedLabel: String {
+        let removed = LinkCleaner.clean(item.originalText ?? "", options: LinkSettings.options)?.removed ?? []
+        guard !removed.isEmpty else { return loc("Cleaned") }
+        return loc("Cleaned · removed %@", removed.joined(separator: ", "))
+    }
+
     /// What the right-click menu offers for this clip.
     private var copyOptions: [PreviewCopyOption] {
-        PreviewCopy.options(for: item, translation: presenter.translation?.text)
+        PreviewCopy.options(for: item, translation: presenter.translation?.text, selection: selection)
+    }
+
+    /// Record a selection and hand it to the panel.
+    private func report(_ text: String?) {
+        selection = text
+        onSelectionChange?(text)
     }
 
     // MARK: Cached analysis
@@ -244,7 +290,7 @@ struct PreviewView: View {
 
                 if let translation = presenter.translation {
                     ScrollView {
-                        SelectableText(text: translation.text, size: bodyFontSize)
+                        SelectableText(text: translation.text, size: bodyFontSize, onSelectionChange: report)
                             // Measured from INSIDE the scroll view, which
                             // proposes no height to its content, so this is
                             // the text's own height rather than the one it
@@ -319,7 +365,7 @@ struct PreviewView: View {
         let body = ClipDisplay.previewBody(item.text ?? "")
         return ScrollView {
             VStack(alignment: .leading, spacing: Design.Space.normal) {
-                SelectableText(text: body.text, size: bodyFontSize)
+                SelectableText(text: body.text, size: bodyFontSize, onSelectionChange: report)
                 if let notice = body.notice {
                     Text(notice)
                         .font(Design.Typography.meta)
@@ -396,7 +442,7 @@ struct PreviewView: View {
                 case .text(let value):
                     let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
                     if !trimmed.isEmpty {
-                        SelectableText(text: trimmed, size: bodyFontSize)
+                        SelectableText(text: trimmed, size: bodyFontSize, onSelectionChange: report)
                     }
                 case .table(let table):
                     tableGrid(table)
@@ -537,8 +583,13 @@ struct PreviewView: View {
 struct SelectableText: NSViewRepresentable {
     let text: String
     let size: CGFloat
+    /// Called with the selected substring, or nil when the selection empties,
+    /// so the pane above can offer it to ⌘C.
+    var onSelectionChange: ((String?) -> Void)? = nil
 
-    func makeNSView(context _: Context) -> PreviewTextView {
+    func makeCoordinator() -> SelectionReporter { SelectionReporter() }
+
+    func makeNSView(context: Context) -> PreviewTextView {
         let storage = NSTextStorage()
         let layoutManager = NSLayoutManager()
         let container = NSTextContainer(size: CGSize(width: 0, height: CGFloat.greatestFiniteMagnitude))
@@ -557,10 +608,13 @@ struct SelectableText: NSViewRepresentable {
         view.isVerticallyResizable = false
         // Drawn in the accent colour even though the view never takes focus.
         view.selectedTextAttributes = [NSAttributedString.Key.backgroundColor: NSColor.selectedTextBackgroundColor]
+        view.delegate = context.coordinator
+        context.coordinator.onSelectionChange = onSelectionChange
         return view
     }
 
-    func updateNSView(_ view: PreviewTextView, context _: Context) {
+    func updateNSView(_ view: PreviewTextView, context: Context) {
+        context.coordinator.onSelectionChange = onSelectionChange
         if view.string != text { view.string = text }
         // After `string`, which resets both.
         view.font = NSFont.systemFont(ofSize: size)
@@ -575,15 +629,55 @@ struct SelectableText: NSViewRepresentable {
     }
 }
 
+/// Passes a `SelectableText`'s selection back to SwiftUI as it changes.
+@MainActor
+final class SelectionReporter: NSObject, NSTextViewDelegate {
+    var onSelectionChange: ((String?) -> Void)?
+
+    func textViewDidChangeSelection(_ notification: Notification) {
+        guard let view = notification.object as? PreviewTextView else { return }
+        onSelectionChange?(view.selectedText)
+    }
+}
+
 /// The text view behind `SelectableText`.
 final class PreviewTextView: NSTextView {
     /// Never becomes first responder, so the panel keeps the arrow keys,
     /// Space and Escape while a preview is open.
+    ///
+    /// Do not "fix" ⌘C by flipping this to true: a text view in the responder
+    /// chain swallows the arrows, Space, Escape and every keystroke the
+    /// type-to-filter field lives on. ⌘C goes to the first responder, so the
+    /// panel handles it and asks for `selectedText` instead — see
+    /// `PreviewCopy.copyTarget(selection:clipText:)`.
     override var acceptsFirstResponder: Bool { false }
 
     /// No menu of its own: right-clicks fall through to the pane's
     /// `.contextMenu`, so the same menu appears everywhere in the preview.
     override func menu(for event: NSEvent) -> NSMenu? { nil }
+
+    /// The selected substring, or nil when nothing is selected.
+    var selectedText: String? {
+        let range = selectedRange()
+        guard range.length > 0, let text = string as NSString? else { return nil }
+        guard NSMaxRange(range) <= text.length else { return nil }
+        return text.substring(with: range)
+    }
+
+    /// A right-click inside the selection keeps it, so `Copy Selection` in the
+    /// pane's menu acts on what the user is looking at. `NSTextView` would
+    /// otherwise move the insertion point to the click.
+    override func rightMouseDown(with event: NSEvent) {
+        let range = selectedRange()
+        if range.length > 0 {
+            let index = characterIndexForInsertion(at: convert(event.locationInWindow, from: nil))
+            if NSLocationInRange(index, range) {
+                nextResponder?.rightMouseDown(with: event)
+                return
+            }
+        }
+        super.rightMouseDown(with: event)
+    }
 
     /// Height the text lays out to at `width`.
     func height(forWidth width: CGFloat) -> CGFloat {

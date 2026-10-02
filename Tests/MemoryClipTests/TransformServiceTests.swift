@@ -292,7 +292,7 @@ final class TransformServiceTests: XCTestCase {
     /// literal compared to itself and could never fail.)
     func testEveryTransformHasAUniqueNonEmptyLabel() {
         XCTAssertEqual(
-            Transform.allCases.count, 25,
+            Transform.allCases.count, 26,
             "the transform menu changed size — add or remove the matching behaviour test above"
         )
         for transform in Transform.allCases {
