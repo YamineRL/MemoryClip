@@ -254,12 +254,19 @@ final class HistoryExportController {
         let inserted = store.insertImported(items)
         // Only the clips the store actually accepted are filed: a clip the
         // history already holds is left exactly as it is, board included.
+        // A board a skipped record names is still created — the document
+        // says it exists, and an empty board is a real board.
         let accepted = Set(inserted.map(\.uuid))
+        let pairs = zip(items, document.clips)
+        let boardsSkippedRecordsName = pairs
+            .filter { !accepted.contains($0.0.uuid) }
+            .compactMap { $0.1.pinboard }
+            .map { PinboardExport(name: $0, color: nil, order: nil) }
         store.fileImported(
-            zip(items, document.clips)
+            pairs
                 .filter { accepted.contains($0.0.uuid) }
                 .map { (item: $0.0, record: $0.1) },
-            pinboards: document.pinboards
+            pinboards: document.pinboards + boardsSkippedRecordsName
         )
         return ImportOutcome(inserted: inserted.count, skipped: items.count - inserted.count)
     }

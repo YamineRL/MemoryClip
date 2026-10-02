@@ -1610,7 +1610,7 @@ struct PanelContentView: View {
             )
         )
         .onSubmit(commitPinboardName)
-        .onExitCommand(cancelPinboardName)
+        .onExitCommand(perform: cancelPinboardName)
     }
 
     /// The `+` at the end of the strip.
@@ -1856,11 +1856,10 @@ struct PanelContentView: View {
         provider.loadDataRepresentation(forTypeIdentifier: ClipDragProvider.clipTypeIdentifier) { data, _ in
             guard let data,
                   let uuid = UUID(uuidString: String(decoding: data, as: UTF8.self))
-            else { return nil }
+            else { return }
             Task { @MainActor in
                 fileClip(uuid, to: scope)
             }
-            return nil
         }
         return true
     }

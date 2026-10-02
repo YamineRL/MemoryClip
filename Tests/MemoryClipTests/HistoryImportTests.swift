@@ -26,6 +26,10 @@ final class HistoryImportTests: XCTestCase {
         return url
     }
 
+    private func iso8601(_ date: Date) -> String {
+        ISO8601DateFormatter().string(from: date)
+    }
+
     /// One clip of every kind, each hashed the way `ContentParser` hashes it
     /// at capture — which is what an import has to reproduce from the file.
     private func makeHistory() -> [ClipItem] {
