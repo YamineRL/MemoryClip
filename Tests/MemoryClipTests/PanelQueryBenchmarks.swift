@@ -38,7 +38,7 @@ final class PanelQueryBenchmarks: XCTestCase {
 
     private func container() throws -> ModelContainer {
         try ModelContainer(
-            for: Schema([ClipItem.self]),
+            for: Schema([ClipItem.self, Pinboard.self]),
             configurations: [ModelConfiguration(isStoredInMemoryOnly: true)]
         )
     }

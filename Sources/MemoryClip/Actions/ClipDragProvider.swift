@@ -1,4 +1,5 @@
 import AppKit
+import UniformTypeIdentifiers
 
 /// Turns a clip into the `NSItemProvider` a drag out of the panel carries.
 ///
@@ -13,11 +14,26 @@ import AppKit
 /// one provider, so a multi-file clip drags its first file.
 @MainActor
 enum ClipDragProvider {
+    /// A same-process type that carries the clip's identity, registered
+    /// alongside the content payload so a drop on a pinboard chip knows
+    /// WHICH clip was dragged. `visibility: .ownProcess` keeps it off every
+    /// other app's list of offers.
+    static let clipTypeIdentifier = "app.memoryclip.clip"
+    static let clipUTType = UTType(exportedAs: clipTypeIdentifier)
+
     /// The provider for a clip, or nil when the clip carries nothing a drop
     /// could take.
     static func itemProvider(for item: ClipItem) -> NSItemProvider? {
         guard let payload = PasteService.payload(for: item, plainOnly: false) else { return nil }
-        return provider(for: payload)
+        let provider = provider(for: payload)
+        provider?.registerDataRepresentation(
+            forTypeIdentifier: clipTypeIdentifier,
+            visibility: .ownProcess
+        ) { completion in
+            completion(Data(item.uuid.uuidString.utf8), nil)
+            return nil
+        }
+        return provider
     }
 
     /// The provider for an already-validated payload.

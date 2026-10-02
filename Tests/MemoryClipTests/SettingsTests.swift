@@ -244,7 +244,8 @@ final class SettingsTests: XCTestCase {
     func testPanelGroupDocumentsTheKeysPanelViewHandles() throws {
         let entries = ShortcutReference.panel.entries
         let documented = entries.map(\.keys).joined(separator: "\u{1F}")
-        for key in ["↑", "↓", "←", "→", "Return", "⇧Return", "⌘1…⌘9", "⌘C", "⌘S", "⌘E", "Space", "Esc", "⌘W"] {
+        for key in ["↑", "↓", "←", "→", "Return", "⇧Return", "⌘1…⌘9", "⌘C", "⌘S", "⌘E", "Space", "Esc", "⌘W",
+                    "⌘P", "⌥← ⌥→", "⌃1…⌃9"] {
             XCTAssertTrue(
                 documented.contains(key),
                 "\(key) is handled by PanelView but has no row in the panel key reference"
@@ -409,7 +410,7 @@ final class SettingsTests: XCTestCase {
             (.top, "jump to top"), (.bottom, "jump to bottom"),
             (.halfPageDown, "half-page down"), (.halfPageUp, "half-page up"),
             (.paste, "paste"), (.pastePlain, "paste as plain text"),
-            (.pin, "pin"), (.delete, "delete"),
+            (.pin, "pin"), (.pinboard, "file under a pinboard"), (.delete, "delete"),
             (.queueToggle, "queue a clip"), (.queuePaste, "paste the queue"),
             (.enterSearch, "start a fresh search"), (.enterInsert, "edit the current query")
         ]

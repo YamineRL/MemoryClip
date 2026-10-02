@@ -16,10 +16,39 @@ struct ClipExport: Codable, Sendable {
     var createdAt: Date
     var lastUsedAt: Date?
     var isPinned: Bool
+    /// The pinboard the clip was filed in, by name (PRD 06). nil means the
+    /// clip sat in Pinned (when `isPinned`) or nowhere at all.
+    var pinboard: String? = nil
+    /// The board's colour, a `PinboardColor` raw value, exported so a board
+    /// the top-level `pinboards` list does not describe can still be
+    /// recreated faithfully. An unknown value is tolerated on import.
+    var pinboardColor: String? = nil
+    /// The clip's spot in its board's manual order. On import it is written
+    /// back verbatim: merging into a board that already has members may tie,
+    /// and the order comparator's createdAt tiebreak absorbs that.
+    var pinboardOrder: Double? = nil
     // NOTE: richTextData/imageData are intentionally omitted from CSV;
     // they travel as Base64 in JSON ONLY (kept out of the CSV columns below).
     var richTextBase64: String? // JSON-only field; excluded from CSV columns
     var imageBase64: String?    // JSON-only field; excluded from CSV columns
+}
+
+/// One pinboard as the export lists it: a name, a colour and a place in the
+/// chip strip.
+struct PinboardExport: Codable, Sendable, Equatable {
+    var name: String
+    /// A `PinboardColor` raw value; tolerated when unknown on import.
+    var color: String?
+    /// Position in the chip strip at export time.
+    var order: Int?
+}
+
+/// A whole export read back in: the boards, then the clips. Boards travel
+/// at the top level rather than inside clip records because a board with
+/// zero members is still a board.
+struct ImportDocument: Sendable {
+    var pinboards: [PinboardExport]
+    var clips: [ClipExport]
 }
 
 /// Serializes clip history to JSON or CSV.
@@ -77,9 +106,17 @@ enum ExportService {
             createdAt: item.createdAt,
             lastUsedAt: item.lastUsedAt,
             isPinned: item.isPinned,
+            pinboard: item.pinboard?.name,
+            pinboardColor: item.pinboard?.colorName,
+            pinboardOrder: item.pinboardOrder,
             richTextBase64: Self.base64(item.richTextData),
             imageBase64: Self.base64(item.imageData)
         )
+    }
+
+    /// Flatten a pinboard into its export record.
+    static func export(from board: Pinboard) -> PinboardExport {
+        PinboardExport(name: board.name, color: board.colorName, order: board.order)
     }
 
     /// Base64 for a payload, treating empty as absent.
@@ -110,6 +147,7 @@ enum ExportService {
         "createdAt",
         "lastUsedAt",
         "isPinned",
+        "pinboard",
     ].joined(separator: ",")
 
     // MARK: Streaming
@@ -130,21 +168,38 @@ enum ExportService {
         private var wroteAny = false
         private let encoder: JSONEncoder
         private let dateFormatter = ISO8601DateFormatter()
+        /// For a JSON export that carries pinboards: the document's opening
+        /// `{"pinboards":…,"clips":` prefix. nil keeps the legacy bare-array
+        /// shape, so a board-less export still reads in older builds.
+        private let pinboardsPrefix: String?
 
-        init(format: Format) {
+        init(format: Format, pinboards: [PinboardExport] = []) {
             self.format = format
             let encoder = JSONEncoder()
             encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
             encoder.dateEncodingStrategy = .iso8601
             self.encoder = encoder
+            if format == .json, !pinboards.isEmpty,
+               let data = try? encoder.encode(pinboards),
+               let text = String(data: data, encoding: .utf8) {
+                let indented = text
+                    .split(separator: "\n", omittingEmptySubsequences: false)
+                    .enumerated()
+                    .map { index, line in index == 0 ? line : "  " + line }
+                    .joined(separator: "\n")
+                pinboardsPrefix = "{\n  \"pinboards\": " + indented + ",\n  \"clips\": "
+            } else {
+                pinboardsPrefix = nil
+            }
         }
 
-        /// Text to write before any clip: the CSV header row, nothing for JSON
+        /// Text to write before any clip: the CSV header row; for JSON, the
+        /// pinboard prefix when the export carries boards, else nothing
         /// (whose opening bracket rides along with the first record so an
         /// empty export can still be the canonical `[]`).
         var header: String {
             switch format {
-            case .json: return ""
+            case .json: return pinboardsPrefix ?? ""
             case .csv: return csvHeader
             }
         }
@@ -175,6 +230,7 @@ enum ExportService {
                     dateFormatter.string(from: clip.createdAt),
                     clip.lastUsedAt.map(dateFormatter.string(from:)) ?? "",
                     clip.isPinned ? "true" : "false",
+                    clip.pinboard ?? "",
                 ]
                 return "\n" + fields.map { csvEscaped(csvDefused($0)) }.joined(separator: ",")
             }
@@ -184,8 +240,11 @@ enum ExportService {
         var footer: String {
             switch format {
             // The pretty-printing encoder renders an empty array as "[\n\n]";
-            // emit the canonical compact form instead.
-            case .json: return wroteAny ? "\n]" : "[]"
+            // emit the canonical compact form instead. A pinboard document
+            // closes its own brace after the clips array.
+            case .json:
+                let close = wroteAny ? "\n]" : "[]"
+                return pinboardsPrefix == nil ? close : close + "\n}"
             case .csv: return ""
             }
         }
@@ -193,8 +252,12 @@ enum ExportService {
 
     /// Render a whole batch through `Stream`, for callers small enough not to
     /// care (tests, and the in-memory `json`/`csv` entry points).
-    static func document(from clips: [ClipExport], format: Stream.Format) throws -> String {
-        var stream = Stream(format: format)
+    static func document(
+        from clips: [ClipExport],
+        format: Stream.Format,
+        pinboards: [PinboardExport] = []
+    ) throws -> String {
+        var stream = Stream(format: format, pinboards: pinboards)
         var output = stream.header
         for clip in clips {
             output += try stream.chunk(for: clip)
@@ -210,20 +273,42 @@ enum ExportService {
         try document(from: clips, format: .json)
     }
 
+    /// The whole-history variant: clips plus the pinboards they belong to,
+    /// as a `{"pinboards":…,"clips":…}` document. A board-less history still
+    /// exports the original bare array, so a file an older build wrote and
+    /// a file this build writes look the same when there is nothing to add.
+    static func json(from clips: [ClipExport], pinboards: [PinboardExport]) throws -> String {
+        try document(from: clips, format: .json, pinboards: pinboards)
+    }
+
     // MARK: Import
 
     /// Decode the document `json(from:)` writes.
     ///
+    /// Two shapes exist: the original bare array of clips, and the pinboard
+    /// document (`{"pinboards":…,"clips":…}`) a history with boards exports
+    /// as. Both read back the same way; anything else fails the whole file.
+    ///
     /// All-or-nothing: one record the decoder cannot read fails the whole
     /// file. A partial import is the worst outcome on offer — a history that
     /// looks restored, is not, and says nothing about where it stopped.
-    static func imports(fromJSON json: String) throws -> [ClipExport] {
+    static func imports(fromJSON json: String) throws -> ImportDocument {
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
-        guard let records = try? decoder.decode([ClipExport].self, from: Data(json.utf8)) else {
+        let data = Data(json.utf8)
+        // The bare array first: an object never decodes as one, and the
+        // legacy shape stays the fast path.
+        if let clips = try? decoder.decode([ClipExport].self, from: data) {
+            return ImportDocument(pinboards: [], clips: clips)
+        }
+        struct Document: Codable {
+            var pinboards: [PinboardExport]?
+            var clips: [ClipExport]
+        }
+        guard let document = try? decoder.decode(Document.self, from: data) else {
             throw ImportError.malformedDocument
         }
-        return records
+        return ImportDocument(pinboards: document.pinboards ?? [], clips: document.clips)
     }
 
     /// Rebuild a stored clip from its export record.

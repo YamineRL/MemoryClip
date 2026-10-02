@@ -11,6 +11,7 @@ enum VimCommand: Equatable {
     case paste        // Enter-equivalent (o)
     case pastePlain   // O — paste without formatting
     case pin          // p
+    case pinboard     // P: file the clip under a pinboard (PRD 06)
     case delete       // dd
     case queueToggle  // q
     case queuePaste   // Q
@@ -85,6 +86,10 @@ struct VimNavigator {
         case "o": return .paste
         case "O": return .pastePlain
         case "p": return .pin
+        // Shift already arrives as the uppercase character, so `P` is the
+        // binding's own glyph rather than a modifier chord: the shift of the
+        // pin key opens the pinboard picker.
+        case "P": return .pinboard
         case "q": return .queueToggle
         case "Q": return .queuePaste
         case "/": return .enterSearch

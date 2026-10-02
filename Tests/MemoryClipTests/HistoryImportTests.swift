@@ -222,6 +222,151 @@ final class HistoryImportTests: XCTestCase {
         XCTAssertEqual(kept.createdAt, createdAt.addingTimeInterval(-9_000))
     }
 
+    // MARK: Pinboards (PRD 06)
+
+    /// The `{"pinboards":…,"clips":…}` document imports whole: the boards
+    /// come back with their names, colours and strip positions, and each
+    /// clip lands filed under the board its record named, in its manual
+    /// order.
+    func testBoardAwareImportRestoresBoardsAndFilings() throws {
+        let text = """
+        {
+          "pinboards" : [
+            { "name" : "Commands", "color" : "red", "order" : 1 },
+            { "name" : "Addresses", "color" : "teal", "order" : 0 }
+          ],
+          "clips" : [
+            { "kind" : "text", "text" : "work address", "fileURLs" : [],
+              "createdAt" : "%@", "isPinned" : true,
+              "pinboard" : "Addresses", "pinboardColor" : "teal", "pinboardOrder" : 1 },
+            { "kind" : "text", "text" : "home address", "fileURLs" : [],
+              "createdAt" : "%@", "isPinned" : true,
+              "pinboard" : "Addresses", "pinboardColor" : "teal", "pinboardOrder" : 0 },
+            { "kind" : "text", "text" : "loose pin", "fileURLs" : [],
+              "createdAt" : "%@", "isPinned" : true }
+          ]
+        }
+        """
+        let json = String(format: text,
+                          iso8601(createdAt), iso8601(createdAt), iso8601(createdAt))
+        let url = try write(json)
+        defer { try? FileManager.default.removeItem(at: url) }
+        let store = try ClipStore(inMemory: true)
+
+        let outcome = try HistoryExportController.readImport(from: url, store: store)
+
+        XCTAssertEqual(outcome, .init(inserted: 3, skipped: 0))
+        let boards = store.pinboards()
+        XCTAssertEqual(
+            boards.map(\.name),
+            ["Commands", "Addresses"],
+            "boards land on the strip in the order the file listed them"
+        )
+        let addresses = try XCTUnwrap(Pinboard.named("Addresses", in: store.context))
+        XCTAssertEqual(addresses.colorName, "teal")
+        XCTAssertEqual(
+            addresses.orderedClips.compactMap(\.text),
+            ["home address", "work address"],
+            "the manual order the file carried is restored"
+        )
+        for clip in addresses.orderedClips {
+            XCTAssertTrue(clip.isPinned, "a filed clip is pinned")
+        }
+        let loose = try XCTUnwrap(store.recent(limit: 10).first { $0.text == "loose pin" })
+        XCTAssertTrue(loose.isPinned)
+        XCTAssertNil(loose.pinboard, "a clip with no pinboard field stays board-less")
+    }
+
+    /// A clip that names a board the `pinboards` list never described still
+    /// gets filed: the board is created on the spot, coloured from the
+    /// clip's own `pinboardColor` hint.
+    func testImportCreatesABoardAClipNamesButTheListOmits() throws {
+        let clip = ExportService.export(from: ClipItem(
+            kind: .text, text: "filed clip",
+            contentHash: ContentParser.hashText("text:filed clip"),
+            createdAt: createdAt, isPinned: true
+        ))
+        var record = clip
+        record.pinboard = "Undeclared"
+        record.pinboardColor = "purple"
+        let json = "{\"pinboards\": [], \"clips\": ["
+            + (try ExportService.json(from: [record])).trimmingCharacters(in: CharacterSet(charactersIn: "[]\n "))
+            + "]}"
+        let url = try write(json)
+        defer { try? FileManager.default.removeItem(at: url) }
+        let store = try ClipStore(inMemory: true)
+
+        _ = try HistoryExportController.readImport(from: url, store: store)
+
+        let board = try XCTUnwrap(Pinboard.named("Undeclared", in: store.context))
+        XCTAssertEqual(board.colorName, "purple")
+        XCTAssertEqual(board.orderedClips.map(\.text), ["filed clip"])
+    }
+
+    /// Boards merge by name (case-insensitively): importing into a store
+    /// that already has "Addresses" files the incoming clips there and
+    /// leaves the existing board's colour and position alone.
+    func testImportMergesIntoAnExistingBoardByName() throws {
+        let store = try ClipStore(inMemory: true)
+        let existing = try XCTUnwrap(Pinboard.create(named: "Addresses", color: "blue", in: store.context))
+        store.save()
+        let existingOrder = existing.order
+
+        let clip = ExportService.export(from: ClipItem(
+            kind: .text, text: "new filing",
+            contentHash: ContentParser.hashText("text:new filing"),
+            createdAt: createdAt, isPinned: true
+        ))
+        var record = clip
+        record.pinboard = "ADDRESSES"
+        let json = "{\"pinboards\": [{\"name\": \"addresses\", \"color\": \"red\", \"order\": 0}], \"clips\": ["
+            + (try ExportService.json(from: [record])).trimmingCharacters(in: CharacterSet(charactersIn: "[]\n "))
+            + "]}"
+        let url = try write(json)
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        _ = try HistoryExportController.readImport(from: url, store: store)
+
+        XCTAssertEqual(store.pinboards().count, 1, "no second board for the same name")
+        XCTAssertEqual(existing.colorName, "blue", "the existing board keeps its colour")
+        XCTAssertEqual(existing.order, existingOrder)
+        XCTAssertEqual(existing.orderedClips.map(\.text), ["new filing"])
+    }
+
+    /// A clip the store already holds is left exactly as it is, board
+    /// included: an import must not refile someone's existing pins.
+    func testImportNeverRefilesAClipTheStoreAlreadyHolds() throws {
+        let store = try ClipStore(inMemory: true)
+        let alreadyFiled = ClipItem(
+            kind: .text, text: "already here",
+            contentHash: ContentParser.hashText("text:already here"),
+            createdAt: createdAt, isPinned: true
+        )
+        store.context.insert(alreadyFiled)
+        store.save()
+
+        var record = ExportService.export(from: ClipItem(
+            kind: .text, text: "already here",
+            contentHash: ContentParser.hashText("text:already here"),
+            createdAt: createdAt, isPinned: true
+        ))
+        record.pinboard = "New Board"
+        let url = try write(try ExportService.json(from: [record]))
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        let outcome = try HistoryExportController.readImport(from: url, store: store)
+
+        XCTAssertEqual(outcome, .init(inserted: 0, skipped: 1))
+        XCTAssertNil(
+            store.recent(limit: 1).first?.pinboard,
+            "the skipped clip's board membership was not touched"
+        )
+        // The board the record named is still created: the document says it
+        // exists, and an empty board is a real board. That is additive, not
+        // a refile.
+        XCTAssertNotNil(Pinboard.named("New Board", in: store.context))
+    }
+
     /// Import adds; it never clears what is already stored.
     func testImportLeavesUnrelatedHistoryAlone() throws {
         let store = try makeStore([

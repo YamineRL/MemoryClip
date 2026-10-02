@@ -16,3 +16,6 @@ PLAN.md
 # for whoever is working on the checkout, not something the app ships with.
 AGENTS.md
 CLAUDE.md
+
+# Graft knowledge-graph cache: regenerable local state, never shipped.
+graft/

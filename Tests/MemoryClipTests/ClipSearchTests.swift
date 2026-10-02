@@ -19,7 +19,7 @@ final class ClipSearchTests: XCTestCase {
 
     override func setUpWithError() throws {
         container = try ModelContainer(
-            for: Schema([ClipItem.self]),
+            for: Schema([ClipItem.self, Pinboard.self]),
             configurations: [ModelConfiguration(isStoredInMemoryOnly: true)]
         )
         context = ModelContext(container)

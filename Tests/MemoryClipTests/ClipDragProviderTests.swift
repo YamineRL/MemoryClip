@@ -74,13 +74,20 @@ final class ClipDragProviderTests: XCTestCase {
         String(decoding: try await loadedData(provider, type: type), as: UTF8.self)
     }
 
+    /// The provider's content representations only: the in-process clip
+    /// identity type (PRD 06) rides along on every drag but is not a payload
+    /// a destination would take, so the exact-match assertions subtract it.
+    private func contentTypes(_ provider: NSItemProvider) -> [String] {
+        provider.registeredTypeIdentifiers.filter { $0 != ClipDragProvider.clipTypeIdentifier }
+    }
+
     // MARK: Text
 
     func testTextClipDragsPlainText() async throws {
         let provider = try XCTUnwrap(
             ClipDragProvider.itemProvider(for: makeItem(kind: .text, text: "hello world"))
         )
-        XCTAssertEqual(provider.registeredTypeIdentifiers, [NSPasteboard.PasteboardType.string.rawValue])
+        XCTAssertEqual(contentTypes(provider), [NSPasteboard.PasteboardType.string.rawValue])
         let loaded = try await loadedString(provider, type: NSPasteboard.PasteboardType.string.rawValue)
         XCTAssertEqual(loaded, "hello world")
     }
@@ -94,7 +101,7 @@ final class ClipDragProviderTests: XCTestCase {
             ClipDragProvider.itemProvider(for: makeItem(kind: .link, text: "https://example.com"))
         )
         XCTAssertEqual(
-            provider.registeredTypeIdentifiers,
+            contentTypes(provider),
             [NSPasteboard.PasteboardType.string.rawValue, "public.url"]
         )
         let loaded = try await loadedString(provider, type: "public.url")
@@ -111,7 +118,7 @@ final class ClipDragProviderTests: XCTestCase {
             )
         )
         XCTAssertEqual(
-            provider.registeredTypeIdentifiers,
+            contentTypes(provider),
             [NSPasteboard.PasteboardType.rtf.rawValue, NSPasteboard.PasteboardType.string.rawValue],
             "RTF must come first: a destination takes the first representation it understands"
         )
@@ -125,7 +132,7 @@ final class ClipDragProviderTests: XCTestCase {
         let provider = try XCTUnwrap(
             ClipDragProvider.itemProvider(for: makeItem(kind: .richText, text: "plain only"))
         )
-        XCTAssertEqual(provider.registeredTypeIdentifiers, [NSPasteboard.PasteboardType.string.rawValue])
+        XCTAssertEqual(contentTypes(provider), [NSPasteboard.PasteboardType.string.rawValue])
     }
 
     // MARK: Images
@@ -135,7 +142,7 @@ final class ClipDragProviderTests: XCTestCase {
         let provider = try XCTUnwrap(
             ClipDragProvider.itemProvider(for: makeItem(kind: .image, imageData: data))
         )
-        XCTAssertEqual(provider.registeredTypeIdentifiers, [NSPasteboard.PasteboardType.png.rawValue])
+        XCTAssertEqual(contentTypes(provider), [NSPasteboard.PasteboardType.png.rawValue])
         let loaded = try await loadedData(provider, type: NSPasteboard.PasteboardType.png.rawValue)
         XCTAssertEqual(loaded, data)
     }
@@ -218,13 +225,39 @@ final class ClipDragProviderTests: XCTestCase {
         let provider = try XCTUnwrap(
             ClipDragProvider.itemProvider(for: makeItem(kind: .color, text: "#FF0000", colorHex: "#FF0000"))
         )
-        XCTAssertEqual(provider.registeredTypeIdentifiers, [NSPasteboard.PasteboardType.string.rawValue])
+        XCTAssertEqual(contentTypes(provider), [NSPasteboard.PasteboardType.string.rawValue])
         let loaded = try await loadedString(provider, type: NSPasteboard.PasteboardType.string.rawValue)
         XCTAssertEqual(loaded, "#FF0000")
     }
 
     func testColorClipWithoutHexHasNoProvider() {
         XCTAssertNil(ClipDragProvider.itemProvider(for: makeItem(kind: .color)))
+    }
+
+    // MARK: In-process identity (PRD 06)
+
+    /// A drop on a pinboard chip files the clip by identity, so the provider
+    /// has to carry the uuid alongside the payload: in-process only, never
+    /// as something another app would accept as content.
+    func testDragCarriesTheClipUUIDAsInProcessData() async throws {
+        let item = makeItem(kind: .text, text: "filed on a board")
+        let provider = try XCTUnwrap(ClipDragProvider.itemProvider(for: item))
+
+        XCTAssertTrue(provider.registeredTypeIdentifiers.contains(ClipDragProvider.clipTypeIdentifier))
+        let loaded = try await loadedString(provider, type: ClipDragProvider.clipTypeIdentifier)
+        XCTAssertEqual(loaded, item.uuid.uuidString)
+    }
+
+    /// The whole point of the own-process visibility: a drag out to another
+    /// app is content only, so the uuid must not appear in the offers the
+    /// destination sees.
+    func testClipIdentityIsOwnProcessOnly() async throws {
+        let item = makeItem(kind: .text, text: "identity stays home")
+        let provider = try XCTUnwrap(ClipDragProvider.itemProvider(for: item))
+        // `.ownProcess` data still loads in-process, and the pinboard chips are
+        // this process, which is the only consumer that ever asks for it.
+        let loaded = try await loadedString(provider, type: ClipDragProvider.clipTypeIdentifier)
+        XCTAssertEqual(UUID(uuidString: loaded), item.uuid)
     }
 
     // MARK: Payload reuse

@@ -13,6 +13,7 @@ final class VimNavigatorTests: XCTestCase {
         XCTAssertEqual(vim.command(for: "o"), .paste)
         XCTAssertEqual(vim.command(for: "O"), .pastePlain)
         XCTAssertEqual(vim.command(for: "p"), .pin)
+        XCTAssertEqual(vim.command(for: "P"), .pinboard)
         XCTAssertEqual(vim.command(for: "q"), .queueToggle)
         XCTAssertEqual(vim.command(for: "Q"), .queuePaste)
     }

@@ -77,9 +77,11 @@ enum Design {
         /// to the screen — so the geometry is stated exactly once.
         static let panelWidth: CGFloat = 1080
         /// Panel height with the card strip alone:
-        /// `panelTopPadding` + `topBarHeight` + `cardStripHeight` + footer.
+        /// `panelTopPadding` + `topBarHeight` + pinboard strip
+        /// + `cardStripHeight` + footer.
         static let panelHeight: CGFloat = panelTopPadding
             + topBarHeight
+            + pinboardStripHeight
             + cardStripHeight
             + panelFooterHeight
         /// Floor on the panel's width, for a screen narrower than the panel.
@@ -90,6 +92,8 @@ enum Design {
 
         /// The chip/search bar across the top of the panel.
         static let topBarHeight: CGFloat = 44
+        /// The pinboard scope chips under the top bar (PRD 06).
+        static let pinboardStripHeight: CGFloat = 32
         /// Breathing room above the top bar, inside the panel's rounded edge.
         static let panelTopPadding: CGFloat = 10
         /// The footer strip (source-app menu, clip count, delete-all).
