@@ -264,7 +264,7 @@ final class ClipEditTests: XCTestCase {
         XCTAssertEqual(item.lastUsedAt, old.lastUsedAt, "the fresher usage wins")
         XCTAssertEqual(item.notePath, "/tmp/note.md")
         XCTAssertEqual(item.calendarEventID, "event-9")
-        XCTAssertTrue(old.isDeleted)
+        XCTAssertNil(store.item(withUUID: old.uuid), "the duplicate row is deleted")
         XCTAssertTrue(originalCreatedAt > item.createdAt)
     }
 
