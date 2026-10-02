@@ -59,6 +59,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     static let maintenanceStartDelay: Duration = .seconds(2)
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // Probe for the secrets work: `--secrets-selftest` exercises the
+        // Secure Enclave key (create or reload, seal, open with user
+        // presence, survival across a rebuilt binary) and exits, instead of
+        // the normal launch.
+        if SecretsSelfTest.isRequested {
+            SecretsSelfTest.runAndExit()
+        }
+
         UserDefaults.standard.register(defaults: [
             SettingsKeys.historyCap: 200,
             SettingsKeys.retentionDays: 30,
