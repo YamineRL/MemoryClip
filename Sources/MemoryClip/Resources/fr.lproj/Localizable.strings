@@ -504,5 +504,5 @@
 "Copy something in a language you do not read and the panel's preview shows it in the language chosen above, over the text as it was copied. It happens when you open the preview, not when you copy — a clipboard is mostly things nobody reads twice — and each clip is translated once and remembered." = "Copiez quelque chose dans une langue que vous ne lisez pas et l’aperçu du panneau l’affiche dans la langue choisie ci-dessus, au-dessus du texte tel qu’il a été copié. Cela se produit à l’ouverture de l’aperçu, pas à la copie — un presse-papiers contient surtout des choses que personne ne relit — et chaque clip est traduit une fois puis mémorisé.";
 
 /* App Intents (Shortcuts, Spotlight). */
-"Nothing copied yet" = "Rien n'a encore été copié";
-"Latest clip has no text" = "Le dernier clip n'a pas de texte";
+"Nothing copied yet" = "Rien n’a encore été copié";
+"Latest clip has no text" = "Le dernier clip n’a pas de texte";
