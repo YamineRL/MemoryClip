@@ -57,7 +57,8 @@
 "Export your entire clipboard history?" = "Export your entire clipboard history?";
 "every clip's text, source app and timestamps" = "every clip's text, source app and timestamps";
 "every clip's text, source app, timestamps and Base64 copies of image and rich-text clips" = "every clip's text, source app, timestamps and Base64 copies of image and rich-text clips";
-"The file is UNENCRYPTED plain text containing %@ — including any passwords, tokens or other secrets you have copied.\n\nMemoryClip writes it readable by your user account only, but anyone who can open the file can read your whole history. Store it somewhere you trust, or delete it when done." = "The file is UNENCRYPTED plain text containing %@ — including any passwords, tokens or other secrets you have copied.\n\nMemoryClip writes it readable by your user account only, but anyone who can open the file can read your whole history. Store it somewhere you trust, or delete it when done.";
+"The file is UNENCRYPTED plain text containing %@ — including any secrets you kept as ordinary clips.\n\nMemoryClip writes it readable by your user account only, but anyone who can open the file can read your whole history. Store it somewhere you trust, or delete it when done." = "The file is UNENCRYPTED plain text containing %@ — including any secrets you kept as ordinary clips.\n\nMemoryClip writes it readable by your user account only, but anyone who can open the file can read your whole history. Store it somewhere you trust, or delete it when done.";
+"%d secrets are not exported." = "%d secrets are not exported.";
 "Export…" = "Export…";
 "Import…" = "Import…";
 "Unlock MemoryClip to import clipboard history" = "Unlock MemoryClip to import clipboard history";
@@ -515,3 +516,59 @@
 "example.com" = "example.com";
 "Add" = "Add";
 "A copied web address loses the identifiers that name who forwarded it — igsh, fbclid, utm_source and the rest — before it reaches the clipboard, so what you paste is the clean address. Every cleaned clip keeps the original, which the panel's preview can hand back. Addresses carrying a token, a code or a signature are never touched." = "A copied web address loses the identifiers that name who forwarded it — igsh, fbclid, utm_source and the rest — before it reaches the clipboard, so what you paste is the clean address. Every cleaned clip keeps the original, which the panel's preview can hand back. Addresses carrying a token, a code or a signature are never touched.";
+
+/* Secrets. */
+"Secret" = "Secret";
+"Locked" = "Locked";
+"Secret, %@" = "Secret, %@";
+"forgets in %d min" = "forgets in %d min";
+"Secret · forgets in %d min" = "Secret · forgets in %d min";
+"Show" = "Show";
+"Hide" = "Hide";
+"Copy Secret" = "Copy Secret";
+"Not a Secret" = "Not a Secret";
+"Mark as Secret" = "Mark as Secret";
+"Not authenticated." = "Not authenticated.";
+"This secret could not be opened." = "This secret could not be opened.";
+"No longer a secret." = "No longer a secret.";
+"Revealed. Hides in %d seconds." = "Revealed. Hides in %d seconds.";
+"Hidden." = "Hidden.";
+"Hides in %d s" = "Hides in %d s";
+"or press Space" = "or press Space";
+"Return pastes it, after Touch ID." = "Return pastes it, after Touch ID.";
+"from %@ · %@" = "from %@ · %@";
+"MemoryClip now keeps secrets encrypted" = "MemoryClip now keeps secrets encrypted";
+"Settings → Privacy → Secrets" = "Settings → Privacy → Secrets";
+
+/* Secrets — Settings pane. */
+"Secrets" = "Secrets";
+"When you copy a secret" = "When you copy a secret";
+"Keep it encrypted" = "Keep it encrypted";
+"Don't keep it" = "Don't keep it";
+"Keep it like any other clip" = "Keep it like any other clip";
+"Secret-looking clips are sealed with a key that lives in this Mac's Secure Enclave and never leaves it. Touch ID — or your password — is what shows or pastes one." = "Secret-looking clips are sealed with a key that lives in this Mac's Secure Enclave and never leaves it. Touch ID — or your password — is what shows or pastes one.";
+"Secret-looking clips are never stored. The clipboard itself is untouched — you can still paste what you copied." = "Secret-looking clips are never stored. The clipboard itself is untouched — you can still paste what you copied.";
+"Copied secrets are stored like any other clip, searchable and readable by anyone who can open the panel." = "Copied secrets are stored like any other clip, searchable and readable by anyone who can open the panel.";
+"This Mac cannot protect secrets with Touch ID, so secret-looking clips are not kept." = "This Mac cannot protect secrets with Touch ID, so secret-looking clips are not kept.";
+"Also treat long random strings as secrets" = "Also treat long random strings as secrets";
+"Catches tokens nobody wrote a pattern for — a 40-character mix of letters and digits that is not a word. Off, only the named patterns below count." = "Catches tokens nobody wrote a pattern for — a 40-character mix of letters and digits that is not a word. Off, only the named patterns below count.";
+"Forget one-time codes after 10 minutes" = "Forget one-time codes after 10 minutes";
+"Clear the clipboard 90 seconds after pasting a secret" = "Clear the clipboard 90 seconds after pasting a secret";
+"Encrypt %d Secrets…" = "Encrypt %d Secrets…";
+"Already in your history" = "Already in your history";
+"%d clips already in your history look like secrets. Sealing them replaces each clip's text with ciphertext, in place — nothing is re-copied." = "%d clips already in your history look like secrets. Sealing them replaces each clip's text with ciphertext, in place — nothing is re-copied.";
+"Done: %d secrets encrypted." = "Done: %d secrets encrypted.";
+"What counts as a secret" = "What counts as a secret";
+"The whole clip has to match, not just part of it — a password inside a paragraph is left alone. One-time codes are only recognised in Messages and Mail." = "The whole clip has to match, not just part of it — a password inside a paragraph is left alone. One-time codes are only recognised in Messages and Mail.";
+
+/* Secrets — the catalogue's fixed labels. */
+"Private key" = "Private key";
+"AWS access key" = "AWS access key";
+"GitHub token" = "GitHub token";
+"API key" = "API key";
+"Slack token" = "Slack token";
+"Stripe key" = "Stripe key";
+"JWT" = "JWT";
+"Connection string" = "Connection string";
+"One-time code" = "One-time code";
+"Token" = "Token";

@@ -90,6 +90,11 @@ final class PanelUIState: ObservableObject {
     /// Clips whose note export has started and not yet finished.
     @Published var notesInFlight: Set<UUID> = []
 
+    /// The one-line answer a refused or failed secret open leaves for the
+    /// locked preview pane ("Not authenticated."). Written by the paste
+    /// action, cleared when a reveal is retried or the pane closes.
+    @Published var secretNotice: String?
+
     /// The stored height, falling back to the default when nothing (not even
     /// a registered default) has been written yet.
     private static var storedPreviewHeight: CGFloat {
@@ -168,6 +173,7 @@ final class PanelController: NSObject, NSWindowDelegate {
     private let queueService: QueueService
     private let noteCoordinator: NoteCoordinator
     private let calendarCoordinator: CalendarCoordinator
+    private let secretsService: SecretsService
     private let quickLookController = QuickLookController()
 
     private var panel: KeyablePanel?
@@ -182,7 +188,8 @@ final class PanelController: NSObject, NSWindowDelegate {
         pasteService: PasteService,
         watcher: PasteboardWatcher,
         noteCoordinator: NoteCoordinator,
-        calendarCoordinator: CalendarCoordinator
+        calendarCoordinator: CalendarCoordinator,
+        secretsService: SecretsService
     ) {
         self.store = store
         self.pasteService = pasteService
@@ -191,7 +198,16 @@ final class PanelController: NSObject, NSWindowDelegate {
         self.queueService = QueueService(store: store, pasteService: pasteService)
         self.noteCoordinator = noteCoordinator
         self.calendarCoordinator = calendarCoordinator
+        self.secretsService = secretsService
         super.init()
+
+        // Secrets inside a queue run paste through the service, which opens
+        // each cipher behind one shared prompt (the sealer's reuse window)
+        // and writes the plaintext concealed.
+        queueService.secretPaste = { [weak self] item, target in
+            guard let self else { return .failed }
+            return await self.secretsService.pasteOutcome(item, target: target)
+        }
 
         qrController.panelFrame = { [weak self] in
             self?.panel?.frame ?? .zero
@@ -376,6 +392,22 @@ final class PanelController: NSObject, NSWindowDelegate {
             paste: { [weak self] item, plain in
                 guard let self else { return }
                 let target = self.previousApp
+                // A secret's plaintext is in the vault, not the row: the
+                // open must happen while the panel is still up (it owns the
+                // "Not authenticated." line), and only a successful open
+                // hides the panel and writes. A refused prompt leaves
+                // everything where it was.
+                if item.isSecret {
+                    Task { @MainActor [weak self] in
+                        guard let self else { return }
+                        if await self.secretsService.paste(item, target: target) {
+                            self.hide(restorePrevious: false)
+                        } else {
+                            self.uiState.secretNotice = loc("Not authenticated.")
+                        }
+                    }
+                    return
+                }
                 self.hide(restorePrevious: false)
                 self.pasteService.paste(item, plainOnly: plain, target: target)
             },
@@ -397,6 +429,15 @@ final class PanelController: NSObject, NSWindowDelegate {
             },
             copyOnly: { [weak self] item in
                 guard let self else { return }
+                // A secret's payload never left the vault: ⌘C on one is an
+                // authenticated open plus a concealed write, not the plain
+                // `pasteService.write` path the row has nothing to feed.
+                if item.isSecret {
+                    Task { @MainActor [weak self] in
+                        _ = await self?.secretsService.copy(item)
+                    }
+                    return
+                }
                 if self.pasteService.write(item, plainOnly: false) {
                     self.watcher.noteOwnWrite()
                     self.store.markUsed(item)
@@ -461,6 +502,20 @@ final class PanelController: NSObject, NSWindowDelegate {
             },
             quickLook: { [weak self] items, index, onClose in
                 self?.quickLookController.show(items: items, startingAt: index, onClose: onClose)
+            },
+            revealSecret: { [weak self] item in
+                guard let self else { return .failure(SecretSealerError.malformedSealedData) }
+                return await self.secretsService.reveal(item)
+            },
+            demoteSecret: { [weak self] item in
+                guard let self else { return false }
+                return await self.secretsService.markNotSecret(item)
+            },
+            promoteSecret: { [weak self] item in
+                _ = self?.secretsService.markAsSecret(item)
+            },
+            copyConcealed: { [weak self] item, text in
+                _ = self?.pasteService.copyConcealed(text: text, item: item)
             }
         )
     }
@@ -572,6 +627,11 @@ final class PanelController: NSObject, NSWindowDelegate {
 
             self.ensurePanel()
             guard let panel = self.panel else { return }
+
+            // Panel-open is one of the two expiry checkpoints (the other is
+            // the launch maintenance pass): codes whose ten minutes are up
+            // are gone before the list is drawn.
+            self.store.expireSecrets()
 
             // Remember the app that owned focus before we opened, so paste can
             // restore it. Never record ourselves as the target.

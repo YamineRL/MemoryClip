@@ -69,6 +69,11 @@ final class PasteService {
     /// through a private `NSPasteboard(name:)` instead of the user's clipboard.
     private let pasteboard: NSPasteboard
 
+    /// The pending wipe of a concealed write, so the next one can replace it:
+    /// a timer set on the OLD clipboard must never clear the NEW one's
+    /// contents early.
+    private var clipboardClearTask: Task<Void, Never>?
+
     init(store: ClipStore, watcher: PasteboardWatcher, pasteboard: NSPasteboard = .general) {
         self.store = store
         self.watcher = watcher
@@ -84,6 +89,12 @@ final class PasteService {
     /// text stored, the plain text is derived from the RTF rather than
     /// silently pasting an empty string.
     static func payload(for item: ClipItem, plainOnly: Bool) -> Payload? {
+        // A secret row holds no payload — its plaintext lives in the vault's
+        // cipher — so there is nothing here to write, and nothing for a drag
+        // provider to carry out of the panel. The paths that *should* write
+        // a secret's plaintext live on `SecretsService`, which opens the
+        // cipher behind Touch ID and writes the result concealed.
+        guard !item.isSecret else { return nil }
         switch item.kind {
         case .text:
             guard let text = item.text else { return nil }
@@ -181,6 +192,86 @@ final class PasteService {
         guard !text.isEmpty else { return false }
         Payload(entries: [.string(.string, text)]).apply(to: target ?? pasteboard)
         return true
+    }
+
+    // MARK: Concealed writes (secrets)
+
+    /// The pasteboard opt-out marker credential managers put on their writes:
+    /// `org.nspasteboard.ConcealedType`, the "the app considers this
+    /// confidential" signal. Clipboard tools that honour it — MemoryClip's
+    /// own watcher included — leave the write alone.
+    static let concealedType = NSPasteboard.PasteboardType("org.nspasteboard.ConcealedType")
+
+    /// Write `text` as a concealed string: the plaintext rides as `.string`,
+    /// with the concealed marker beside it, and the clear-after-paste pass is
+    /// armed. For a secret whose only other home is the vault's cipher.
+    @discardableResult
+    func writeConcealed(_ text: String, to target: NSPasteboard? = nil) -> Bool {
+        guard !text.isEmpty else { return false }
+        let board = target ?? pasteboard
+        Payload(entries: [
+            .string(.string, text),
+            // The marker's own value is a sentinel, not a second copy of the
+            // secret: the type's presence is the whole signal.
+            .string(Self.concealedType, "1"),
+        ]).apply(to: board)
+        scheduleClipboardClear(on: board)
+        return true
+    }
+
+    /// Copy-only concealed write: own-write suppressed, the clip marked used.
+    @discardableResult
+    func copyConcealed(text: String, item: ClipItem, to target: NSPasteboard? = nil) -> Bool {
+        guard writeConcealed(text, to: target) else { return false }
+        watcher.noteOwnWrite()
+        store.markUsed(item)
+        return true
+    }
+
+    /// The paste spelling: concealed write plus, when auto-paste is on, the
+    /// synthetic ⌘V into `target`. Fire-and-forget like `paste`.
+    @discardableResult
+    func pasteConcealed(text: String, item: ClipItem, target: NSRunningApplication?) -> Bool {
+        guard copyConcealed(text: text, item: item) else { return false }
+        guard Self.isAutoPasteEnabled, let target else { return true }
+        Task { @MainActor [weak self] in
+            _ = await self?.activateAndPost(target: target)
+        }
+        return true
+    }
+
+    /// The queue-run spelling: waits for the ⌘V to land before the next clip
+    /// may overwrite the pasteboard, exactly like `pasteAndWait`.
+    @discardableResult
+    func pasteConcealedAndWait(
+        text: String,
+        item: ClipItem,
+        target: NSRunningApplication?
+    ) async -> PasteOutcome {
+        guard copyConcealed(text: text, item: item) else { return .failed }
+        guard Self.isAutoPasteEnabled, let target else { return .copiedOnly }
+        guard await activateAndPost(target: target) else { return .targetLost }
+        try? await Task.sleep(for: .seconds(Self.settleDelay))
+        return .pasted
+    }
+
+    /// Arm the clear-after-paste pass (`SecretSettings.clipboardClearDelay`,
+    /// owner decision D3): the board is emptied that many seconds after the
+    /// concealed write — but ONLY when nothing has replaced it since.
+    /// `changeCount` is the check, so the timer can never destroy a copy the
+    /// user made after the paste.
+    private func scheduleClipboardClear(on board: NSPasteboard) {
+        clipboardClearTask?.cancel()
+        clipboardClearTask = nil
+        guard SecretSettings.clearsClipboardAfterPaste else { return }
+        let expected = board.changeCount
+        clipboardClearTask = Task { @MainActor [weak self, weak board] in
+            try? await Task.sleep(for: .seconds(SecretSettings.clipboardClearDelay))
+            guard !Task.isCancelled, let self, let board else { return }
+            guard board.changeCount == expected else { return }
+            board.clearContents()
+            self.watcher.noteOwnWrite()
+        }
     }
 
     // MARK: Pasting

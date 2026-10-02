@@ -20,6 +20,23 @@ struct PreviewView: View {
     /// can copy it. Nil when nothing is selected.
     var onSelectionChange: ((String?) -> Void)? = nil
 
+    /// A revealed secret's plaintext, while the reveal lives. Nil is the
+    /// locked state; the pane never reads `secretCipher` itself.
+    var secretText: String? = nil
+    /// When the reveal closes — the countdown's deadline and the expiry
+    /// task's key.
+    var secretHidesAt: Date? = nil
+    /// The one line a refused or failed reveal leaves on the locked pane.
+    var secretNotice: String? = nil
+    /// Locked pane's Show button (and Space's target): opens the cipher.
+    var onRevealSecret: (() -> Void)? = nil
+    /// Revealed pane's Hide button and the countdown's expiry: conceals.
+    var onHideSecret: (() -> Void)? = nil
+    /// Revealed pane's "Not a Secret": authenticates and demotes the row.
+    var onDemoteSecret: (() -> Void)? = nil
+    /// Concealed-write the plaintext (whole or selected) to the pasteboard.
+    var onCopySecret: ((String) -> Void)? = nil
+
     /// Detection/calc results are cached per content change rather than
     /// recomputed on every body pass — scanning a multi-megabyte clip on the
     /// main actor for each hover or selection change is not affordable.
@@ -104,8 +121,19 @@ struct PreviewView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .contentShape(Rectangle())
         .contextMenu {
-            ForEach(copyOptions) { option in
-                Button(option.title) { PreviewCopy.perform(option, using: onCopy) }
+            if item.isSecret {
+                // Concealed writes only — the menu must never route a secret
+                // through `onCopy`, which writes plain text.
+                if let secretText {
+                    if let selection, !selection.isEmpty {
+                        Button(loc("Copy Selection")) { onCopySecret?(selection) }
+                    }
+                    Button(loc("Copy Secret")) { onCopySecret?(secretText) }
+                }
+            } else {
+                ForEach(copyOptions) { option in
+                    Button(option.title) { PreviewCopy.perform(option, using: onCopy) }
+                }
             }
         }
         // A selection belongs to the clip it was made in.
@@ -114,6 +142,19 @@ struct PreviewView: View {
         .task(id: contentKey) { await refreshAnalysis() }
         .task(id: contentKey) { await loadFullImage() }
         .task(id: translationKey) { await refreshTranslation() }
+        // The reveal's deadline: sleeping to it rather than polling, so the
+        // conceal lands on the second and dies with the pane.
+        .task(id: secretHidesAt) {
+            guard let secretHidesAt else { return }
+            let wait = secretHidesAt.timeIntervalSinceNow
+            guard wait > 0 else {
+                onHideSecret?()
+                return
+            }
+            try? await Task.sleep(for: .seconds(wait))
+            guard !Task.isCancelled else { return }
+            onHideSecret?()
+        }
     }
 
     /// The one line a cleaned link gets: what was taken off it, and the way
@@ -298,6 +339,10 @@ struct PreviewView: View {
     /// run store's, so neither dies when this pane does — which it does every
     /// time MemoryClip stops being the frontmost app.
     private func refreshTranslation() async {
+        // A secret row carries no text to translate, and its ciphertext must
+        // never reach a model — the presenter's input is `item.text`, which
+        // is nil, but the guard says so rather than relying on it.
+        guard !item.isSecret else { return }
         // The previous clip's measurement says nothing about this one's.
         translationTextHeight = 0
         await presenter.refresh(
@@ -312,10 +357,14 @@ struct PreviewView: View {
 
     @ViewBuilder
     private var content: some View {
-        // The screenshot check comes first: such a clip's kind is `.file`,
-        // but a list of one path is not what the user opened the preview to
-        // see — the picture and its text are.
-        if item.isScreenshot {
+        // The secret check comes first: the row's payload is ciphertext, so
+        // every other branch would draw an empty pane.
+        if item.isSecret {
+            secretContent
+        } else if item.isScreenshot {
+            // The screenshot check comes first: such a clip's kind is
+            // `.file`, but a list of one path is not what the user opened
+            // the preview to see — the picture and its text are.
             imageContent
         } else {
             switch item.kind {
@@ -329,6 +378,106 @@ struct PreviewView: View {
                 fileContent
             }
         }
+    }
+
+    /// What a secret clip's pane shows, in its two states.
+    ///
+    /// Locked: the catalogue label, the mask, the source and age, and the
+    /// way in — the pane is the feature's one trusted surface, so this is
+    /// where the Touch ID prompt is asked for. Revealed: the plaintext,
+    /// monospaced, under a live countdown, with the three things a revealed
+    /// secret can do. `secretText` alone tells the two states apart; a nil
+    /// one means locked, whatever `isSecret` says.
+    @ViewBuilder
+    private var secretContent: some View {
+        if let secretText {
+            VStack(alignment: .leading, spacing: Design.Space.roomy) {
+                ScrollView {
+                    SelectableText(
+                        text: secretText,
+                        size: bodyFontSize,
+                        onSelectionChange: report,
+                        monospaced: true
+                    )
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .scrollMoreHint()
+
+                HStack(spacing: Design.Space.normal) {
+                    if let secretHidesAt {
+                        TimelineView(.periodic(from: .now, by: 1)) { context in
+                            Text(loc(
+                                "Hides in %d s",
+                                max(0, Int(secretHidesAt.timeIntervalSince(context.date).rounded(.up)))
+                            ))
+                            .font(Design.Typography.meta)
+                            .monospacedDigit()
+                            .foregroundStyle(Color(nsColor: .secondaryLabelColor))
+                        }
+                    }
+                    Spacer(minLength: Design.Space.normal)
+                    Button(loc("Copy")) { onCopySecret?(secretText) }
+                    Button(loc("Hide")) { onHideSecret?() }
+                    Button(loc("Not a Secret")) { onDemoteSecret?() }
+                }
+                .controlSize(.small)
+            }
+        } else {
+            VStack(alignment: .leading, spacing: Design.Space.snug) {
+                Image(systemName: "lock.fill")
+                    .font(.system(size: 22, weight: .regular))
+                    .foregroundStyle(Color(nsColor: .secondaryLabelColor))
+                    .accessibilityHidden(true)
+                Text(item.secretLabel.map(loc) ?? loc("Token"))
+                    .font(.system(size: bodyFontSize, weight: .semibold))
+                    .foregroundStyle(Color(nsColor: .labelColor))
+                if let mask = item.secretMasked, !mask.isEmpty {
+                    Text(mask)
+                        .font(.system(size: bodyFontSize, design: .monospaced))
+                        .foregroundStyle(Color(nsColor: .secondaryLabelColor))
+                        .textSelection(.enabled)
+                }
+                Text(secretByline)
+                    .font(Design.Typography.meta)
+                    .foregroundStyle(Color(nsColor: .secondaryLabelColor))
+                if let secretNotice {
+                    Text(secretNotice)
+                        .font(Design.Typography.meta)
+                        .foregroundStyle(Color(nsColor: .secondaryLabelColor))
+                }
+                HStack(spacing: Design.Space.snug) {
+                    Button {
+                        onRevealSecret?()
+                    } label: {
+                        Label(loc("Show"), systemImage: "touchid")
+                    }
+                    Text(loc("or press Space"))
+                        .font(Design.Typography.meta)
+                        .foregroundStyle(Color(nsColor: .tertiaryLabelColor))
+                }
+                .controlSize(.small)
+                .padding(.top, Design.Space.snug)
+                Text(loc("Return pastes it, after Touch ID."))
+                    .font(Design.Typography.meta)
+                    .foregroundStyle(Color(nsColor: .tertiaryLabelColor))
+            }
+            // The locked pane says what it is, never what it holds — the
+            // mask's characters are the only plaintext on it.
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel(ClipDisplay.secretRowLabel(
+                label: item.secretLabel.map { loc($0) },
+                appName: item.sourceAppName,
+                relativeTime: item.createdAt.formatted(.relative(presentation: .named)),
+                expiresAt: item.expiresAt
+            ))
+        }
+    }
+
+    /// "from Terminal · 2 minutes ago" — the locked pane's provenance line.
+    private var secretByline: String {
+        let app = (item.sourceAppName ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        let time = item.createdAt.formatted(.relative(presentation: .named))
+        return app.isEmpty ? time : loc("from %@ · %@", app, time)
     }
 
     /// Selectable, scrollable full text (covers .text, .richText and .link —
@@ -530,7 +679,7 @@ struct PreviewView: View {
         case .email: return loc("Email")
         case .url: return "URL"
         case .phone: return loc("Phone")
-        case .jwt: return "JWT"
+        case .jwt: return loc("JWT")
         case .json: return loc("JSON")
         }
     }
@@ -558,6 +707,9 @@ struct SelectableText: NSViewRepresentable {
     /// Called with the selected substring, or nil when the selection empties,
     /// so the pane above can offer it to ⌘C.
     var onSelectionChange: ((String?) -> Void)? = nil
+    /// Monospaced face — revealed secrets are token strings, and a
+    /// proportional font hides exactly the characters that matter (l/1/I).
+    var monospaced: Bool = false
 
     func makeCoordinator() -> SelectionReporter { SelectionReporter() }
 
@@ -589,7 +741,9 @@ struct SelectableText: NSViewRepresentable {
         context.coordinator.onSelectionChange = onSelectionChange
         if view.string != text { view.string = text }
         // After `string`, which resets both.
-        view.font = NSFont.systemFont(ofSize: size)
+        view.font = monospaced
+            ? NSFont.monospacedSystemFont(ofSize: size, weight: .regular)
+            : NSFont.systemFont(ofSize: size)
         view.textColor = .labelColor
     }
 

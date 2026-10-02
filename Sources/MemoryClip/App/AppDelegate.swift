@@ -80,6 +80,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         ExcludedApps.registerDefaults()
         AppLockService.registerDefaults()
 
+        // Secrets defaults: keep recognised secrets sealed under the Secure
+        // Enclave (on, for new and existing users), with its three switches
+        // on (generic tokens, code expiry, clipboard clearing).
+        SecretSettings.registerDefaults()
+
         // The apps a paste is always stripped to plain text for, seeded with
         // the terminals and editors (`PlainPasteApps.defaultBundleIDs`).
         PlainPasteApps.registerDefaults()
@@ -128,18 +133,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         screenshotWatcher = ScreenshotWatcher(store: store)
         noteCoordinator = NoteCoordinator(store: store)
         calendarCoordinator = CalendarCoordinator(store: store)
+        let secretsService = SecretsService(store: store, pasteService: pasteService)
         panelController = PanelController(
             store: store,
             pasteService: pasteService,
             watcher: watcher,
             noteCoordinator: noteCoordinator,
-            calendarCoordinator: calendarCoordinator
+            calendarCoordinator: calendarCoordinator,
+            secretsService: secretsService
         )
         statusController = StatusController(
             store: store,
             watcher: watcher,
             pasteService: pasteService,
-            panelController: panelController
+            panelController: panelController,
+            secretsService: secretsService
         )
 
         watcher.sourceAppProvider = { [weak self] in

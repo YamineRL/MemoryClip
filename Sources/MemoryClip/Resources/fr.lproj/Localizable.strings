@@ -57,7 +57,8 @@
 "Export your entire clipboard history?" = "Exporter tout l’historique du presse-papiers ?";
 "every clip's text, source app and timestamps" = "le texte, l’app source et les horodatages de chaque clip";
 "every clip's text, source app, timestamps and Base64 copies of image and rich-text clips" = "le texte, l’app source et les horodatages de chaque clip, ainsi que des copies en Base64 des images et du texte enrichi";
-"The file is UNENCRYPTED plain text containing %@ — including any passwords, tokens or other secrets you have copied.\n\nMemoryClip writes it readable by your user account only, but anyone who can open the file can read your whole history. Store it somewhere you trust, or delete it when done." = "Le fichier est du texte brut NON CHIFFRÉ contenant %@ — y compris les mots de passe, jetons et autres secrets que vous avez copiés.\n\nMemoryClip ne le rend lisible que par votre compte utilisateur, mais quiconque parvient à ouvrir ce fichier peut lire tout votre historique. Rangez-le à un endroit sûr, ou supprimez-le une fois terminé.";
+"The file is UNENCRYPTED plain text containing %@ — including any secrets you kept as ordinary clips.\n\nMemoryClip writes it readable by your user account only, but anyone who can open the file can read your whole history. Store it somewhere you trust, or delete it when done." = "Le fichier est du texte brut NON CHIFFRÉ contenant %@ — y compris les secrets que vous avez gardés comme des clips ordinaires.\n\nMemoryClip ne le rend lisible que par votre compte utilisateur, mais quiconque parvient à ouvrir ce fichier peut lire tout votre historique. Rangez-le à un endroit sûr, ou supprimez-le une fois terminé.";
+"%d secrets are not exported." = "%d secrets ne sont pas exportés.";
 "Export…" = "Exporter…";
 "Import…" = "Importer…";
 "Unlock MemoryClip to import clipboard history" = "Déverrouillez MemoryClip pour importer un historique de presse-papiers";
@@ -515,3 +516,59 @@
 "example.com" = "exemple.com";
 "Add" = "Ajouter";
 "A copied web address loses the identifiers that name who forwarded it — igsh, fbclid, utm_source and the rest — before it reaches the clipboard, so what you paste is the clean address. Every cleaned clip keeps the original, which the panel's preview can hand back. Addresses carrying a token, a code or a signature are never touched." = "Une adresse web copiée perd les identifiants qui disent qui l’a transmise — igsh, fbclid, utm_source et les autres — avant d’arriver dans le presse-papiers : ce que vous collez est l’adresse nettoyée. Chaque clip nettoyé conserve l’original, que l’aperçu du panneau peut vous rendre. Les adresses portant un token, un code ou une signature ne sont jamais touchées.";
+
+/* Secrets. */
+"Secret" = "Secret";
+"Locked" = "Verrouillé";
+"Secret, %@" = "Secret : %@";
+"forgets in %d min" = "oublié dans %d min";
+"Secret · forgets in %d min" = "Secret · oublié dans %d min";
+"Show" = "Afficher";
+"Hide" = "Masquer";
+"Copy Secret" = "Copier le secret";
+"Not a Secret" = "Pas un secret";
+"Mark as Secret" = "Marquer comme secret";
+"Not authenticated." = "Non authentifié.";
+"This secret could not be opened." = "Ce secret n’a pas pu être ouvert.";
+"No longer a secret." = "N’est plus un secret.";
+"Revealed. Hides in %d seconds." = "Révélé. Se masque dans %d secondes.";
+"Hidden." = "Masqué.";
+"Hides in %d s" = "Se masque dans %d s";
+"or press Space" = "ou presser Espace";
+"Return pastes it, after Touch ID." = "Retour le colle, après Touch ID.";
+"from %@ · %@" = "depuis %@ · %@";
+"MemoryClip now keeps secrets encrypted" = "MemoryClip garde désormais les secrets chiffrés";
+"Settings → Privacy → Secrets" = "Réglages → Confidentialité → Secrets";
+
+/* Secrets — Settings pane. */
+"Secrets" = "Secrets";
+"When you copy a secret" = "Quand vous copiez un secret";
+"Keep it encrypted" = "Le garder chiffré";
+"Don't keep it" = "Ne pas le garder";
+"Keep it like any other clip" = "Le garder comme n’importe quel clip";
+"Secret-looking clips are sealed with a key that lives in this Mac's Secure Enclave and never leaves it. Touch ID — or your password — is what shows or pastes one." = "Les clips qui ressemblent à des secrets sont scellés avec une clé qui vit dans la Secure Enclave de ce Mac et n’en sort jamais. Touch ID — ou votre mot de passe — est ce qui les affiche ou les colle.";
+"Secret-looking clips are never stored. The clipboard itself is untouched — you can still paste what you copied." = "Les clips qui ressemblent à des secrets ne sont jamais conservés. Le presse-papiers n’est pas touché — vous pouvez toujours coller ce que vous avez copié.";
+"Copied secrets are stored like any other clip, searchable and readable by anyone who can open the panel." = "Les secrets copiés sont conservés comme n’importe quel clip, cherchables et lisibles par quiconque peut ouvrir le panneau.";
+"This Mac cannot protect secrets with Touch ID, so secret-looking clips are not kept." = "Ce Mac ne peut pas protéger les secrets avec Touch ID, donc les clips qui ressemblent à des secrets ne sont pas conservés.";
+"Also treat long random strings as secrets" = "Traiter aussi les longues chaînes aléatoires comme des secrets";
+"Catches tokens nobody wrote a pattern for — a 40-character mix of letters and digits that is not a word. Off, only the named patterns below count." = "Repère les jetons pour lesquels personne n’a écrit de motif — un mélange de 40 lettres et chiffres qui n’est pas un mot. Désactivée, seuls les motifs nommés ci-dessous comptent.";
+"Forget one-time codes after 10 minutes" = "Oublier les codes à usage unique après 10 minutes";
+"Clear the clipboard 90 seconds after pasting a secret" = "Vider le presse-papiers 90 secondes après avoir collé un secret";
+"Encrypt %d Secrets…" = "Chiffrer %d secrets…";
+"Already in your history" = "Déjà dans votre historique";
+"%d clips already in your history look like secrets. Sealing them replaces each clip's text with ciphertext, in place — nothing is re-copied." = "%d clips déjà dans votre historique ressemblent à des secrets. Le scellement remplace le texte de chaque clip par du chiffré, sur place — rien n’est recopié.";
+"Done: %d secrets encrypted." = "Terminé : %d secrets chiffrés.";
+"What counts as a secret" = "Ce qui compte comme un secret";
+"The whole clip has to match, not just part of it — a password inside a paragraph is left alone. One-time codes are only recognised in Messages and Mail." = "Le clip entier doit correspondre, pas seulement une partie — un mot de passe au milieu d’un paragraphe est laissé tranquille. Les codes à usage unique ne sont reconnus que dans Messages et Mail.";
+
+/* Secrets — the catalogue's fixed labels. */
+"Private key" = "Clé privée";
+"AWS access key" = "Clé d’accès AWS";
+"GitHub token" = "Jeton GitHub";
+"API key" = "Clé d’API";
+"Slack token" = "Jeton Slack";
+"Stripe key" = "Clé Stripe";
+"JWT" = "JWT";
+"Connection string" = "Chaîne de connexion";
+"One-time code" = "Code à usage unique";
+"Token" = "Jeton";

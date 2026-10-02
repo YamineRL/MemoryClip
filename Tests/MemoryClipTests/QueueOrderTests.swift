@@ -184,4 +184,47 @@ final class QueueServiceRunTests: XCTestCase {
         XCTAssertTrue(queue.isEmpty)
         XCTAssertEqual(store.recent(limit: 5).filter { $0.lastUsedAt != nil }.count, 2)
     }
+
+    /// A queued secret holds no payload `pasteAndWait` could write — it goes
+    /// through the wired `secretPaste` seam instead, and its outcome counts
+    /// like any other clip's.
+    func testSecretClipPastesThroughTheSecretSeam() async throws {
+        let secret = ClipItem(kind: .text, text: nil, contentHash: "secret:\(UUID().uuidString)")
+        secret.isSecret = true
+        secret.secretCipher = Data([0xAA])
+        store.context.insert(secret)
+        store.save()
+        let ordinary = insertClips(1)[0]
+
+        var opened: [UUID] = []
+        queue.secretPaste = { item, _ in
+            opened.append(item.uuid)
+            return .copiedOnly
+        }
+        queue.toggle(secret)
+        queue.toggle(ordinary)
+
+        queue.pasteAll(target: nil)
+        await waitUntilIdle()
+
+        XCTAssertEqual(opened, [secret.uuid])
+        XCTAssertNotNil(ordinary.lastUsedAt)
+        XCTAssertTrue(queue.isEmpty)
+    }
+
+    /// With no seam wired a secret is skipped outright — its mask must never
+    /// be what lands on the pasteboard.
+    func testSecretClipWithoutASeamIsSkipped() async throws {
+        let secret = ClipItem(kind: .text, text: nil, contentHash: "secret:\(UUID().uuidString)")
+        secret.isSecret = true
+        store.context.insert(secret)
+        store.save()
+
+        queue.toggle(secret)
+        queue.pasteAll(target: nil)
+        await waitUntilIdle()
+
+        XCTAssertNil(secret.lastUsedAt)
+        XCTAssertTrue(queue.isEmpty)
+    }
 }

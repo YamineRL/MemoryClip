@@ -123,6 +123,19 @@ protocol ClipDisplayable {
     /// Whether this file clip is a screenshot picked up from the screenshot
     /// folder.
     var isScreenshot: Bool { get }
+    /// Whether the row is a sealed secret. Its plaintext fields are nil by
+    /// construction, so a filter asking about `text` never finds it — only
+    /// the label and mask below are searchable.
+    var isSecret: Bool { get }
+    /// The detector's fixed catalogue label ("AWS access key"). Storing the
+    /// English string is what makes `aws` find the clip in SQL without the
+    /// row holding any plaintext.
+    var secretLabel: String? { get }
+    /// The stored mask ("AKIA••••••••••••7Q2X"): the only plaintext-derived
+    /// characters a secret row keeps.
+    var secretMasked: String? { get }
+    /// When a one-time code is deleted; nil for anything else.
+    var expiresAt: Date? { get }
 }
 
 extension ClipItem: ClipDisplayable {}
@@ -139,9 +152,19 @@ extension ClipDisplayable {
     var translatedText: String? { nil }
     var clipTranslationText: String? { nil }
     var isScreenshot: Bool { false }
+    var isSecret: Bool { false }
+    var secretLabel: String? { nil }
+    var secretMasked: String? { nil }
+    var expiresAt: Date? { nil }
 
     /// One-line description used for VoiceOver announcements.
     var announcementSummary: String {
+        // A secret row says what it is, never what it holds: the label is a
+        // catalogue string, and the mask's bullets speak as noise.
+        if isSecret {
+            let name = secretLabel.flatMap { $0.isEmpty ? nil : loc($0) } ?? loc("Token")
+            return loc("Secret, %@", name)
+        }
         let raw: String
         // A refined title beats every other summary when there is one: it is
         // a sentence about the content, where the alternatives are a file
@@ -348,6 +371,11 @@ struct ClipFilter: Equatable {
         if item.refinedTags.contains(where: { $0.localizedStandardContains(term) }) { return true }
         if item.colorHex?.localizedStandardContains(term) == true { return true }
         if ClipDisplay.fileURLsMatch(item.fileURLStrings, search: term) { return true }
+        // A secret is findable by its label and mask — "aws", "token", the
+        // vendor prefix it shows — never by its content, which no field on
+        // the row holds.
+        if item.secretLabel?.localizedStandardContains(term) == true { return true }
+        if item.secretMasked?.localizedStandardContains(term) == true { return true }
         if item.sourceAppName?.localizedStandardContains(term) == true { return true }
         return false
     }
@@ -384,6 +412,18 @@ private func clipOneOf(
     PredicateExpressions.build_contains(
         PredicateExpressions.build_Arg(values),
         PredicateExpressions.build_KeyPath(root: PredicateExpressions.build_Arg(item), keyPath: keyPath)
+    )
+}
+
+/// `item[keyPath:] == true` — the Bool sibling of `clipEquals`, for
+/// `isSecret`.
+private func clipIsTrue(
+    _ item: ClipVariable,
+    _ keyPath: any KeyPath<ClipItem, Bool> & Sendable
+) -> some StandardPredicateExpression<Bool> {
+    PredicateExpressions.build_Equal(
+        lhs: PredicateExpressions.build_KeyPath(root: PredicateExpressions.build_Arg(item), keyPath: keyPath),
+        rhs: PredicateExpressions.build_Arg(true)
     )
 }
 
@@ -505,11 +545,17 @@ extension ClipFilter {
                     clipConstant(!searching),
                     clipOr(
                         clipOr(
-                            // File clips carry their searchable content in
-                            // `fileURLStrings`, which SwiftData stores as one
-                            // opaque blob; they are admitted here and sifted
-                            // by `refine(_:)`.
-                            clipOneOf(item, \.kindRaw, fileKind),
+                            clipOr(
+                                // File clips carry their searchable content in
+                                // `fileURLStrings`, which SwiftData stores as one
+                                // opaque blob; they are admitted here and sifted
+                                // by `refine(_:)`.
+                                clipOneOf(item, \.kindRaw, fileKind),
+                                // Secret rows likewise: their searchable part is
+                                // the label/mask pair, which `refine` checks —
+                                // their `text` is nil by construction.
+                                clipIsTrue(item, \.isSecret)
+                            ),
                             clipContains(item, \.text, needle)
                         ),
                         clipOr(
@@ -543,7 +589,7 @@ extension ClipFilter {
         items.filter { item in
             guard matchesType(item) else { return false }
             guard !search.isEmpty else { return true }
-            guard query.terms.count > 1 || item.kind == .file else { return true }
+            guard query.terms.count > 1 || item.kind == .file || item.isSecret else { return true }
             return matchesSearch(item)
         }
     }
@@ -921,6 +967,24 @@ struct PanelActions {
     /// The completion carries the clip Quick Look was showing when it closed,
     /// so the panel's selection can follow wherever the arrows ended up.
     var quickLook: ([ClipItem], Int, @escaping (UUID) -> Void) -> Void
+    /// Open a secret's cipher; async because the Touch ID prompt blocks.
+    /// The vault's `LAContext` reuse window makes reveals within 60 s of
+    /// each other a single prompt. `@MainActor` because `ClipItem` is a
+    /// main-actor model — the suspend happens inside `SecretsService`'s
+    /// detached open, not by crossing actors with the row in hand.
+    var revealSecret: @MainActor (ClipItem) async -> Result<String, Error>
+    /// "Not a Secret": opens the cipher (the same prompt), then demotes the
+    /// row to an ordinary clip and allow-lists its hash so capture never
+    /// speaks for the same string again.
+    var demoteSecret: @MainActor (ClipItem) async -> Bool
+    /// "Mark as Secret" on an ordinary text clip. Sealing touches only the
+    /// enclave's public key, so it needs no prompt.
+    var promoteSecret: @MainActor (ClipItem) -> Void
+    /// Concealed-write a revealed secret's plaintext (whole, or the selected
+    /// part) to the pasteboard, armed for the clear-after-paste pass. No
+    /// open: the caller already holds the plaintext, which is itself proof
+    /// the user authenticated moments ago.
+    var copyConcealed: @MainActor (ClipItem, String) -> Void
 }
 
 /// The main clip-panel view.
@@ -990,6 +1054,11 @@ struct PanelContentView: View {
     /// What is selected with the mouse in the open preview pane, so ⌘C can
     /// copy it instead of the whole clip. Nil when nothing is selected.
     @State private var previewSelection: String?
+    /// The reveal in flight: which clip's plaintext is in the pane and until
+    /// when. One slot — the pane shows one clip at a time, so a second
+    /// secret's reveal replaces the first rather than stacking on it. Nil
+    /// whenever nothing is revealed; the pane reads nil as "locked".
+    @State private var secretReveal: (uuid: UUID, text: String, hidesAt: Date)?
     @State private var vim = VimNavigator()
     /// Paces the movement keys while one is held down, and says when the
     /// preview pane is allowed to follow — see `HeldKeyPacer`.
@@ -1204,7 +1273,21 @@ struct PanelContentView: View {
                         onTransform: { actions.applyTransform(item, $0) },
                         onCopy: { actions.copyText(item, $0) },
                         paneHeight: resolvedPreviewHeight,
-                        onSelectionChange: { previewSelection = $0 }
+                        onSelectionChange: { previewSelection = $0 },
+                        // `uuid` is checked so a stale reveal can never be
+                        // shown under a different secret's label.
+                        secretText: secretReveal?.uuid == item.uuid && item.isSecret
+                            ? secretReveal?.text : nil,
+                        secretHidesAt: secretReveal?.uuid == item.uuid && item.isSecret
+                            ? secretReveal?.hidesAt : nil,
+                        secretNotice: uiState.secretNotice,
+                        onRevealSecret: { revealSecret(item) },
+                        onHideSecret: { concealSecret() },
+                        onDemoteSecret: { demoteSecret(item) },
+                        onCopySecret: { text in
+                            actions.copyConcealed(item, text)
+                            announce(loc("Copied"))
+                        }
                     )
                     .frame(height: resolvedPreviewHeight)
                     .overlay(alignment: .bottom) {
@@ -1267,6 +1350,11 @@ struct PanelContentView: View {
             selection.clear()
             previewVisible = false
             previewItem = nil
+            previewSelection = nil
+            // The reveal dies with the pane — the panel must never reopen
+            // onto plaintext nobody asked to see.
+            secretReveal = nil
+            uiState.secretNotice = nil
             vim.reset()
             pacer.reset()
             inputMode = .normal
@@ -1565,6 +1653,12 @@ struct PanelContentView: View {
             setMode(.normal)
             return
         }
+        // A revealed secret is its own Esc layer: the first press hides the
+        // plaintext, the second closes the pane.
+        if secretReveal != nil {
+            concealSecret()
+            return
+        }
         if previewVisible {
             closePreview()
             return
@@ -1645,7 +1739,10 @@ struct PanelContentView: View {
                                 onSaveNote: { actions.saveNote(item) },
                                 onAddToCalendar: { actions.addToCalendar(item) },
                                 onOpenNote: { actions.openNote(item) },
-                                onRevealInFinder: { actions.revealInFinder(item) }
+                                onRevealInFinder: { actions.revealInFinder(item) },
+                                onRevealSecret: { revealSecret(item) },
+                                onDemoteSecret: { demoteSecret(item) },
+                                onMarkSecret: { actions.promoteSecret(item) }
                             )
                             .id(item.uuid)
                             .contentShape(Rectangle())
@@ -1844,6 +1941,14 @@ struct PanelContentView: View {
     /// unwinds pane then panel, so nothing is trapped by the extra rung.
     private func escalatePreview() {
         let target = previewVisible ? previewItem ?? selectedItem : nil
+        // Space on a locked secret is its Show button: the pane stays where
+        // a reveal lives, so the second press opens the cipher rather than
+        // closing the pane. Once revealed, Space closes as usual.
+        if let target, target.isSecret, previewVisible,
+           secretReveal?.uuid != target.uuid {
+            revealSecret(target)
+            return
+        }
         switch QuickLook.spaceAction(
             previewVisible: previewVisible,
             canQuickLook: target.map { QuickLook.canPreview($0) } ?? false
@@ -1894,6 +1999,8 @@ struct PanelContentView: View {
         previewVisible = false
         previewItem = nil
         previewSelection = nil
+        secretReveal = nil
+        uiState.secretNotice = nil
         announce(loc("Preview hidden"))
     }
 
@@ -1909,6 +2016,58 @@ struct PanelContentView: View {
             return
         }
         previewItem = item
+        // The pane now shows a different clip: a reveal belongs to the row
+        // it was opened on and cannot follow the selection to another.
+        if secretReveal?.uuid != item.uuid {
+            secretReveal = nil
+            uiState.secretNotice = nil
+        }
+    }
+
+    /// Ask the vault for a locked secret's plaintext. On success the pane
+    /// gets what to show and for how long (D2's 30 s); a refused prompt gets
+    /// the quiet notice instead. The prompt itself happens inside
+    /// `actions.revealSecret` — this only moves its answer onto the screen.
+    private func revealSecret(_ item: ClipItem) {
+        uiState.secretNotice = nil
+        Task { @MainActor in
+            switch await actions.revealSecret(item) {
+            case .success(let text):
+                secretReveal = (
+                    uuid: item.uuid,
+                    text: text,
+                    hidesAt: Date(timeIntervalSinceNow: SecretSettings.revealSeconds)
+                )
+                announce(loc("Revealed. Hides in %d seconds.", Int(SecretSettings.revealSeconds)))
+            case .failure(let error):
+                secretReveal = nil
+                uiState.secretNotice = SecretsService.isAuthCancel(error)
+                    ? loc("Not authenticated.")
+                    : loc("This secret could not be opened.")
+            }
+        }
+    }
+
+    /// Put the plaintext away — countdown over, Hide pressed, Esc's first
+    /// layer. The slot clears before the announcement so nil is never spoken.
+    private func concealSecret() {
+        guard secretReveal != nil else { return }
+        secretReveal = nil
+        announce(loc("Hidden."))
+    }
+
+    /// "Not a Secret": the service authenticates and demotes the row, and
+    /// the pane that was showing ciphertext goes back to an ordinary clip.
+    private func demoteSecret(_ item: ClipItem) {
+        Task { @MainActor in
+            if await actions.demoteSecret(item) {
+                secretReveal = nil
+                uiState.secretNotice = nil
+                announce(loc("No longer a secret."))
+            } else {
+                uiState.secretNotice = loc("This secret could not be opened.")
+            }
+        }
     }
 
     // MARK: Vim mode
@@ -2018,7 +2177,7 @@ struct PanelContentView: View {
         case .pin:
             let chosen = selectedItems
             guard !chosen.isEmpty else { return }
-            for item in chosen { item.isPinned.toggle() }
+            for item in chosen { item.togglePinned() }
             try? modelContext.save()
         case .delete:
             let chosen = selectedItems
@@ -2162,6 +2321,25 @@ struct PanelContentView: View {
     private func copySelected() {
         let chosen = selectedItems
         guard let first = chosen.first else { return }
+        // A secret answers ⌘C in two voices. Revealed: the plaintext (or the
+        // selected part of it) goes out concealed — the reveal that put it
+        // on screen was already the authentication. Locked: the copy is an
+        // open behind Touch ID, which `copyOnly`'s secret branch performs;
+        // nothing is announced because whether it copied is the prompt's to
+        // decide.
+        if first.isSecret {
+            if let reveal = secretReveal, reveal.uuid == first.uuid {
+                let text = PreviewCopy.copyTarget(
+                    selection: previewVisible ? previewSelection : nil,
+                    clipText: reveal.text
+                ) ?? reveal.text
+                actions.copyConcealed(first, text)
+                announce(loc("Copied"))
+            } else {
+                actions.copyOnly(first)
+            }
+            return
+        }
         // A visible selection in the preview is what ⌘C means while it is
         // there: copy exactly it, and leave the panel open.
         if previewVisible, let selected = PreviewCopy.copyTarget(selection: previewSelection, clipText: nil) {
