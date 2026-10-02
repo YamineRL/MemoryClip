@@ -387,12 +387,12 @@ final class ClipStoreTests: XCTestCase {
         store.enforceCap()
         let unpinnedAfter = store.recent(limit: 100).filter { !$0.isPinned }.count
         XCTAssertEqual(unpinnedBefore - unpinnedAfter, capPreview,
-            "the sheet's number and the enforce pass disagree")
+                       "the sheet's number and the enforce pass disagree")
         XCTAssertEqual(unpinnedAfter, 4)
         XCTAssertEqual(store.recent(limit: 100).filter(\.isPinned).count, 2,
-            "pinned clips are never in the count or the delete")
+                       "pinned clips are never in the count or the delete")
         XCTAssertEqual(store.deletionCount(under: .cap(4)), 0,
-            "a second count after enforcement must be zero")
+                       "a second count after enforcement must be zero")
 
         // Retention side: one stale unpinned clip and one stale pinned clip.
         let stale = ClipItem(
@@ -418,7 +418,7 @@ final class ClipStoreTests: XCTestCase {
         UserDefaults.standard.set(7, forKey: SettingsKeys.retentionDays)
         store.enforceRetention()
         XCTAssertEqual(before - store.clipCount(), retentionPreview,
-            "the sheet's number and the enforce pass disagree")
+                       "the sheet's number and the enforce pass disagree")
         XCTAssertEqual(store.deletionCount(under: .retentionDays(7)), 0)
         XCTAssertEqual(
             Set(store.recent(limit: 100).compactMap(\.text)),
@@ -465,6 +465,6 @@ final class ClipStoreTests: XCTestCase {
         )
 
         XCTAssertEqual(ClipStore.historyDiskUsage(storeAt: storeFile), 170,
-            "store + sidecar + external storage, symlink excluded")
+                       "store + sidecar + external storage, symlink excluded")
     }
 }
