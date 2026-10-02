@@ -344,6 +344,17 @@ struct ClipFilter: Equatable {
         }
     }
 
+    /// Whether `refine(_:)` can still drop rows the predicate returned.
+    ///
+    /// The two places the predicate is deliberately wider than the filter:
+    /// Images admits every file row in order to reach the screenshots among
+    /// them, and a search admits every file row — their searchable content
+    /// is a blob SQL cannot look inside — as well as clips carrying only the
+    /// one term of a multi-word query that the expression had room for.
+    /// Everywhere else the predicate is the whole question, and a COUNT of
+    /// it is the answer.
+    var needsSwiftSideRefinement: Bool { type == .image || !search.isEmpty }
+
     func matchesType(_ item: some ClipDisplayable) -> Bool {
         type.matches(item.kind, isScreenshot: item.isScreenshot)
     }
@@ -955,7 +966,18 @@ enum PanelHint {
         guard !dismissed else { return nil }
         if vimInsertMode { return loc("↑ ↓ to pick · esc for h j k l") }
         guard hasQuery else { return nil }
-        return loc("↑ ↓ to pick · ↩ to paste")
+        return loc("↑ ↓ to pick · ⌘Y to preview · ↩ to paste")
+    }
+
+    /// Whether a change to the query puts the deck's bubble back.
+    ///
+    /// Only when a query starts from nothing. Someone who has just asked a
+    /// new question is looking at a set of matches they have not walked, so
+    /// the keys are worth naming again even if the bubble was answered and
+    /// dismissed earlier in the same session; refining a query that is
+    /// already there is the same question, and is not asked twice.
+    static func asksAgain(previousQuery: String, currentQuery: String) -> Bool {
+        previousQuery.isEmpty && !currentQuery.isEmpty
     }
 
     /// The bubble over the preview pane: the second Space, on the clips that
@@ -1070,11 +1092,17 @@ struct PanelContentView: View {
     private var storedPreviewHeight = Double(Design.Size.previewPaneHeight)
 
     @State private var selection = ClipSelection()
+    /// The card strip's scroll offset, held only so that reopening the panel
+    /// can put it back at the newest clip.
+    @State private var stripPosition = ScrollPosition()
     @State private var inputMode: PanelInputMode = .normal
     @State private var showNukeConfirmation = false
     @State private var pendingDeletes: [ClipItem] = []
     @State private var previewVisible = false
     @State private var previewItem: ClipItem?
+    /// What is selected with the mouse in the open preview pane, so ⌘C can
+    /// copy it instead of the whole clip. Nil when nothing is selected.
+    @State private var previewSelection: String?
     @State private var vim = VimNavigator()
     /// Paces the movement keys while one is held down, and says when the
     /// preview pane is allowed to follow — see `HeldKeyPacer`.
@@ -1090,6 +1118,11 @@ struct PanelContentView: View {
     /// movement of any kind, cleared when the query goes and when the panel
     /// reopens: the bubble is there to be dismissed by using the keys it
     /// names, not to be read twice.
+    /// How many clips the filter matches across the whole store, or nil
+    /// while that is not worth the pass it would cost. Re-counted off the
+    /// filter rather than derived from the page, which only ever holds one
+    /// page.
+    @State private var matchCount: Int?
     @State private var navHintDismissed = false
     /// The same, for the preview pane's Quick Look bubble.
     @State private var quickLookHintDismissed = false
@@ -1238,6 +1271,40 @@ struct PanelContentView: View {
     /// How many distinct source apps the footer menu will list.
     private static let sourceAppLimit = 50
 
+    /// The whole store's answer to the filter, or nil when finding it would
+    /// cost more than a footer number is worth.
+    ///
+    /// `fetchCount` is a SQL COUNT and flat in store size, so wherever the
+    /// predicate *is* the filter that is the end of it. Where it is not —
+    /// see `needsSwiftSideRefinement` — the rows have to be looked at, and
+    /// that is bounded: a search matching half a 50k store is exactly the
+    /// pass the paging exists to avoid, and there the footer goes back to
+    /// saying what it has rather than guessing at what it has not.
+    private func countMatches() -> Int? {
+        let descriptor = FetchDescriptor<ClipItem>(predicate: filter.predicate)
+        guard let admitted = try? modelContext.fetchCount(descriptor) else { return nil }
+        guard filter.needsSwiftSideRefinement else { return admitted }
+        guard admitted <= Self.countScanLimit else { return nil }
+        var scan = descriptor
+        scan.fetchLimit = Self.countScanLimit
+        guard let rows = try? modelContext.fetch(scan) else { return nil }
+        return filter.refine(rows).count
+    }
+
+    /// How many rows the footer's count may sift before it gives up.
+    private static let countScanLimit = 2000
+
+    /// How long the typing has to stop before the count is redone.
+    private static let countSettleDelay: TimeInterval = 0.15
+
+    /// What the count is keyed on: the question asked, and the fact that the
+    /// store answered differently — a capture or a delete while the panel is
+    /// open moves the number without touching the filter.
+    private struct MatchCountKey: Equatable {
+        let filter: ClipFilter
+        let loaded: Int
+    }
+
     // MARK: Body
 
     var body: some View {
@@ -1269,7 +1336,8 @@ struct PanelContentView: View {
                         item: item,
                         onTransform: { actions.applyTransform(item, $0) },
                         onCopy: { actions.copyText(item, $0) },
-                        paneHeight: resolvedPreviewHeight
+                        paneHeight: resolvedPreviewHeight,
+                        onSelectionChange: { previewSelection = $0 }
                     )
                     .frame(height: resolvedPreviewHeight)
                     .overlay(alignment: .bottom) {
@@ -1317,6 +1385,14 @@ struct PanelContentView: View {
             guard !Task.isCancelled else { return }
             syncPreviewItem()
         }
+        // Debounced for the same reason the preview pane is: the filter is
+        // rebuilt on every keystroke, and counting once the typing comes to
+        // rest is one pass instead of one per character.
+        .task(id: MatchCountKey(filter: filter, loaded: items.count)) {
+            try? await Task.sleep(for: .seconds(Self.countSettleDelay))
+            guard !Task.isCancelled else { return }
+            matchCount = countMatches()
+        }
         .defaultFocus($searchFocused, true)
         .onChange(of: uiState.focusToken) {
             filter = ClipFilter()
@@ -1337,12 +1413,14 @@ struct PanelContentView: View {
             searchFocused = true
             refreshSourceAppNames()
         }
-        .onChange(of: filter) {
+        .onChange(of: filter) { previous, current in
             resetPaging()
             selection.clear()
             // A query typed from scratch asks the question again; refining
             // one that is already there does not.
-            if filter.search.isEmpty { navHintDismissed = false }
+            if PanelHint.asksAgain(previousQuery: previous.search, currentQuery: current.search) {
+                navHintDismissed = false
+            }
             syncPreviewItem()
         }
         .onChange(of: pinboards.map(\.uuid)) {
@@ -2085,6 +2163,15 @@ struct PanelContentView: View {
                         openPinboardPicker()
                         return .handled
                     }
+                    // ⌘Y is what Finder binds Quick Look to, and here it is
+                    // the only way into the preview once something has been
+                    // typed: a bare Space belongs to the search field for as
+                    // long as the field has a query in it. It escalates the
+                    // same way Space does, so both keys are one habit.
+                    if press.characters.lowercased() == "y" {
+                        escalatePreview()
+                        return .handled
+                    }
                 }
                 return handleVimKey(press)
             }
@@ -2239,6 +2326,16 @@ struct PanelContentView: View {
                     .padding(.bottom, Design.Size.cardBottomPadding)
                 }
                 .scrollIndicators(.never)
+                .scrollPosition($stripPosition)
+                // Reopening the panel puts the deck back at the newest clip.
+                // The filter and the selection are already reset on this
+                // token; the strip's offset is not, and a panel that reopens
+                // halfway down yesterday's history is one the newest clip is
+                // missing from. An edge rather than an item id: it is the
+                // same instruction whatever the reset leaves in the strip.
+                .onChange(of: uiState.focusToken) {
+                    stripPosition.scrollTo(edge: .leading)
+                }
                 // The same fading edge and chevron the preview pane uses for
                 // text that runs past its bottom. The strip hides its scroll
                 // bar and cuts its cards evenly, so nothing else in it says
@@ -2326,9 +2423,12 @@ struct PanelContentView: View {
 
             Spacer(minLength: Design.Space.tight)
 
-            // "200+" rather than a plain count: the list is paged, so the
-            // number shown is what has been loaded, not the whole store.
-            Text(hasMorePages ? loc("%d+ clips", visible.count) : loc("%d clips", visible.count))
+            // The whole store's count when it could be had, and the loaded
+            // page with a "+" only when it could not: the list is paged, so
+            // `visible.count` on its own is what is on screen rather than
+            // what matches.
+            Text(matchCount.map { loc("%d clips", $0) }
+                ?? (hasMorePages ? loc("%d+ clips", visible.count) : loc("%d clips", visible.count)))
                 .font(Design.Typography.footnote)
                 .monospacedDigit()
                 .foregroundStyle(Color(nsColor: .secondaryLabelColor))
@@ -2461,6 +2561,7 @@ struct PanelContentView: View {
         guard previewVisible else { return }
         previewVisible = false
         previewItem = nil
+        previewSelection = nil
         announce(loc("Preview hidden"))
     }
 
@@ -2736,6 +2837,13 @@ struct PanelContentView: View {
     private func copySelected() {
         let chosen = selectedItems
         guard let first = chosen.first else { return }
+        // A visible selection in the preview is what ⌘C means while it is
+        // there: copy exactly it, and leave the panel open.
+        if previewVisible, let selected = PreviewCopy.copyTarget(selection: previewSelection, clipText: nil) {
+            actions.copyText(first, selected)
+            announce(loc("Copied"))
+            return
+        }
         guard chosen.count > 1 else {
             actions.copyOnly(first)
             announce(loc("Copied"))

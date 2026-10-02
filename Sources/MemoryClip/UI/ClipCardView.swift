@@ -382,6 +382,20 @@ struct ClipCardView: View {
                         .foregroundStyle(Color(nsColor: .labelColor))
                         .lineLimit(1)
                 }
+                if isCleanedLink {
+                    Text(loc("Cleaned"))
+                        .font(Design.Typography.cardStat)
+                        .foregroundStyle(Color(nsColor: .secondaryLabelColor))
+                        .padding(.horizontal, Design.Space.tight)
+                        .padding(.vertical, 1)
+                        .background(Capsule(style: .continuous).fill(Design.Palette.surface))
+                        .overlay(
+                            Capsule(style: .continuous)
+                                .strokeBorder(Design.Palette.hairline, lineWidth: Design.Stroke.hairline)
+                        )
+                        .lineLimit(1)
+                        .fixedSize()
+                }
                 Spacer(minLength: Design.Space.tight)
                 if index < 9 {
                     // A keycap rather than grey text: it reads as a key you
@@ -602,6 +616,12 @@ struct ClipCardView: View {
     /// item becomes "Update Note" rather than growing a neighbour.
     private var calendarTitle: String {
         item.calendarEventID == nil ? loc("Add to Calendar") : loc("Add to Calendar Again")
+    }
+
+    /// Whether this clip's URL was stored with its tracking parameters
+    /// stripped, which is what the `Cleaned` badge says out loud.
+    private var isCleanedLink: Bool {
+        item.originalText != nil
     }
 
     /// Kinds that carry plain text — the only ones offered transforms.

@@ -219,7 +219,8 @@ final class ClipStore {
             colorHex: clip.colorHex,
             contentHash: clip.hash,
             sourceBundleID: sourceBundleID,
-            sourceAppName: sourceAppName
+            sourceAppName: sourceAppName,
+            originalText: clip.originalText
         )
         // Saved before the trim so the cap counts the row that was just
         // captured: `fetchCount` is answered by SQLite, which cannot see an

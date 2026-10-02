@@ -17,5 +17,13 @@ PLAN.md
 AGENTS.md
 CLAUDE.md
 
-# Graft knowledge-graph cache: regenerable local state, never shipped.
-graft/
+# Feature briefs — local only.
+PRD-*.md
+
+# graft's local graph cache — regenerable, not committed (run `graft build`).
+/graft/
+
+# Local tool config — editor, MCP and search settings, not project files.
+/.ignore
+/.mcp.json
+/opencode.json
