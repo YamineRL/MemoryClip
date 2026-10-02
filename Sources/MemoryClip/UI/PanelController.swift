@@ -89,6 +89,10 @@ final class PanelUIState: ObservableObject {
     @Published var maxPreviewHeight = Design.Size.previewPaneHeight
     /// Clips whose note export has started and not yet finished.
     @Published var notesInFlight: Set<UUID> = []
+    /// A search the next (or current) panel presentation should be showing —
+    /// the "Open MemoryClip" intent's prefill. PanelView applies it into its
+    /// filter and clears it back to nil, so it fires exactly once per ask.
+    @Published var pendingSearch: String?
 
     /// The stored height, falling back to the default when nothing (not even
     /// a registered default) has been written yet.
@@ -563,6 +567,17 @@ final class PanelController: NSObject, NSWindowDelegate {
         // Only OPENING is gated by the Touch ID lock (see show()); hiding is
         // always allowed so the hotkey can dismiss the panel without auth.
         isVisible ? hide(restorePrevious: true) : show()
+    }
+
+    /// Show the panel, optionally with the search pre-filled — the "Open
+    /// MemoryClip" intent's form of a plain `show()`. The query waits on
+    /// `uiState` until the view exists to consume it, so this also works for
+    /// a panel that was never opened this launch.
+    func show(prefilling query: String? = nil) {
+        if let query {
+            uiState.pendingSearch = query
+        }
+        show()
     }
 
     func show() {

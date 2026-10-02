@@ -507,6 +507,23 @@
 /* App Intents (Shortcuts, Spotlight). */
 "Nothing copied yet" = "Rien n’a encore été copié";
 "Latest clip has no text" = "Le dernier clip n’a pas de texte";
+"Get Latest Clip" = "Récupérer le dernier clip";
+"Reads the newest clip in MemoryClip's history, optionally only of one kind." = "Lit le clip le plus récent de l’historique de MemoryClip, éventuellement d’un seul type.";
+"Search Clips" = "Rechercher des clips";
+"Finds clips whose text, title, file name or source app match a query." = "Recherche les clips dont le texte, le titre, le nom de fichier ou l’app source correspondent à la requête.";
+"Copy Clip" = "Copier un clip";
+"Puts the chosen clip back on the clipboard." = "Replace le clip choisi dans le presse-papiers.";
+"Shows the MemoryClip panel, optionally pre-filling its search." = "Affiche le panneau MemoryClip, éventuellement avec une recherche préremplie.";
+"Query" = "Requête";
+"Limit" = "Limite";
+"Kind" = "Type";
+"Clip kind" = "Type de clip";
+"Any" = "Tous";
+"MemoryClip is locked." = "MemoryClip est verrouillé.";
+"Could not open the clip store." = "Impossible d’ouvrir l’historique des clips.";
+"That clip is not in the history anymore." = "Ce clip n’est plus dans l’historique.";
+"That clip has nothing to put on the clipboard." = "Ce clip n’a rien à placer dans le presse-papiers.";
+"Unlock MemoryClip to answer a shortcut" = "Déverrouiller MemoryClip pour répondre à un raccourci";
 /* The link cleaner. */
 "Cleaned" = "Nettoyé";
 "Cleaned · removed %@" = "Nettoyé · retiré : %@";

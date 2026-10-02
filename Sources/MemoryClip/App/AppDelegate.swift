@@ -58,6 +58,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// expired clip is never visible for long.
     static let maintenanceStartDelay: Duration = .seconds(2)
 
+    /// An "Open MemoryClip" intent that arrived before the panel controller
+    /// existed — the intent can land inside the same launch that finishes
+    /// wiring it. Double-optional on purpose: `.some(nil)` is a pending open
+    /// with no query, `nil` is nothing pending.
+    private static var pendingPanelQuery: String??
+
+    /// The "Open MemoryClip" intent's entry point. The intent runs
+    /// in-process once the app is up (`openAppWhenRun`), so this is a hop
+    /// onto the live panel — or, arriving during launch, a note that the
+    /// end of `applicationDidFinishLaunching` drains.
+    static func openPanelFromIntent(query: String?) {
+        if let delegate = NSApp.delegate as? AppDelegate, delegate.panelController != nil {
+            delegate.panelController.show(prefilling: query)
+        } else {
+            pendingPanelQuery = query
+        }
+    }
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         UserDefaults.standard.register(defaults: [
             SettingsKeys.historyCap: 200,
@@ -242,6 +260,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // read — what a switched-on feature is missing outright.
         if !PermissionRecoveryController.shared.showIfNeeded() {
             PermissionRecoveryController.shared.showBlockedOnce()
+        }
+
+        // An "Open MemoryClip" intent that arrived during this launch —
+        // `openAppWhenRun` can run the perform before the controllers are
+        // wired, so `openPanelFromIntent` parks the ask and it lands here.
+        if let pending = Self.pendingPanelQuery {
+            Self.pendingPanelQuery = nil
+            panelController.show(prefilling: pending)
         }
     }
 
