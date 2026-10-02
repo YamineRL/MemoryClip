@@ -9,7 +9,10 @@ import Security
 /// has no Secure Enclave, so `SecureEnclaveSealer` below is exercised by the
 /// `--secrets-selftest` launch argument on a Mac instead (see
 /// `SecretsSelfTest`), not by `swift test`.
-protocol SecretSealer {
+/// `Sendable` because `open` deliberately runs off the main actor: the
+/// enclave's user-presence prompt blocks its caller until the user answers,
+/// and a reveal must not freeze the panel while the prompt is up.
+protocol SecretSealer: Sendable {
     /// Seal `plaintext`. Never prompts: sealing only needs public keys.
     func seal(_ plaintext: Data) throws -> Data
 
@@ -49,7 +52,11 @@ enum SecretSealerError: Error {
 /// is deliberately not a keychain item: the app is ad-hoc signed, and a
 /// login-keychain ACL is keyed to the code signature, which changes on every
 /// rebuild.
-final class SecureEnclaveSealer: SecretSealer {
+/// `@unchecked Sendable`: the `privateKey` handle is an immutable value
+/// and `authenticationContext` is configured once at init and only read
+/// afterwards — `open` touches both but mutates neither, so concurrent
+/// reveals are safe (the system serialises the prompts itself).
+final class SecureEnclaveSealer: SecretSealer, @unchecked Sendable {
     /// Name of the persisted key-handle file inside the store directory.
     static let keyFileName = "secrets-enclave.key"
 

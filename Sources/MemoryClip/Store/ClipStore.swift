@@ -14,8 +14,16 @@ final class ClipStore {
     /// the same clips (the drain awaits, so a second caller can arrive).
     private var isBackfillingThumbnails = false
 
-    init(inMemory: Bool = false) throws {
+    /// The vault captures seal through: the sealer, the dedup HMAC key and
+    /// the "Not a Secret" allow-list. nil only for an in-memory store whose
+    /// test did not bring one — every real store has its own.
+    let secrets: SecretVault?
+
+    /// `secrets` defaults to the vault beside the store; nil is only ever
+    /// handed in by an in-memory store whose test wants no vault at all.
+    init(inMemory: Bool = false, secrets: SecretVault? = nil) throws {
         let schema = Schema([ClipItem.self])
+        self.secrets = secrets ?? (inMemory ? nil : SecretVault(directory: Self.storeDirectory))
         if inMemory {
             container = try ModelContainer(
                 for: schema,
@@ -486,7 +494,9 @@ final class ClipStore {
     }
 
     func togglePinned(_ item: ClipItem) {
-        item.isPinned.toggle()
+        // The model's own toggle so pinning an expiring secret clears its
+        // expiry whoever called.
+        item.togglePinned()
         save()
     }
 
@@ -513,6 +523,238 @@ final class ClipStore {
     /// Stamp lastUsedAt after a successful paste/copy-back.
     func markUsed(_ item: ClipItem) {
         item.lastUsedAt = .now
+        save()
+    }
+
+    // MARK: - Secrets
+
+    /// What must happen to a capture the detector has opinions about. The
+    /// watcher switches on this before the clip becomes a row.
+    enum SecretDisposition {
+        /// Not a secret — or one the allow-list cleared: store it as usual.
+        case ordinary
+        /// "Don't keep it" mode: the plaintext stays only on the pasteboard
+        /// the user copied it to; nothing is stored.
+        case drop(SecretKind)
+        /// "Keep it encrypted" mode: seal and store through the vault.
+        case protect(SecretKind, plaintext: String)
+    }
+
+    /// Classify one capture against the secrets rules, in the order the
+    /// rules run: the allow-list's verdict first (it is a verdict, not a
+    /// suggestion — `classify` is not asked again for an allow-listed
+    /// string), then the detector, then the mode picker.
+    ///
+    /// `clip.text` is the value examined — for a rich-text capture that is
+    /// its plain-text form, which is all the detector needs.
+    func secretDisposition(for clip: CapturedClip, sourceBundleID: String?) -> SecretDisposition {
+        guard let vault = secrets else { return .ordinary }
+        guard let text = clip.text, !text.isEmpty else { return .ordinary }
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, !vault.allows(trimmed) else { return .ordinary }
+        guard let kind = SecretDetector.classify(
+            text,
+            sourceBundleID: sourceBundleID,
+            allowGenericToken: SecretSettings.detectsGenericTokens
+        ) else { return .ordinary }
+        switch SecretSettings.effectiveMode {
+        case .keepEncrypted:
+            return .protect(kind, plaintext: text)
+        case .drop:
+            return .drop(kind)
+        case .keepPlain:
+            return .ordinary
+        }
+    }
+
+    /// Store a capture the detector called a secret: ciphertext, a label
+    /// and a mask — never the plaintext. The dedup identity is an HMAC of
+    /// the trimmed plaintext under the vault's key, so re-copying a secret
+    /// floats its row rather than writing a twin. One-time codes are the
+    /// deliberate exception: each message is a different code, so dedup is
+    /// disabled by hashing a fresh uuid instead.
+    ///
+    /// - Returns: the row, or nil when sealing failed — a secret that could
+    ///   not be sealed is dropped, never stored in the clear.
+    @discardableResult
+    func insertSecret(
+        kind: SecretKind,
+        plaintext: String,
+        sourceBundleID: String?,
+        sourceAppName: String?
+    ) -> ClipItem? {
+        guard let vault = secrets else { return nil }
+        let trimmed = plaintext.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        let hash = kind == .oneTimeCode
+            ? vault.hash(UUID().uuidString, for: .dedup)
+            : vault.hash(trimmed, for: .dedup)
+        if let existing = fetchByHash(hash).first {
+            existing.createdAt = .now
+            existing.sourceBundleID = sourceBundleID
+            existing.sourceAppName = sourceAppName
+            save()
+            return existing
+        }
+
+        let cipher: Data
+        do {
+            cipher = try vault.seal(plaintext)
+        } catch {
+            log.error("Secret sealing failed; the clip was dropped, not stored in the clear: \(error.localizedDescription)")
+            return nil
+        }
+
+        let item = ClipItem(
+            kind: .text,
+            contentHash: hash,
+            sourceBundleID: sourceBundleID,
+            sourceAppName: sourceAppName,
+            isSecret: true,
+            secretCipher: cipher,
+            secretLabel: kind.label,
+            secretMasked: SecretMask.mask(trimmed, kind: kind),
+            expiresAt: kind == .oneTimeCode && SecretSettings.forgetsOneTimeCodes
+                ? Date(timeIntervalSinceNow: SecretSettings.oneTimeCodeLifetime)
+                : nil
+        )
+        context.insert(item)
+        save()
+        enforceCap()
+        return item
+    }
+
+    /// Turn an ordinary clip into a secret in place. No authentication: the
+    /// plaintext is already on this machine — what changes is where it
+    /// lives.
+    ///
+    /// Every field that ever carried the plaintext or a derivative of it is
+    /// wiped; a note or event already exported is NOT retracted (the file
+    /// and the calendar entry live outside the store). Only a clip whose
+    /// payload is its `text` can be marked — an image's pixels are the
+    /// secret, and sealing `text` would leave them standing.
+    ///
+    /// - Returns: false when the clip could not be sealed; it is left as is.
+    @discardableResult
+    func markAsSecret(_ item: ClipItem) -> Bool {
+        guard let vault = secrets, !item.isSecret else { return false }
+        guard let plaintext = item.text, !plaintext.isEmpty else { return false }
+        let cipher: Data
+        do {
+            cipher = try vault.seal(plaintext)
+        } catch {
+            log.error("markAsSecret: sealing failed, clip left unchanged: \(error.localizedDescription)")
+            return false
+        }
+        let trimmed = plaintext.trimmingCharacters(in: .whitespacesAndNewlines)
+        let kind = SecretDetector.classify(
+            trimmed,
+            sourceBundleID: item.sourceBundleID,
+            allowGenericToken: SecretSettings.detectsGenericTokens
+        ) ?? .genericToken
+
+        item.text = nil
+        item.richTextData = nil
+        item.ocrText = nil
+        item.originalText = nil
+        item.refinedTitle = nil
+        item.refinedSummary = nil
+        item.refinedText = nil
+        item.refinedTags = []
+        item.translatedText = nil
+        item.clipTranslationText = nil
+        item.clipTranslationSource = nil
+        item.clipTranslationTarget = nil
+        item.sourceLanguage = nil
+        item.notePath = nil
+        item.noteExportedAt = nil
+        item.calendarEventID = nil
+        item.kind = .text
+        item.isSecret = true
+        item.secretCipher = cipher
+        item.secretLabel = kind.label
+        item.secretMasked = SecretMask.mask(trimmed, kind: kind)
+        item.contentHash = vault.hash(trimmed, for: .dedup)
+        save()
+        return true
+    }
+
+    /// "Not a Secret": the caller has already authenticated and opened the
+    /// ciphertext once; the plaintext's hash joins the allow-list (so the
+    /// detector never speaks for it again) and the row becomes an ordinary
+    /// clip again.
+    func markNotSecret(_ item: ClipItem, plaintext: String) {
+        guard let vault = secrets, item.isSecret else { return }
+        vault.allow(plaintext.trimmingCharacters(in: .whitespacesAndNewlines))
+        item.isSecret = false
+        item.secretCipher = nil
+        item.secretLabel = nil
+        item.secretMasked = nil
+        item.expiresAt = nil
+        item.text = plaintext
+        item.contentHash = ContentParser.hashText("text:\(plaintext)")
+        save()
+    }
+
+    /// How many stored clips are sealed secrets — the export sheet's
+    /// "N secrets were not exported" line reads it.
+    func secretCount() -> Int {
+        do {
+            return try context.fetchCount(
+                FetchDescriptor<ClipItem>(predicate: #Predicate { $0.isSecret })
+            )
+        } catch {
+            log.error("ClipStore secretCount failed: \(error.localizedDescription)")
+            return 0
+        }
+    }
+
+    /// Stored plaintext that the detector would call a secret — the number
+    /// behind Settings' "N clips already in your history look like secrets".
+    /// Secrets themselves are skipped by `text == nil`; the detector runs on
+    /// what is left, in Swift, because its rules are not SQL.
+    func plaintextSecretCandidateCount() -> Int {
+        plaintextSnapshots().filter { snapshot in
+            SecretDetector.classify(
+                snapshot.text,
+                sourceBundleID: snapshot.sourceBundleID,
+                allowGenericToken: SecretSettings.detectsGenericTokens
+            ) != nil
+        }.count
+    }
+
+    /// (uuid, text, sourceBundleID) of every non-secret text clip — Sendable
+    /// snapshots, so the Settings pane's "already in your history" scan can
+    /// classify them OFF the main actor instead of holding it while the
+    /// detector works.
+    func plaintextSnapshots() -> [(uuid: UUID, text: String, sourceBundleID: String?)] {
+        fetch(FetchDescriptor<ClipItem>(
+            predicate: #Predicate { !$0.isSecret && $0.text != nil }
+        )).map { ($0.uuid, $0.text ?? "", $0.sourceBundleID) }
+    }
+
+    /// Seal the listed plaintext clips in place — the pass behind Settings'
+    /// "Encrypt N Secrets…". `markAsSecret` wipes each row field by field;
+    /// the count returned is what actually moved, so a clip that could not
+    /// be sealed is left out of it rather than silently counted.
+    @discardableResult
+    func encryptSecrets(uuids: Set<UUID>) -> Int {
+        items(withUUIDs: Array(uuids)).filter { !$0.isSecret }.reduce(0) { count, item in
+            markAsSecret(item) ? count + 1 : count
+        }
+    }
+
+    /// Delete every secret whose `expiresAt` has passed. Runs from the
+    /// maintenance timer and again each time the panel opens, so a dead
+    /// code is gone before the user can see it rather than within minutes.
+    func expireSecrets() {
+        let doomed = fetch(FetchDescriptor<ClipItem>(
+            predicate: #Predicate { $0.expiresAt != nil && !$0.isPinned }
+        )).filter { $0.expiresAt ?? .distantFuture < .now }
+        guard !doomed.isEmpty else { return }
+        for item in doomed {
+            context.delete(item)
+        }
         save()
     }
 
@@ -663,6 +905,7 @@ final class ClipStore {
     /// any missing thumbnails (clips captured before thumbnails existed).
     func performMaintenance() {
         enforceRetention()
+        expireSecrets()
         enforceCap()
         scheduleThumbnailBackfill()
     }

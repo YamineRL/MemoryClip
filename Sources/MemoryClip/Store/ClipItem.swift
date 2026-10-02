@@ -160,6 +160,27 @@ final class ClipItem {
     /// which a mandatory attribute without a default cannot.
     var originalText: String?
 
+    /// True when the row holds a sealed secret rather than a payload:
+    /// `text`, `richTextData`, `ocrText` and every field derived from them
+    /// stay nil and `secretCipher` carries the only copy of the value.
+    ///
+    /// All five secret attributes are optional or defaulted, so a
+    /// pre-existing store migrates in place exactly like the ones above.
+    var isSecret: Bool = false
+    /// `SecureEnclaveSealer`'s sealed payload: ephemeral public key ||
+    /// nonce || ciphertext || tag. Never contains plaintext.
+    var secretCipher: Data?
+    /// The fixed English kind name ("AWS access key") — stored so a secret
+    /// is identifiable and searchable without touching its ciphertext. A
+    /// catalogue string, not user data, which is what makes storing it safe.
+    var secretLabel: String?
+    /// `SecretMask`'s rendering ("AKIA••••••••••••7Q2X") — the only
+    /// plaintext-derived characters the row keeps.
+    var secretMasked: String?
+    /// When a one-time code is deleted; nil for every clip that does not
+    /// expire, including a code the user pinned (pinning clears it).
+    var expiresAt: Date?
+
     var kind: ClipKind {
         get { ClipKind(rawValue: kindRaw) ?? .text }
         set { kindRaw = newValue.rawValue }
@@ -197,7 +218,12 @@ final class ClipItem {
         notePath: String? = nil,
         noteExportedAt: Date? = nil,
         calendarEventID: String? = nil,
-        originalText: String? = nil
+        originalText: String? = nil,
+        isSecret: Bool = false,
+        secretCipher: Data? = nil,
+        secretLabel: String? = nil,
+        secretMasked: String? = nil,
+        expiresAt: Date? = nil
     ) {
         self.uuid = uuid
         self.kindRaw = kind.rawValue
@@ -231,6 +257,19 @@ final class ClipItem {
         self.noteExportedAt = noteExportedAt
         self.calendarEventID = calendarEventID
         self.originalText = originalText
+        self.isSecret = isSecret
+        self.secretCipher = secretCipher
+        self.secretLabel = secretLabel
+        self.secretMasked = secretMasked
+        self.expiresAt = expiresAt
+    }
+
+    /// Pin or unpin the clip. Pinning a secret that expires clears its
+    /// expiry: "pinned" and "scheduled to die" cannot both be true, and the
+    /// pin is the thing the user did last.
+    func togglePinned() {
+        isPinned.toggle()
+        if isPinned { expiresAt = nil }
     }
 
     // MARK: - Image payloads
