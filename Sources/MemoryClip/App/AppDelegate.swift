@@ -24,6 +24,26 @@ enum SettingsKeys {
     /// (`SettingsPane.default`), and registering a default here would mean two
     /// places to change if the first pane ever moves.
     static let settingsPane: String = "settingsPane"
+
+    /// The fresh-install history limits: how many clips are kept and how far
+    /// back they reach before maintenance sweeps them. The History pane's
+    /// `@AppStorage` fallbacks read these same constants, which is what keeps
+    /// the registered defaults and the pane from drifting apart.
+    static let defaultHistoryCap = 5_000
+    static let defaultRetentionDays = 90
+
+    /// Seed the fresh-install values. `register(defaults:)` only fills the
+    /// registration domain, so a value the user ever chose keeps winning.
+    /// - Parameter defaults: injectable for tests, like
+    ///   `PlainPasteApps.registerDefaults(in:)`.
+    static func registerDefaults(in defaults: UserDefaults = .standard) {
+        defaults.register(defaults: [
+            historyCap: defaultHistoryCap,
+            retentionDays: defaultRetentionDays,
+            autoPaste: true,
+            vimMode: false
+        ])
+    }
 }
 
 @MainActor
@@ -59,12 +79,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     static let maintenanceStartDelay: Duration = .seconds(2)
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        UserDefaults.standard.register(defaults: [
-            SettingsKeys.historyCap: 200,
-            SettingsKeys.retentionDays: 30,
-            SettingsKeys.autoPaste: true,
-            SettingsKeys.vimMode: false
-        ])
+        SettingsKeys.registerDefaults()
 
         // Phase-2 defaults: sensitive-content filter (on), the user's own
         // per-app exclusions (none) and app lock (off).
@@ -104,11 +119,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         self.store = store
 
         // The Settings window is built from plain SwiftUI structs that are
-        // handed no services, so the History pane's export buttons reach the
-        // store the way the About pane reaches the tour: through a singleton
-        // controller. This is the one place that owns the store, so this is
-        // the only place that can hand it over.
+        // handed no services, so the History pane's export buttons and limit
+        // pickers reach the store the way the About pane reaches the tour:
+        // through singleton controllers. This is the one place that owns the
+        // store, so this is the only place that can hand it over.
         HistoryExportController.shared.store = store
+        HistoryLimitsController.shared.store = store
 
         watcher = PasteboardWatcher(store: store)
         pasteService = PasteService(store: store, watcher: watcher)

@@ -319,4 +319,152 @@ final class ClipStoreTests: XCTestCase {
 
         XCTAssertNotNil(item.lastUsedAt)
     }
+
+    // MARK: - History limits (the pane's preview and the store's delete share one count)
+
+    /// The fresh-install promise: the registered default cap keeps 5,000
+    /// clips, so a 6,000-clip backlog trims to exactly 5,000 through the
+    /// batch path, since the surplus is far past `exactTrimLimit`.
+    func testDefaultCapTrimsSixThousandClipsToFiveThousand() throws {
+        let store = try makeStore(cap: SettingsKeys.defaultHistoryCap, retentionDays: 0)
+        XCTAssertEqual(
+            SettingsKeys.defaultHistoryCap, 5_000,
+            "the fresh-install cap the product promises"
+        )
+
+        for index in 0..<6_000 {
+            store.context.insert(ClipItem(
+                kind: .text,
+                text: "\(index)",
+                contentHash: ContentParser.hashText("defaults:\(index)"),
+                createdAt: .now.addingTimeInterval(-Double(6_000 - index))
+            ))
+        }
+        store.save()
+
+        store.enforceCap()
+
+        let remaining = store.recent(limit: 10_000)
+        XCTAssertEqual(remaining.count, 5_000)
+        XCTAssertEqual(
+            Set(remaining.compactMap(\.text)),
+            Set((1_000..<6_000).map(String.init)),
+            "the 5,000 newest must be the survivors"
+        )
+    }
+
+    /// The confirmation sheet's "Delete N" and the deletion itself must be
+    /// one number: `deletionCount(under:)` is the single function the sheet
+    /// counts with and enforcement counts with. A preview computed any other
+    /// way, or a delete that counts differently, is the regression that
+    /// would make the sheet lie.
+    func testDeletionCountEqualsWhatEnforcementDeletes() throws {
+        let store = try makeStore(cap: 0, retentionDays: 0)
+
+        // Ten unpinned clips and two pinned ones, each its own timestamp.
+        for index in 0..<12 {
+            store.context.insert(ClipItem(
+                kind: .text,
+                text: "\(index)",
+                contentHash: ContentParser.hashText("count:\(index)"),
+                createdAt: .now.addingTimeInterval(-Double(12 - index)),
+                isPinned: index < 2
+            ))
+        }
+        store.save()
+
+        // The zero sentinels never preview a deletion: cap 0 is Unlimited,
+        // retention 0 is Forever.
+        XCTAssertEqual(store.deletionCount(under: .cap(0)), 0)
+        XCTAssertEqual(store.deletionCount(under: .retentionDays(0)), 0)
+
+        // Cap side: ten unpinned under a cap of 4 previews 6 doomed…
+        let capPreview = store.deletionCount(under: .cap(4))
+        XCTAssertEqual(capPreview, 6)
+        let unpinnedBefore = store.recent(limit: 100).filter { !$0.isPinned }.count
+        // …and enforcing that cap deletes exactly those 6, pins aside.
+        UserDefaults.standard.set(4, forKey: SettingsKeys.historyCap)
+        store.enforceCap()
+        let unpinnedAfter = store.recent(limit: 100).filter { !$0.isPinned }.count
+        XCTAssertEqual(unpinnedBefore - unpinnedAfter, capPreview,
+            "the sheet's number and the enforce pass disagree")
+        XCTAssertEqual(unpinnedAfter, 4)
+        XCTAssertEqual(store.recent(limit: 100).filter(\.isPinned).count, 2,
+            "pinned clips are never in the count or the delete")
+        XCTAssertEqual(store.deletionCount(under: .cap(4)), 0,
+            "a second count after enforcement must be zero")
+
+        // Retention side: one stale unpinned clip and one stale pinned clip.
+        let stale = ClipItem(
+            kind: .text, text: "stale",
+            contentHash: ContentParser.hashText("count:stale"),
+            createdAt: Calendar.current.date(byAdding: .day, value: -10, to: .now)!
+        )
+        let stalePinned = ClipItem(
+            kind: .text, text: "stale-pinned",
+            contentHash: ContentParser.hashText("count:stale-pinned"),
+            createdAt: Calendar.current.date(byAdding: .day, value: -10, to: .now)!,
+            isPinned: true
+        )
+        store.context.insert(stale)
+        store.context.insert(stalePinned)
+        store.save()
+
+        // The preview counts the stale unpinned clip alone; the pinned one
+        // aged out by date but pins are exempt.
+        let retentionPreview = store.deletionCount(under: .retentionDays(7))
+        XCTAssertEqual(retentionPreview, 1)
+        let before = store.clipCount()
+        UserDefaults.standard.set(7, forKey: SettingsKeys.retentionDays)
+        store.enforceRetention()
+        XCTAssertEqual(before - store.clipCount(), retentionPreview,
+            "the sheet's number and the enforce pass disagree")
+        XCTAssertEqual(store.deletionCount(under: .retentionDays(7)), 0)
+        XCTAssertEqual(
+            Set(store.recent(limit: 100).compactMap(\.text)),
+            ["0", "1", "8", "9", "10", "11", "stale-pinned"],
+            "the stale unpinned clip went; pins and in-window clips stayed"
+        )
+    }
+
+    /// The Storage readout's bytes: the store file, its -wal sidecar and the
+    /// hidden `.NAME_SUPPORT` external-storage folder all live beside each
+    /// other in the store directory, so one recursive walk covers them. A
+    /// symlink inside that directory (a screenshot's shape: a link to a file
+    /// macOS saved elsewhere) must contribute nothing.
+    func testHistoryDiskUsageSumsStoreAndExternalStorage() throws {
+        let fileManager = FileManager.default
+        let root = fileManager.temporaryDirectory
+            .appendingPathComponent("memoryclip-diskusage-\(UUID().uuidString)", isDirectory: true)
+        try fileManager.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? fileManager.removeItem(at: root) }
+
+        let storeFile = root.appendingPathComponent("MemoryClip.store")
+        try Data(count: 100).write(to: storeFile)
+        try Data(count: 40).write(to: URL(fileURLWithPath: storeFile.path + "-wal"))
+
+        // The hidden external-storage folder Core Data keeps beside the
+        // store, with a nested subdirectory inside it.
+        let support = ClipStore.externalStorageDirectory(forStoreAt: storeFile)
+        try fileManager.createDirectory(at: support, withIntermediateDirectories: true)
+        try Data(count: 23).write(to: support.appendingPathComponent("blob.bin"))
+        let nested = support.appendingPathComponent("deep", isDirectory: true)
+        try fileManager.createDirectory(at: nested, withIntermediateDirectories: true)
+        try Data(count: 7).write(to: nested.appendingPathComponent("nested.bin"))
+
+        // A link whose target lives outside the store directory: the shape
+        // of a screenshot clip's file reference. Its bytes are the user's
+        // file elsewhere and must not land in the readout.
+        let outside = fileManager.temporaryDirectory
+            .appendingPathComponent("memoryclip-outside-\(UUID().uuidString)")
+        try Data(count: 10_000).write(to: outside)
+        defer { try? fileManager.removeItem(at: outside) }
+        try fileManager.createSymbolicLink(
+            at: root.appendingPathComponent("screenshot-link.png"),
+            withDestinationURL: outside
+        )
+
+        XCTAssertEqual(ClipStore.historyDiskUsage(storeAt: storeFile), 170,
+            "store + sidecar + external storage, symlink excluded")
+    }
 }
