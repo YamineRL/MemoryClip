@@ -454,6 +454,12 @@ private struct PrivacySettingsPane: View {
     /// then nothing to store, and a panel that closes with the list unchanged
     /// and nothing said reads as a bug.
     @State private var pickedUnidentifiedApp = false
+    /// The link-cleaner exclusions, held and re-read the way the app list
+    /// below is: `@AppStorage` has no array form.
+    @State private var excludedHosts: [String] = []
+
+    /// What is in the "never clean" field, before it is added.
+    @State private var hostDraft = ""
 
     var body: some View {
         Form {
@@ -479,6 +485,52 @@ private struct PrivacySettingsPane: View {
                     }
                 }
                 SettingsHint(loc("Skips likely card numbers (Luhn-validated) and anything copied in a known password manager. Pasteboard opt-out markers (transient, auto-generated, concealed) are always respected."))
+            }
+
+            Section(loc("Links")) {
+                Toggle(isOn: cleanLinksBinding) {
+                    Label {
+                        Text(loc("Clean tracking parameters from copied links"))
+                    } icon: {
+                        SettingsIcon(symbol: "link", tint: Color(nsColor: .systemPink))
+                    }
+                }
+                Toggle(isOn: campaignParametersBinding) {
+                    Label {
+                        Text(loc("Also remove campaign parameters (utm_*)"))
+                    } icon: {
+                        SettingsIcon(symbol: "megaphone.fill", tint: Color(nsColor: .systemPink))
+                    }
+                }
+                .disabled(!UserDefaults.standard.bool(forKey: LinkSettingsKeys.cleanEnabled))
+                ForEach(excludedHosts, id: \.self) { host in
+                    LabeledContent {
+                        Button(loc("Remove")) { removeHost(host) }
+                    } label: {
+                        Label {
+                            Text(host)
+                        } icon: {
+                            SettingsIcon(symbol: "globe", tint: Color(nsColor: .systemPink))
+                        }
+                    }
+                }
+                LabeledContent {
+                    HStack(spacing: Design.Space.snug) {
+                        TextField(loc("example.com"), text: $hostDraft)
+                            .labelsHidden()
+                            .frame(width: Design.Size.settingsSidebarMinWidth)
+                            .onSubmit { addHost() }
+                        Button(loc("Add")) { addHost() }
+                            .disabled(LinkExclusions.normalize(hostDraft) == nil)
+                    }
+                } label: {
+                    Label {
+                        Text(loc("Never clean links from these sites"))
+                    } icon: {
+                        SettingsIcon(symbol: "nosign", tint: Color(nsColor: .systemPink))
+                    }
+                }
+                SettingsHint(loc("A copied web address loses the identifiers that name who forwarded it — igsh, fbclid, utm_source and the rest — before it reaches the clipboard, so what you paste is the clean address. Every cleaned clip keeps the original, which the panel's preview can hand back. Addresses carrying a token, a code or a signature are never touched."))
             }
 
             Section(loc("Excluded apps")) {
@@ -525,11 +577,45 @@ private struct PrivacySettingsPane: View {
             }
         }
         .formStyle(.grouped)
-        .onAppear { reloadExcluded() }
+        .onAppear {
+            reloadExcluded()
+            reloadExcludedHosts()
+        }
     }
 
     private func reloadExcluded() {
         excluded = ExcludedApps().apps
+    }
+
+    private func reloadExcludedHosts() {
+        excludedHosts = LinkExclusions().hosts
+    }
+
+    private func addHost() {
+        LinkExclusions().add(hostDraft)
+        hostDraft = ""
+        reloadExcludedHosts()
+    }
+
+    private func removeHost(_ host: String) {
+        LinkExclusions().remove(host)
+        reloadExcludedHosts()
+    }
+
+    /// Manual bindings to the link cleaner's two UserDefaults keys (both
+    /// registered as `true` at launch).
+    private var cleanLinksBinding: Binding<Bool> {
+        Binding(
+            get: { UserDefaults.standard.bool(forKey: LinkSettingsKeys.cleanEnabled) },
+            set: { UserDefaults.standard.set($0, forKey: LinkSettingsKeys.cleanEnabled) }
+        )
+    }
+
+    private var campaignParametersBinding: Binding<Bool> {
+        Binding(
+            get: { UserDefaults.standard.bool(forKey: LinkSettingsKeys.removeCampaignParameters) },
+            set: { UserDefaults.standard.set($0, forKey: LinkSettingsKeys.removeCampaignParameters) }
+        )
     }
 
     private func addApp() {

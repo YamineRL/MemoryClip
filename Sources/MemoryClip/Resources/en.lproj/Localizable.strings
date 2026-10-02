@@ -144,7 +144,7 @@
 "The latest release is tagged “%@”, which is not a version." = "The latest release is tagged “%@”, which is not a version.";
 "Release %@ has no disk image to download." = "Release %@ has no disk image to download.";
 "GitHub answered %d." = "GitHub answered %d.";
-"↑ ↓ to pick · ↩ to paste" = "↑ ↓ to pick · ↩ to paste";
+"↑ ↓ to pick · ⌘Y to preview · ↩ to paste" = "↑ ↓ to pick · ⌘Y to preview · ↩ to paste";
 "↑ ↓ to pick · esc for h j k l" = "↑ ↓ to pick · esc for h j k l";
 "↩ pastes %d clips" = "↩ pastes %d clips";
 "space for Quick Look" = "space for Quick Look";
@@ -177,6 +177,7 @@
 "Preview height" = "Preview height";
 "%d points" = "%d points";
 "Drag up for a taller preview" = "Drag up for a taller preview";
+"Copy Selection" = "Copy Selection";
 "Copy Text" = "Copy Text";
 "Copy Hex" = "Copy Hex";
 "Copy Translation" = "Copy Translation";
@@ -503,3 +504,15 @@
 "The language MemoryClip translates into, for notes and for the panel's preview alike. It starts as the language this Mac is set to read. A language the on-device translator has no assets for falls back to English, which is the pairing macOS ships most widely." = "The language MemoryClip translates into, for notes and for the panel's preview alike. It starts as the language this Mac is set to read. A language the on-device translator has no assets for falls back to English, which is the pairing macOS ships most widely.";
 "When MemoryClip writes a note, a screenshot in Arabic, Japanese or Russian is read in its own language and the note carries both: the text exactly as it was on screen, and a translation underneath it, in the language chosen above. Translation runs on this Mac. The title, summary and tags are written from that translation, so the note is findable in the language you search your vault in.\n\nMemoryClip translates every language this Mac already has the assets for, whether or not it is ticked below. Ticking one downloads its assets if macOS does not have them yet, and tells MemoryClip to expect that language on screen. The packs go into the store the whole system shares, so a language you fetch here is the one Translate and Safari use." = "When MemoryClip writes a note, a screenshot in Arabic, Japanese or Russian is read in its own language and the note carries both: the text exactly as it was on screen, and a translation underneath it, in the language chosen above. Translation runs on this Mac. The title, summary and tags are written from that translation, so the note is findable in the language you search your vault in.\n\nMemoryClip translates every language this Mac already has the assets for, whether or not it is ticked below. Ticking one downloads its assets if macOS does not have them yet, and tells MemoryClip to expect that language on screen. The packs go into the store the whole system shares, so a language you fetch here is the one Translate and Safari use.";
 "Copy something in a language you do not read and the panel's preview shows it in the language chosen above, over the text as it was copied. It happens when you open the preview, not when you copy — a clipboard is mostly things nobody reads twice — and each clip is translated once and remembered." = "Copy something in a language you do not read and the panel's preview shows it in the language chosen above, over the text as it was copied. It happens when you open the preview, not when you copy — a clipboard is mostly things nobody reads twice — and each clip is translated once and remembered.";
+
+/* The link cleaner. */
+"Cleaned" = "Cleaned";
+"Cleaned · removed %@" = "Cleaned · removed %@";
+"Use original" = "Use original";
+"Clean Link" = "Clean Link";
+"Clean tracking parameters from copied links" = "Clean tracking parameters from copied links";
+"Also remove campaign parameters (utm_*)" = "Also remove campaign parameters (utm_*)";
+"Never clean links from these sites" = "Never clean links from these sites";
+"example.com" = "example.com";
+"Add" = "Add";
+"A copied web address loses the identifiers that name who forwarded it — igsh, fbclid, utm_source and the rest — before it reaches the clipboard, so what you paste is the clean address. Every cleaned clip keeps the original, which the panel's preview can hand back. Addresses carrying a token, a code or a signature are never touched." = "A copied web address loses the identifiers that name who forwarded it — igsh, fbclid, utm_source and the rest — before it reaches the clipboard, so what you paste is the clean address. Every cleaned clip keeps the original, which the panel's preview can hand back. Addresses carrying a token, a code or a signature are never touched.";
