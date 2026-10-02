@@ -82,7 +82,12 @@ final class ClipQueryTests: XCTestCase {
         populate()
         for type in TypeFilter.allCases {
             for source in [nil, "Safari", "Finder"] {
-                for search in ["", "hello", "HELLO", "réport", "#ff00aa", "zzz"] {
+                for search in [
+                    "", "hello", "HELLO", "réport", "#ff00aa", "zzz",
+                    "is:pinned", "-is:pinned", "app:Saf", "-app:Saf",
+                    "type:image", "-type:file", "after:today", "on:yesterday",
+                    "before:2020-01-01", "is:bogus", "hello app:Safari"
+                ] {
                     let filter = ClipFilter(search: search, type: type, source: source)
                     XCTAssertNoThrow(
                         try context.fetch(filter.fetchDescriptor()),
@@ -173,11 +178,19 @@ final class ClipQueryTests: XCTestCase {
 
     // MARK: Source filter
 
-    func testSourceFilterIsExactMatch() throws {
+    /// `source:` sets an `app:` operator, and `app:` is an anchored prefix:
+    /// "Safari" reaches "Safari Technology Preview", and a name merely
+    /// containing the value does not.
+    func testSourceFilterIsAnAnchoredPrefix() throws {
         populate()
         insert(kind: .text, text: "preview build", app: "Safari Technology Preview")
-        XCTAssertEqual(Set(try visible(ClipFilter(source: "Safari")).compactMap(\.sourceAppName)), ["Safari"])
-        XCTAssertEqual(try visible(ClipFilter(source: "Safari")).count, 2)
+        insert(kind: .text, text: "odd", app: "A Safari Wrapper")
+        let found = try visible(ClipFilter(source: "Safari"))
+        XCTAssertEqual(
+            Set(found.compactMap(\.sourceAppName)),
+            ["Safari", "Safari Technology Preview"]
+        )
+        XCTAssertEqual(found.count, 3)
     }
 
     func testSourceFilterCombinesWithSearchAndType() throws {

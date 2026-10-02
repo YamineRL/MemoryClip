@@ -283,16 +283,24 @@ enum ShortcutReference {
     /// to edit, and everything else here works regardless.
     ///
     /// Keys the panel merely refuses to swallow are not keys it handles, so
-    /// Tab and Delete are absent: they appear in `PanelView.reservedCharacters`
-    /// only to keep vim mode's catch-all from stealing them from the search
-    /// field and the focus ring.
+    /// Delete is absent: it appears in `PanelView.reservedCharacters` only to
+    /// keep vim mode's catch-all from stealing it from the search field and
+    /// the focus ring. Tab made the list this PRD - it accepts a suggestion
+    /// while the list is open - as did `?`, which shows the cheat-sheet.
     static let panel = ShortcutGroup(
         title: loc("Panel"),
         entries: [
-            ShortcutEntry(keys: "↑ ↓", detail: loc("Move the selection; hold to keep moving")),
+            ShortcutEntry(
+                keys: "↑ ↓",
+                detail: loc("Move the selection; hold to keep moving; choose a suggestion while the list is open")
+            ),
             ShortcutEntry(keys: "← →", detail: loc("Move along the strip; hold to keep moving (search field empty)")),
-            ShortcutEntry(keys: "Return", detail: loc("Paste the selected clip")),
+            ShortcutEntry(
+                keys: "Return",
+                detail: loc("Paste the selected clip; with the suggestion list open, accept the highlighted row")
+            ),
             ShortcutEntry(keys: "⇧Return", detail: loc("Paste as plain text")),
+            ShortcutEntry(keys: "Tab", detail: loc("Accept the highlighted suggestion while the list is open")),
             ShortcutEntry(keys: "⌘1…⌘9", detail: loc("Paste the first nine results")),
             ShortcutEntry(keys: "⌘C", detail: loc("Copy the selected clip without pasting")),
             ShortcutEntry(
@@ -305,7 +313,11 @@ enum ShortcutReference {
                 keys: "Space",
                 detail: loc("Open the preview; press again to Quick Look a screenshot, image or file, or to close the preview (search field empty)")
             ),
-            ShortcutEntry(keys: "Esc", detail: loc("Close Quick Look, then the preview, then the panel")),
+            ShortcutEntry(keys: "?", detail: loc("Show the search operator cheat-sheet")),
+            ShortcutEntry(
+                keys: "Esc",
+                detail: loc("Close the suggestion list, then Quick Look, then the preview, then the panel")
+            ),
             ShortcutEntry(keys: "⌘W", detail: loc("Close the panel"))
         ]
     )

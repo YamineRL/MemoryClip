@@ -627,4 +627,16 @@ final class PanelController: NSObject, NSWindowDelegate {
         hide(restorePrevious: true)
         return false
     }
+
+    /// The search field's editor. `windowWillReturnFieldEditor` is the one
+    /// hook AppKit offers over the shared field editor a window hands to
+    /// its text fields - and the only way the `key:value` token pills can
+    /// be drawn inside live editing without replacing the field. The panel
+    /// has exactly one text field, so serving the custom editor to the
+    /// window serves it to the search.
+    private lazy var searchFieldEditor = SearchOperatorFieldEditor()
+
+    func windowWillReturnFieldEditor(_ sender: NSWindow, to client: Any?) -> NSText? {
+        searchFieldEditor
+    }
 }

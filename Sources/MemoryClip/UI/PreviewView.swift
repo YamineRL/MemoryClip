@@ -16,6 +16,10 @@ struct PreviewView: View {
     /// The height the pane was given, so the translation block can grow with
     /// it. Nil holds the block at its default ceiling.
     var paneHeight: CGFloat? = nil
+    /// Filter-to-this-app callback (wired by PanelView to `filter.source`):
+    /// clicking the source app in the meta line inserts `app:"Name"` in the
+    /// search field. The name renders plain when absent.
+    var onFilterApp: ((String) -> Void)? = nil
 
     /// Detection/calc results are cached per content change rather than
     /// recomputed on every body pass — scanning a multi-megabyte clip on the
@@ -52,6 +56,30 @@ struct PreviewView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: Design.Space.roomy) {
+            // Where the clip came from - and when, so the pane answers
+            // "which Slack thing, yesterday" at a glance. The app name is a
+            // button because clicking it is the `app:` operator's one-tap
+            // form; a clip with no source just shows the when.
+            HStack(spacing: Design.Space.snug) {
+                if let app = item.sourceAppName, !app.isEmpty {
+                    Button {
+                        onFilterApp?(app)
+                    } label: {
+                        Text(app)
+                            .font(Design.Typography.meta)
+                            .foregroundStyle(Color(nsColor: .secondaryLabelColor))
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(onFilterApp == nil)
+                    .help(loc("Show only %@", app))
+                    .accessibilityLabel(loc("Show only %@", app))
+                }
+                Text(item.createdAt, style: .relative)
+                    .font(Design.Typography.meta)
+                    .foregroundStyle(Color(nsColor: .tertiaryLabelColor))
+                Spacer(minLength: 0)
+            }
+
             // Above the clip, because a clip in a language you do not read is
             // one you look away from: the translation is what makes the pane
             // worth looking at, and the original is right underneath it.
