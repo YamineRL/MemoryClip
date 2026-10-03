@@ -13,6 +13,7 @@ private struct FakeClip: ClipDisplayable {
     var fileURLStrings: [String] = []
     var sourceAppName: String?
     var isScreenshot = false
+    var isSecret = false
 }
 
 /// Covers the pure display logic shared by ClipRowView and PreviewView:
@@ -58,6 +59,40 @@ final class ClipDisplayTests: XCTestCase {
         XCTAssertFalse(ClipDisplay.isTextBearing(.image))
         XCTAssertFalse(ClipDisplay.isTextBearing(.file))
         XCTAssertFalse(ClipDisplay.isTextBearing(.color))
+    }
+
+    // MARK: - Edit gate (must be identical in menu, key and button)
+
+    /// The editable kinds are the ones whose payload is plain text to write
+    /// back, and `.color` is deliberately among them even though it is not
+    /// "text bearing" for the calc path: a hex literal is exactly what the
+    /// editor re-parses on save.
+    func testEditableKinds() {
+        for kind in [ClipKind.text, .richText, .link, .color] {
+            XCTAssertTrue(
+                ClipDisplay.canEdit(FakeClip(kind: kind, text: "t")),
+                "expected \(kind) to be editable"
+            )
+        }
+    }
+
+    /// Images, files and screenshots have nothing a text editor can write
+    /// back, so the entry points must hide the action rather than offer an
+    /// edit that cannot mean anything.
+    func testNonEditableKinds() {
+        XCTAssertFalse(ClipDisplay.canEdit(FakeClip(kind: .image)))
+        XCTAssertFalse(ClipDisplay.canEdit(FakeClip(kind: .file, fileURLStrings: ["/tmp/a"])))
+        XCTAssertFalse(
+            ClipDisplay.canEdit(FakeClip(kind: .file, isScreenshot: true)),
+            "a screenshot is a .file clip; editing its reference would orphan it"
+        )
+    }
+
+    /// A secret keeps `.text` as its kind, so the flag, not the kind, is
+    /// what keeps ciphertext out of an editor that would corrupt it on save.
+    func testSecretsAreNotEditable() {
+        XCTAssertFalse(ClipDisplay.canEdit(FakeClip(kind: .text, text: "ciphertext", isSecret: true)))
+        XCTAssertFalse(ClipDisplay.canEdit(FakeClip(kind: .link, text: "t", isSecret: true)))
     }
 
     // MARK: - Note guard (must be identical in the card menu and the ⌘S / n keys)

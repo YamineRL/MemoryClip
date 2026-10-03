@@ -18,6 +18,7 @@ enum VimCommand: Equatable {
     case enterInsert  // i — edit the existing query
     case saveNote     // n
     case addToCalendar // c
+    case edit         // e: edit the clip's text in the preview pane
     case visual       // v — enter/leave visual mode
 }
 
@@ -101,6 +102,10 @@ struct VimNavigator {
         // the keystroke rather than arming a sequence, since there is no
         // second key that could complete it.
         case "c": return .addToCalendar
+        // `e` is vim's word-forward motion, and the panel's rows are the
+        // words it would step over, which makes it free for the action the
+        // letter already spells: editing the clip under the cursor.
+        case "e": return .edit
         // `v` is vim's own character-wise visual mode, and it means the same
         // thing here: the movement keys stop moving the cursor and start
         // dragging one end of a range behind it. A second `v` leaves, as it

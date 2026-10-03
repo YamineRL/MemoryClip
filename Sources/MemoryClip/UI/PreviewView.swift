@@ -16,6 +16,9 @@ struct PreviewView: View {
     /// The height the pane was given, so the translation block can grow with
     /// it. Nil holds the block at its default ceiling.
     var paneHeight: CGFloat? = nil
+    /// Edit callback, wired by PanelView for clips `ClipDisplay.canEdit`
+    /// accepts. Nil hides the header's Edit button rather than disabling it.
+    var onEdit: (() -> Void)? = nil
     /// The pane's current text selection, published upward so the panel's ⌘C
     /// can copy it. Nil when nothing is selected.
     var onSelectionChange: ((String?) -> Void)? = nil
@@ -58,6 +61,22 @@ struct PreviewView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: Design.Space.roomy) {
+            // The pane's header carries the Edit button for the clips that
+            // offer it; hidden, not disabled, for every other kind.
+            if let onEdit {
+                HStack {
+                    Spacer(minLength: Design.Space.tight)
+                    Button {
+                        onEdit()
+                    } label: {
+                        Label(loc("Edit"), systemImage: "pencil")
+                    }
+                    .buttonStyle(.borderless)
+                    .font(Design.Typography.footnote)
+                    .help(loc("Edit this clip (⌘I)"))
+                }
+            }
+
             // Above the clip, because a clip in a language you do not read is
             // one you look away from: the translation is what makes the pane
             // worth looking at, and the original is right underneath it.

@@ -515,6 +515,33 @@
 "When MemoryClip writes a note, a screenshot in Arabic, Japanese or Russian is read in its own language and the note carries both: the text exactly as it was on screen, and a translation underneath it, in the language chosen above. Translation runs on this Mac. The title, summary and tags are written from that translation, so the note is findable in the language you search your vault in.\n\nMemoryClip translates every language this Mac already has the assets for, whether or not it is ticked below. Ticking one downloads its assets if macOS does not have them yet, and tells MemoryClip to expect that language on screen. The packs go into the store the whole system shares, so a language you fetch here is the one Translate and Safari use." = "When MemoryClip writes a note, a screenshot in Arabic, Japanese or Russian is read in its own language and the note carries both: the text exactly as it was on screen, and a translation underneath it, in the language chosen above. Translation runs on this Mac. The title, summary and tags are written from that translation, so the note is findable in the language you search your vault in.\n\nMemoryClip translates every language this Mac already has the assets for, whether or not it is ticked below. Ticking one downloads its assets if macOS does not have them yet, and tells MemoryClip to expect that language on screen. The packs go into the store the whole system shares, so a language you fetch here is the one Translate and Safari use.";
 "Copy something in a language you do not read and the panel's preview shows it in the language chosen above, over the text as it was copied. It happens when you open the preview, not when you copy — a clipboard is mostly things nobody reads twice — and each clip is translated once and remembered." = "Copy something in a language you do not read and the panel's preview shows it in the language chosen above, over the text as it was copied. It happens when you open the preview, not when you copy — a clipboard is mostly things nobody reads twice — and each clip is translated once and remembered.";
 
+
+/* Editing a clip in the preview. */
+"Edit…" = "Edit…";
+"Edit this clip (⌘I)" = "Edit this clip (⌘I)";
+"Edit the selected clip in the preview pane" = "Edit the selected clip in the preview pane";
+"Leave the editor, then Quick Look, then the preview, then the panel" = "Leave the editor, then Quick Look, then the preview, then the panel";
+"Editing · %@" = "Editing · %@";
+"Editing mode" = "Editing mode";
+"Editing mode: Esc cancels, ⌘S saves" = "Editing mode: Esc cancels, ⌘S saves";
+"Editing clip" = "Editing clip";
+"Clip editor" = "Clip editor";
+"Clip text" = "Clip text";
+"Formatting is removed when you save." = "Formatting is removed when you save.";
+"Discard changes? Esc again to discard, ⌘S to save." = "Discard changes? Esc again to discard, ⌘S to save.";
+"Save" = "Save";
+"Save and Paste" = "Save and Paste";
+"Saved" = "Saved";
+"Discarded" = "Discarded";
+"Discard the edit (Esc)" = "Discard the edit (Esc)";
+"Save the edited clip (⌘S)" = "Save the edited clip (⌘S)";
+"Save the edit and paste it (⌘Return)" = "Save the edit and paste it (⌘Return)";
+"⌘S Save" = "⌘S Save";
+"⌘Return Save and Paste" = "⌘Return Save and Paste";
+"Esc Cancel" = "Esc Cancel";
+"Clip edited · Undo (⌘Z)" = "Clip edited · Undo (⌘Z)";
+"Edit undone" = "Edit undone";
+"Unsaved draft restored." = "Unsaved draft restored.";
 /* The link cleaner. */
 "Cleaned" = "Cleaned";
 "Cleaned · removed %@" = "Cleaned · removed %@";

@@ -123,6 +123,10 @@ protocol ClipDisplayable {
     /// Whether this file clip is a screenshot picked up from the screenshot
     /// folder.
     var isScreenshot: Bool { get }
+    /// Whether the clip is an encrypted secret. Secrets keep `.text` as their
+    /// kind, so kind alone cannot keep them off the edit surface: the text
+    /// the editor would show is ciphertext, and rewriting it would corrupt it.
+    var isSecret: Bool { get }
 }
 
 extension ClipItem: ClipDisplayable {}
@@ -139,6 +143,9 @@ extension ClipDisplayable {
     var translatedText: String? { nil }
     var clipTranslationText: String? { nil }
     var isScreenshot: Bool { false }
+    // False until the secrets branch adds the stored property, which then
+    // satisfies the requirement directly the way `refinedTitle` does.
+    var isSecret: Bool { false }
 
     /// One-line description used for VoiceOver announcements.
     var announcementSummary: String {
@@ -921,6 +928,12 @@ struct PanelActions {
     /// The completion carries the clip Quick Look was showing when it closed,
     /// so the panel's selection can follow wherever the arrows ended up.
     var quickLook: ([ClipItem], Int, @escaping (UUID) -> Void) -> Void
+    /// Replace a clip's text with the edited draft, dedup-merging by the new
+    /// hash; the returned snapshot is the panel-session undo's record of
+    /// what the clip held before. Nil when the clip may not be edited.
+    var applyEdit: (ClipItem, String) -> ClipEdit.Snapshot?
+    /// Put a clip back the way `applyEdit`'s snapshot remembers it.
+    var undoEdit: (ClipEdit.Snapshot) -> Void
 }
 
 /// The main clip-panel view.
@@ -1013,6 +1026,20 @@ struct PanelContentView: View {
     @State private var navHintDismissed = false
     /// The same, for the preview pane's Quick Look bubble.
     @State private var quickLookHintDismissed = false
+    /// The open in-place edit, or nil. While one is live the preview pane
+    /// shows the editor instead of the preview, and the panel's keys are
+    /// suspended in favour of the draft.
+    @State private var editing: ClipEdit.Session?
+    /// Drafts kept for clips whose editor was still dirty when the panel
+    /// closed. Memory only, never the store, so they die with the app.
+    @State private var editDrafts: [UUID: String] = [:]
+    /// The pre-edit snapshot of the last saved edit: the panel-session
+    /// undo behind the toast's "Undo (⌘Z)".
+    @State private var lastEditUndo: ClipEdit.Snapshot?
+    /// The transient line in the footer's status area ("Clip edited · …").
+    @State private var statusMessage: String?
+    /// Re-triggers the toast's dismiss task whenever a new message arrives.
+    @State private var statusToken = 0
     @FocusState private var searchFocused: Bool
 
     init(
@@ -1199,21 +1226,43 @@ struct PanelContentView: View {
                         storedPreviewHeight = Double(height)
                         uiState.previewHeight = height
                     }
-                    PreviewView(
-                        item: item,
-                        onTransform: { actions.applyTransform(item, $0) },
-                        onCopy: { actions.copyText(item, $0) },
-                        paneHeight: resolvedPreviewHeight,
-                        onSelectionChange: { previewSelection = $0 }
-                    )
-                    .frame(height: resolvedPreviewHeight)
-                    .overlay(alignment: .bottom) {
-                        hintBubble(
-                            PanelHint.overPreview(
-                                canQuickLook: QuickLook.canPreview(item),
-                                dismissed: quickLookHintDismissed
-                            )
+                    // The pane becomes the editor, keeping its frame and its
+                    // resize handle. The isDeleted half is for a clip wiped
+                    // by Clear All History or a context-menu Delete while it
+                    // was being edited: a dead row has nothing left to show.
+                    if let editing, !editing.item.isDeleted {
+                        ClipEditorView(
+                            item: editing.item,
+                            draft: Binding(
+                                get: { self.editing?.draft ?? "" },
+                                set: { self.editing?.draft = $0 }
+                            ),
+                            discardArmed: editing.discardArmed,
+                            onSave: { saveEdit(andPaste: false) },
+                            onSaveAndPaste: { saveEdit(andPaste: true) },
+                            onCancel: { editEscape() },
+                            onEscape: { handleEscape() }
                         )
+                        .id(editing.id)
+                        .frame(height: resolvedPreviewHeight)
+                    } else {
+                        PreviewView(
+                            item: item,
+                            onTransform: { actions.applyTransform(item, $0) },
+                            onCopy: { actions.copyText(item, $0) },
+                            paneHeight: resolvedPreviewHeight,
+                            onEdit: ClipDisplay.canEdit(item) ? { startEditing(item) } : nil,
+                            onSelectionChange: { previewSelection = $0 }
+                        )
+                        .frame(height: resolvedPreviewHeight)
+                        .overlay(alignment: .bottom) {
+                            hintBubble(
+                                PanelHint.overPreview(
+                                    canQuickLook: QuickLook.canPreview(item),
+                                    dismissed: quickLookHintDismissed
+                                )
+                            )
+                        }
                     }
                 }
 
@@ -1252,6 +1301,14 @@ struct PanelContentView: View {
             guard !Task.isCancelled else { return }
             syncPreviewItem()
         }
+        // The status line's toast times itself out: bumping the token
+        // restarts the wait, so only the latest message's five seconds count.
+        .task(id: statusToken) {
+            guard statusMessage != nil else { return }
+            try? await Task.sleep(for: .seconds(5))
+            guard !Task.isCancelled else { return }
+            statusMessage = nil
+        }
         // Debounced for the same reason the preview pane is: the filter is
         // rebuilt on every keystroke, and counting once the typing comes to
         // rest is one pass instead of one per character.
@@ -1262,6 +1319,15 @@ struct PanelContentView: View {
         }
         .defaultFocus($searchFocused, true)
         .onChange(of: uiState.focusToken) {
+            // Closing the panel with a dirty editor keeps the draft for when
+            // the editor is reopened on the same clip: in memory only, so
+            // it never survives the app.
+            if let editing, editing.hasChanges {
+                editDrafts[editing.item.uuid] = editing.draft
+            }
+            editing = nil
+            lastEditUndo = nil
+            statusMessage = nil
             filter = ClipFilter()
             resetPaging()
             selection.clear()
@@ -1336,6 +1402,9 @@ struct PanelContentView: View {
                     .textFieldStyle(.plain)
                     .focused($searchFocused)
                     .font(.system(size: Design.Typography.bodySize))
+                    // While a clip is being edited, keys belong to the
+                    // draft: the query takes nothing, not even a click.
+                    .disabled(editing != nil)
             )
             .frame(width: Design.Size.searchFieldWidth)
 
@@ -1343,7 +1412,10 @@ struct PanelContentView: View {
 
             Spacer(minLength: Design.Space.tight)
 
-            if vimModeEnabled {
+            // The badge doubles as the editing-mode marker: while a draft is
+            // open it reads EDIT whether or not vim navigation is on, since
+            // editing is a mode of its own.
+            if vimModeEnabled || editing != nil {
                 modeBadge
             }
         }
@@ -1358,20 +1430,24 @@ struct PanelContentView: View {
     /// The label colour is deliberately NOT the accent colour: accent-on-tint
     /// is around 3:1 for several system accents, and this is 10-point text.
     private var modeBadge: some View {
-        Text(inputMode.badge)
+        // EDIT rather than a vim mode while the editor is open: vim's own
+        // state is suspended, not left behind, and the badge is the one
+        // place that has to say so.
+        let editingActive = editing != nil
+        return Text(editingActive ? "EDIT" : inputMode.badge)
             .font(Design.Typography.keycap)
             .padding(.horizontal, Design.Space.snug)
             .padding(.vertical, Design.Space.hair)
             .background(
                 Capsule(style: .continuous).fill(
-                    inputMode == .normal
-                        ? Color.primary.opacity(0.10)
-                        : Design.Palette.accent.opacity(0.28)
+                    editingActive || inputMode != .normal
+                        ? Design.Palette.accent.opacity(0.28)
+                        : Color.primary.opacity(0.10)
                 )
             )
-            .foregroundStyle(Color(nsColor: inputMode == .normal ? .secondaryLabelColor : .labelColor))
-            .accessibilityLabel(inputMode.accessibilityName)
-            .help(inputMode.help)
+            .foregroundStyle(Color(nsColor: editingActive || inputMode != .normal ? .labelColor : .secondaryLabelColor))
+            .accessibilityLabel(editingActive ? loc("Editing mode") : inputMode.accessibilityName)
+            .help(editingActive ? loc("Editing mode: Esc cancels, ⌘S saves") : inputMode.help)
     }
 
     // MARK: Quick filters
@@ -1457,6 +1533,9 @@ struct PanelContentView: View {
             // cursor instead of carrying the selection along whole, which is
             // what ⇧ with a movement key does in every list on the system.
             .onKeyPress(keys: [.upArrow, .downArrow], phases: [.down, .repeat]) { press in
+                // While the editor is open every arrow belongs to the
+                // draft's caret, not the strip.
+                guard editing == nil else { return .ignored }
                 moveSelection(
                     press.key == .downArrow ? 1 : -1,
                     extending: press.modifiers.contains(.shift),
@@ -1465,6 +1544,7 @@ struct PanelContentView: View {
                 return .handled
             }
             .onKeyPress(keys: [.leftArrow, .rightArrow], phases: [.down, .repeat]) { press in
+                guard editing == nil else { return .ignored }
                 // While there is a query to edit, the arrows belong to the
                 // caret — swallowing them would make the search field
                 // impossible to correct. With an empty field (the state the
@@ -1478,10 +1558,19 @@ struct PanelContentView: View {
                 return .handled
             }
             .onKeyPress(keys: [.return], phases: .down) { press in
+                // While editing, ⌘Return is Save and Paste and every other
+                // Return is the draft's own newline: the editor must see it.
+                if editing != nil {
+                    guard press.modifiers.contains(.command) else { return .ignored }
+                    saveEdit(andPaste: true)
+                    return .handled
+                }
                 pasteSelected(plainOnly: press.modifiers.contains(.shift))
                 return .handled
             }
             .onKeyPress(.space, phases: .down) { _ in
+                // Space in a draft types a space.
+                guard editing == nil else { return .ignored }
                 if readsVimKeys {
                     escalatePreview()
                     return .handled
@@ -1501,6 +1590,25 @@ struct PanelContentView: View {
                 // The ⌘ shortcuts act on the press alone: a held ⌘1 should
                 // paste one clip, not one per repeat event.
                 if press.modifiers.contains(.command), !press.phase.contains(.repeat) {
+                    // While the editor is open it owns the ⌘ keys: ⌘S is
+                    // re-pointed at the draft, ⌘Z/X/C/V/A reach the text view
+                    // through the Edit menu first, and ⌘1…⌘9 and friends do
+                    // nothing. A quick-paste in the middle of a draft is
+                    // exactly what "suspended" means.
+                    if editing != nil {
+                        switch press.characters.lowercased() {
+                        case "s":
+                            saveEdit(andPaste: false)
+                        case "z" where !press.modifiers.contains(.shift):
+                            // A ⌘Z that lands here is one the draft's own
+                            // undo stack declined, so the session undo is
+                            // the only thing left for it to take back.
+                            _ = undoLastEdit()
+                        default:
+                            break
+                        }
+                        return .handled
+                    }
                     if let digit = press.characters.first?.wholeNumberValue,
                        (1...9).contains(digit) {
                         quickPaste(digit)
@@ -1536,6 +1644,24 @@ struct PanelContentView: View {
                         copySelected()
                         return .handled
                     }
+                    // ⌘I, free the way ⌘S and ⌘E are: the Edit menu's own
+                    // items (⌘Z/X/C/V/A) are its only neighbours. I is for
+                    // "in place", which is what the edit is.
+                    if press.characters.lowercased() == "i" {
+                        editSelected()
+                        return .handled
+                    }
+                    // ⌘Z is the session undo the edit toast advertises. The
+                    // Edit menu's own Undo takes it first whenever a field
+                    // has undos to give; this runs only once it does not,
+                    // and only while a saved edit is there to take back.
+                    // ⇧⌘Z is deliberately left alone: it is Redo, and redo
+                    // is the text fields' own.
+                    if press.characters.lowercased() == "z",
+                       !press.modifiers.contains(.shift),
+                       undoLastEdit() {
+                        return .handled
+                    }
                     // ⌘Y is what Finder binds Quick Look to, and here it is
                     // the only way into the preview once something has been
                     // typed: a bare Space belongs to the search field for as
@@ -1550,9 +1676,15 @@ struct PanelContentView: View {
             }
     }
 
-    /// Esc unwinds one layer at a time: pending vim sequence → visual mode →
-    /// search mode → preview → panel.
+    /// Esc unwinds one layer at a time: editor → pending vim sequence →
+    /// visual mode → search mode → preview → panel.
     private func handleEscape() {
+        // The open editor is the innermost layer: leaving it (or answering
+        // its discard confirm) never touches what is underneath.
+        if editing != nil {
+            editEscape()
+            return
+        }
         if vim.hasPending {
             vim.reset()
             return
@@ -1636,6 +1768,7 @@ struct PanelContentView: View {
                                 isSavingNote: uiState.notesInFlight.contains(item.uuid),
                                 onPaste: { plain in actions.paste(item, plain) },
                                 onCopyOnly: { actions.copyOnly(item) },
+                                onEdit: { startEditing(item) },
                                 onCopyExtractedText: { actions.copyExtractedText(item) },
                                 onTransform: { transform in
                                     actions.applyTransform(item, transform)
@@ -1766,6 +1899,16 @@ struct PanelContentView: View {
 
             Spacer(minLength: Design.Space.tight)
 
+            // The status line's toast: transient answers to what just
+            // happened (an edit saved, a draft restored).
+            if let statusMessage {
+                Text(statusMessage)
+                    .font(Design.Typography.footnote)
+                    .foregroundStyle(Color(nsColor: .secondaryLabelColor))
+                    .lineLimit(1)
+                    .transition(.opacity)
+            }
+
             // The whole store's count when it could be had, and the loaded
             // page with a "+" only when it could not: the list is paged, so
             // `visible.count` on its own is what is on screen rather than
@@ -1804,6 +1947,10 @@ struct PanelContentView: View {
                 try? modelContext.delete(model: ClipItem.self)
                 try? modelContext.save()
                 sourceAppNames = []
+                // Everything is gone, including any clip mid-edit.
+                editing = nil
+                editDrafts = [:]
+                lastEditUndo = nil
             }
         } message: {
             Text(loc("This permanently removes all clips, including pinned ones."))
@@ -1902,13 +2049,125 @@ struct PanelContentView: View {
     /// When nothing is left to preview the pane is closed outright — leaving
     /// `previewVisible` true with a nil item made the next Space look dead.
     private func syncPreviewItem() {
-        guard previewVisible else { return }
+        // An open editor is pinned to the clip it is editing: the selection
+        // cannot move while it is up, so the pane must not either.
+        guard previewVisible, editing == nil else { return }
         guard let item = selectedItem ?? visibleItems.first else {
             previewVisible = false
             previewItem = nil
             return
         }
         previewItem = item
+    }
+
+    // MARK: Editing
+
+    /// Open the clip's text for editing in place: the preview pane becomes
+    /// the editor, opening itself when it was closed, and a draft the panel
+    /// was hiding with comes back with it.
+    private func startEditing(_ item: ClipItem) {
+        guard ClipDisplay.canEdit(item), !item.isDeleted else { return }
+        // Already editing this clip: reopening would reset the live draft.
+        if editing?.item.uuid == item.uuid { return }
+        // Switching clips mid-edit keeps the outgoing dirty draft, the same
+        // rule as closing the panel: it comes back if that clip is edited
+        // again this session.
+        if let current = editing, current.hasChanges {
+            editDrafts[current.item.uuid] = current.draft
+        }
+        let stashed = editDrafts[item.uuid]
+        editing = ClipEdit.Session(item: item, draft: stashed, restoredDraft: stashed != nil)
+        previewItem = item
+        previewVisible = true
+        // Focus moves to the draft, so the search field must let it go;
+        // pending vim sequences are discarded rather than finished inside it.
+        searchFocused = false
+        vim.reset()
+        announce(loc("Editing clip"))
+        if stashed != nil { showStatus(loc("Unsaved draft restored.")) }
+    }
+
+    /// ⌘I and vim's `e`: edit the cursor clip when its kind allows it, and
+    /// say nothing at all on a clip that cannot be. The keys have no menu
+    /// to hide behind, so they simply decline.
+    private func editSelected() {
+        guard let item = selectedItem else { return }
+        startEditing(item)
+    }
+
+    /// One Escape inside the editor, or a press of its Cancel button, which
+    /// is Esc's mouse-shaped twin. The layering (leave at once, warn once,
+    /// discard) is `ClipEdit.escapeAction`'s.
+    private func editEscape() {
+        guard var session = editing else { return }
+        switch ClipEdit.escapeAction(hasChanges: session.hasChanges, discardArmed: session.discardArmed) {
+        case .leave:
+            // Nothing was thrown away, so nothing is announced as thrown
+            // away: focus returning to the search field is the signal.
+            endEdit()
+        case .confirmDiscard:
+            session.discardArmed = true
+            editing = session
+            announce(loc("Discard changes? Esc again to discard, ⌘S to save."))
+        case .discard:
+            editDrafts.removeValue(forKey: session.item.uuid)
+            endEdit(announcing: loc("Discarded"))
+        }
+    }
+
+    /// Save the draft through the store (kind and hash re-derived,
+    /// duplicates merged, derived fields reset), then paste it through the
+    /// normal path when asked (PasteService, plain-text app list included).
+    private func saveEdit(andPaste: Bool) {
+        guard let session = editing else { return }
+        // The clip may have been deleted (context menu) while it was being
+        // edited; there is nothing left to save onto.
+        guard !session.item.isDeleted else {
+            editing = nil
+            return
+        }
+        // An unchanged draft has nothing to write: leave the editor (and
+        // still paste, when that was the exit asked for) rather than
+        // clearing derived fields over content that never moved.
+        guard session.hasChanges else {
+            endEdit()
+            if andPaste { actions.paste(session.item, false) }
+            return
+        }
+        guard let snapshot = actions.applyEdit(session.item, session.draft) else { return }
+        lastEditUndo = snapshot
+        editDrafts.removeValue(forKey: session.item.uuid)
+        endEdit(announcing: loc("Saved"))
+        showStatus(loc("Clip edited · Undo (⌘Z)"))
+        if andPaste {
+            actions.paste(session.item, false)
+        }
+    }
+
+    /// ⌘Z after a save: put the clip back the way the snapshot remembers it.
+    /// True when there was an edit to take back.
+    private func undoLastEdit() -> Bool {
+        guard let snapshot = lastEditUndo else { return false }
+        lastEditUndo = nil
+        actions.undoEdit(snapshot)
+        showStatus(loc("Edit undone"))
+        return true
+    }
+
+    /// Leave the editor, whichever way out was taken, and hand the keys back
+    /// to the panel. The search field is its usual focus.
+    private func endEdit(announcing message: String? = nil) {
+        editing = nil
+        searchFocused = true
+        if let message { announce(message) }
+    }
+
+    /// A line in the footer's status area for five seconds, and spoken so
+    /// VoiceOver hears it too.
+    private func showStatus(_ message: String) {
+        statusMessage = message
+        statusToken &+= 1
+        announce(message)
     }
 
     // MARK: Vim mode
@@ -1932,6 +2191,9 @@ struct PanelContentView: View {
     /// consumed (bound or not) so nothing leaks into the search field; in
     /// insert mode nothing is consumed and typing works normally.
     private func handleVimKey(_ press: KeyPress) -> KeyPress.Result {
+        // An open editor suspends vim wholesale: every key belongs to the
+        // draft, bound or not.
+        guard editing == nil else { return .ignored }
         guard readsVimKeys else { return .ignored }
         // Keys with dedicated handlers above must never be swallowed here.
         guard !Self.reservedCharacters.contains(press.key.character) else { return .ignored }
@@ -2053,6 +2315,8 @@ struct PanelContentView: View {
             saveSelectedNote()
         case .addToCalendar:
             addSelectedToCalendar()
+        case .edit:
+            editSelected()
         case .visual:
             setMode(inputMode == .visual ? .normal : .visual)
         }
@@ -2072,6 +2336,12 @@ struct PanelContentView: View {
         selection.selectNeighbour(ofAll: removed, in: visibleIDs)
         for item in items { modelContext.delete(item) }
         try? modelContext.save()
+        // A clip deleted out from under its editor takes the session and
+        // any stashed draft with it.
+        if let session = editing, removed.contains(session.item.uuid) {
+            editing = nil
+        }
+        for uuid in removed { editDrafts.removeValue(forKey: uuid) }
         if previewGoes { previewItem = nil }
         syncPreviewItem()
     }

@@ -684,6 +684,144 @@ final class ClipStore {
         return fetch(descriptor).first
     }
 
+    // MARK: - Editing
+
+    /// Replace a clip's text with the edited draft.
+    ///
+    /// Kind and content hash are re-derived from the edited string through
+    /// the same rules capture runs (`ContentParser.parseText`), so a link
+    /// fixed into a sentence comes out `.text` and a URL typed over a note
+    /// comes out `.link`; a rich-text clip flattens to whatever its new text
+    /// parses as, and its `richTextData` is always cleared.
+    ///
+    /// If another clip already carries the resulting hash the edit merges
+    /// rather than leaving a duplicate: this clip is the survivor, it keeps
+    /// the older of the two `createdAt` dates, a pin on either side
+    /// survives, and anything only the duplicate held (note, event, source,
+    /// refinement, translation: all still true of this identical text)
+    /// moves across before the row goes. `createdAt` otherwise does not
+    /// move, the clip keeps its place in the list, and
+    /// `notePath`/`calendarEventID` stay: the note and the event still
+    /// exist, and an export should update them, not write a second one.
+    ///
+    /// Everything derived from the old text is dropped (all `refined*`,
+    /// `refineAttempted`, `translatedText`, `sourceLanguage` and the
+    /// `clipTranslation*` cache) because it describes content that is gone.
+    /// `refineAttempted` resets to false so the pipeline may refine the new
+    /// text (it only picks up clips that also have `ocrText`, which an
+    /// edited clip cannot grow here, so nothing re-queues spontaneously).
+    ///
+    /// - Returns: the pre-edit snapshot the caller keeps for the session
+    ///   undo, or nil when the clip is not an editable kind.
+    @discardableResult
+    func applyEdit(_ item: ClipItem, newText: String) -> ClipEdit.Snapshot? {
+        guard ClipDisplay.canEdit(item) else { return nil }
+        let snapshot = ClipEdit.Snapshot(
+            uuid: item.uuid,
+            text: item.text,
+            richTextData: item.richTextData,
+            kind: item.kind,
+            colorHex: item.colorHex,
+            contentHash: item.contentHash
+        )
+
+        if let parsed = ContentParser.parseText(newText) {
+            item.kind = parsed.kind
+            item.text = parsed.text
+            item.colorHex = parsed.colorHex
+            item.contentHash = parsed.hash
+        } else {
+            // A copy never produces whitespace-only text, but an existing
+            // clip is not deleted by editing it to one: it stays, as plain
+            // text carrying exactly what was typed.
+            item.kind = .text
+            item.text = newText
+            item.colorHex = nil
+            item.contentHash = ContentParser.hashText("text:" + newText)
+        }
+        item.richTextData = nil
+
+        // Everything derived from the previous text is stale now.
+        item.refinedTitle = nil
+        item.refinedSummary = nil
+        item.refinedText = nil
+        item.refinedTags = []
+        item.refineAttempted = false
+        item.sourceLanguage = nil
+        item.translatedText = nil
+        item.clipTranslationText = nil
+        item.clipTranslationSource = nil
+        item.clipTranslationTarget = nil
+
+        // Merge every other clip already carrying the new hash into this one
+        // (fetchByHash's limit-1 would answer only the newest match, and the
+        // edited row itself can be it, so the merge fetches them all).
+        //
+        // The edited row is the survivor: same hash means same content, so
+        // the merge is a union. The older creation date wins (the clip was
+        // copied then, whatever row carried it), a pin on either side stays
+        // pinned, the fresher lastUsedAt wins, and data the survivor lacks,
+        // like a note path, a calendar event, source app, and any refinement
+        // or translation still valid for this identical text, is absorbed
+        // rather than thrown away with the duplicate.
+        let hash = item.contentHash
+        let duplicates = fetch(FetchDescriptor<ClipItem>(
+            predicate: #Predicate { $0.contentHash == hash }
+        )).filter { $0 !== item }
+        for duplicate in duplicates {
+            if duplicate.createdAt < item.createdAt {
+                item.createdAt = duplicate.createdAt
+            }
+            if let used = duplicate.lastUsedAt, item.lastUsedAt.map({ used > $0 }) ?? true {
+                item.lastUsedAt = used
+            }
+            item.isPinned = item.isPinned || duplicate.isPinned
+            if item.notePath == nil {
+                item.notePath = duplicate.notePath
+                item.noteExportedAt = duplicate.noteExportedAt
+            }
+            if item.calendarEventID == nil {
+                item.calendarEventID = duplicate.calendarEventID
+            }
+            if item.sourceBundleID == nil {
+                item.sourceBundleID = duplicate.sourceBundleID
+                item.sourceAppName = duplicate.sourceAppName
+            }
+            if item.refinedTitle == nil {
+                item.refinedTitle = duplicate.refinedTitle
+                item.refinedSummary = duplicate.refinedSummary
+                item.refinedText = duplicate.refinedText
+                item.refinedTags = duplicate.refinedTags
+                item.refineAttempted = item.refineAttempted || duplicate.refineAttempted
+            }
+            if item.translatedText == nil {
+                item.translatedText = duplicate.translatedText
+                item.sourceLanguage = item.sourceLanguage ?? duplicate.sourceLanguage
+            }
+            if item.clipTranslationText == nil {
+                item.clipTranslationText = duplicate.clipTranslationText
+                item.clipTranslationSource = duplicate.clipTranslationSource
+                item.clipTranslationTarget = duplicate.clipTranslationTarget
+            }
+            context.delete(duplicate)
+        }
+
+        save()
+        return snapshot
+    }
+
+    /// Put a clip back to what `applyEdit` returned: the panel's in-memory
+    /// undo, held for the session only. No-op when the clip is gone.
+    func restoreEdit(_ snapshot: ClipEdit.Snapshot) {
+        guard let item = item(withUUID: snapshot.uuid) else { return }
+        item.text = snapshot.text
+        item.richTextData = snapshot.richTextData
+        item.kind = snapshot.kind
+        item.colorHex = snapshot.colorHex
+        item.contentHash = snapshot.contentHash
+        save()
+    }
+
     // MARK: - Periodic maintenance
 
     /// Run retention + cap enforcement now, and then every `interval`.
