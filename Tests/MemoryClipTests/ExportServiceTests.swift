@@ -298,7 +298,7 @@ final class ExportServiceTests: XCTestCase {
         let firstLine = csv.components(separatedBy: "\n").first
         XCTAssertEqual(
             firstLine,
-            "kind,text,colorHex,fileURLs,sourceAppName,createdAt,lastUsedAt,isPinned"
+            "kind,text,colorHex,fileURLs,sourceAppName,createdAt,lastUsedAt,isPinned,pinboard"
         )
     }
 
@@ -314,7 +314,7 @@ final class ExportServiceTests: XCTestCase {
         XCTAssertEqual(lines.count, 3)
         XCTAssertEqual(
             lines[1] + "\n" + lines[2],
-            "text,\"He said \"\"hi\"\", politely\nand left\",,,Notes,\(iso8601(createdAt)),,false"
+            "text,\"He said \"\"hi\"\", politely\nand left\",,,Notes,\(iso8601(createdAt)),,false,"
         )
         // Plain fields stay unquoted.
         XCTAssertFalse(csv.contains("\"Notes\""))
@@ -327,7 +327,7 @@ final class ExportServiceTests: XCTestCase {
         // No special characters anywhere, so a plain split is safe.
         let fields = row.components(separatedBy: ",")
 
-        XCTAssertEqual(fields.count, 8)
+        XCTAssertEqual(fields.count, 9)
         XCTAssertEqual(fields[6], "")
         XCTAssertEqual(fields[5], iso8601(createdAt))
     }
@@ -338,7 +338,8 @@ final class ExportServiceTests: XCTestCase {
         let row = ExportService.csv(from: [clip]).components(separatedBy: "\n")[1]
 
         XCTAssertTrue(row.contains(",\(iso8601(lastUsedAt)),"))
-        XCTAssertTrue(row.hasSuffix(",true"))
+        // The pinboard column trails `isPinned`, empty for a board-less pin.
+        XCTAssertTrue(row.hasSuffix(",true,"))
     }
 
     func testCSVFileURLsJoinedWithSemicolonSpace() {
@@ -357,7 +358,7 @@ final class ExportServiceTests: XCTestCase {
     func testCSVEmptyArrayIsHeaderOnly() {
         XCTAssertEqual(
             ExportService.csv(from: []),
-            "kind,text,colorHex,fileURLs,sourceAppName,createdAt,lastUsedAt,isPinned"
+            "kind,text,colorHex,fileURLs,sourceAppName,createdAt,lastUsedAt,isPinned,pinboard"
         )
     }
 
@@ -492,5 +493,141 @@ final class ExportServiceTests: XCTestCase {
         XCTAssertNil(decoded[0].imageBase64)
         XCTAssertNil(decoded[0].richTextBase64)
         XCTAssertFalse(json.contains("\"\""))
+    }
+
+    // MARK: Pinboards (PRD 06)
+
+    private func makeClip(
+        pinboard: String?,
+        pinboardColor: String? = nil,
+        pinboardOrder: Double? = nil
+    ) -> ClipExport {
+        var clip = makeClip(isPinned: true)
+        clip.pinboard = pinboard
+        clip.pinboardColor = pinboardColor
+        clip.pinboardOrder = pinboardOrder
+        return clip
+    }
+
+    /// A filed clip's record carries the board's name and colour and the
+    /// clip's place in the manual order, so an import can put it back.
+    @MainActor
+    func testExportMapsThePinboardFields() {
+        let board = Pinboard(name: "Addresses", colorName: "teal", order: 0)
+        let item = ClipItem(kind: .text, text: "42 Shipping Lane", contentHash: "h", isPinned: true)
+        item.pinboard = board
+        item.pinboardOrder = 1.5
+
+        let export = ExportService.export(from: item)
+
+        XCTAssertEqual(export.pinboard, "Addresses")
+        XCTAssertEqual(export.pinboardColor, "teal")
+        XCTAssertEqual(export.pinboardOrder, 1.5)
+    }
+
+    /// A pinned clip in no board still says so explicitly: `isPinned` true,
+    /// `pinboard` absent. nil, not "", or an import would file it under an
+    /// unnamed board.
+    @MainActor
+    func testExportLeavesThePinboardFieldsNilForBoardlessPins() {
+        let item = ClipItem(kind: .text, text: "plain pin", contentHash: "h", isPinned: true)
+        let export = ExportService.export(from: item)
+        XCTAssertTrue(export.isPinned)
+        XCTAssertNil(export.pinboard)
+        XCTAssertNil(export.pinboardColor)
+        XCTAssertNil(export.pinboardOrder)
+    }
+
+    /// A history with boards exports the `{"pinboards":…,"clips":…}`
+    /// document and imports it whole: board list and clip filings alike.
+    func testBoardAwareJSONRoundTrips() throws {
+        let boards = [
+            PinboardExport(name: "Addresses", color: "teal", order: 0),
+            PinboardExport(name: "Commands", color: "red", order: 1),
+        ]
+        let clips = [
+            makeClip(pinboard: "Addresses", pinboardColor: "teal", pinboardOrder: 0),
+            makeClip(pinboard: nil),
+        ]
+
+        let json = try ExportService.json(from: clips, pinboards: boards)
+        let document = try ExportService.imports(fromJSON: json)
+
+        XCTAssertEqual(document.pinboards, boards)
+        XCTAssertEqual(document.clips.count, 2)
+        XCTAssertEqual(document.clips[0].pinboard, "Addresses")
+        XCTAssertEqual(document.clips[0].pinboardColor, "teal")
+        XCTAssertEqual(document.clips[0].pinboardOrder, 0)
+        XCTAssertNil(document.clips[1].pinboard)
+    }
+
+    /// A board with no members is still a board: it must travel in the
+    /// document's top-level list, not inside a clip record.
+    func testBoardAwareJSONCarriesEmptyBoardsAndAnEmptyHistory() throws {
+        let boards = [PinboardExport(name: "Empty", color: "grey", order: 0)]
+
+        let json = try ExportService.json(from: [], pinboards: boards)
+        let document = try ExportService.imports(fromJSON: json)
+
+        XCTAssertEqual(document.pinboards, boards)
+        XCTAssertTrue(document.clips.isEmpty)
+    }
+
+    /// Backward compatibility, both directions: a bare-array file (what
+    /// every build before pinboards wrote) still imports, and a board-less
+    /// export still writes the bare array an older build can read.
+    func testBareArrayImportAndExportStayCompatible() throws {
+        let legacy = """
+            [{"kind":"text","text":"old clip","fileURLs":[],"createdAt":"\(iso8601(createdAt))","isPinned":true}]
+            """
+        let document = try ExportService.imports(fromJSON: legacy)
+        XCTAssertTrue(document.pinboards.isEmpty)
+        XCTAssertEqual(document.clips.count, 1)
+        XCTAssertEqual(document.clips[0].text, "old clip")
+
+        // No boards at export time means no wrapper object: a 0.5.x file.
+        let json = try ExportService.json(from: [makeClip()])
+        XCTAssertFalse(json.contains("\"pinboards\""))
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        XCTAssertNoThrow(try decoder.decode([ClipExport].self, from: Data(json.utf8)))
+    }
+
+    /// A document-shaped file with no `pinboards` key (a hand-trimmed
+    /// export, say) decodes as clips under no boards, not an error.
+    func testDocumentWithNoPinboardsKeyStillImports() throws {
+        let json = "{\"clips\": [{\"kind\":\"text\",\"text\":\"x\",\"fileURLs\":[],"
+            + "\"createdAt\":\"\(iso8601(createdAt))\",\"isPinned\":false}]}"
+        let document = try ExportService.imports(fromJSON: json)
+        XCTAssertTrue(document.pinboards.isEmpty)
+        XCTAssertEqual(document.clips.count, 1)
+    }
+
+    /// Neither an object with the wrong keys nor loose JSON is a history:
+    /// both must fail as `malformedDocument`, not crash the decoder path.
+    func testImportRejectsNonExportDocuments() {
+        XCTAssertThrowsError(try ExportService.imports(fromJSON: "{\"history\": []}")) { error in
+            XCTAssertEqual(error as? ExportService.ImportError, .malformedDocument)
+        }
+        XCTAssertThrowsError(try ExportService.imports(fromJSON: "\"just a string\"")) { error in
+            XCTAssertEqual(error as? ExportService.ImportError, .malformedDocument)
+        }
+    }
+
+    /// The CSV's trailing `pinboard` column: the board's name, defused and
+    /// escaped like every other field.
+    func testCSVPinboardColumnCarriesTheBoardName() {
+        let row = ExportService.csv(from: [makeClip(pinboard: "Commands")])
+            .components(separatedBy: "\n")[1]
+        XCTAssertTrue(row.hasSuffix(",true,Commands"), row)
+
+        // A board name that is a formula trigger is defused, and one with a
+        // comma is quoted: the column is text like any other.
+        let formula = ExportService.csv(from: [makeClip(pinboard: "=cmd")])
+            .components(separatedBy: "\n")[1]
+        XCTAssertTrue(formula.hasSuffix(",true,'=cmd"), formula)
+        let quoted = ExportService.csv(from: [makeClip(pinboard: "a,b")])
+            .components(separatedBy: "\n")[1]
+        XCTAssertTrue(quoted.hasSuffix(",true,\"a,b\""), quoted)
     }
 }

@@ -320,24 +320,59 @@ private struct GeneralSettingsPane: View {
 // MARK: - History
 
 private struct HistorySettingsPane: View {
-    @AppStorage(SettingsKeys.historyCap) private var historyCap = 200
-    @AppStorage(SettingsKeys.retentionDays) private var retentionDays = 30
+    @AppStorage(SettingsKeys.historyCap) private var historyCap = SettingsKeys.defaultHistoryCap
+    @AppStorage(SettingsKeys.retentionDays) private var retentionDays = SettingsKeys.defaultRetentionDays
+
+    /// A picked limit that would delete clips, parked while its confirmation
+    /// sheet is up. `doomed` is the sheet's number, counted by the same
+    /// `ClipStore.deletionCount(under:)` the enforce pass consults, so the
+    /// figure the user confirms is the figure that goes.
+    @State private var pendingLimit: PendingLimit?
+
+    /// The Storage row's total, nil until the background count lands; the
+    /// row says "Counting…" until then.
+    @State private var storageReadout: StorageReadout?
+
+    /// The caps the Keep-up-to menu offers, smallest first. 0 is the
+    /// store's "no cap" value and renders as Unlimited.
+    private static let capChoices = [200, 1_000, 5_000, 10_000, 0]
+
+    /// Digit grouping in the catalog language, so a French UI reads "5 000"
+    /// in the picker exactly as the confirmation sheet does.
+    private static let capFormat = IntegerFormatStyle<Int>.number.locale(L10n.locale)
 
     var body: some View {
         Form {
             Section(loc("Limits")) {
-                Stepper(value: $historyCap, in: 10...10_000, step: 50) {
+                Picker(selection: capSelection) {
+                    // A stored cap the stepper wrote but the menu does not
+                    // offer (350, 1,750…) rides along as its own top item,
+                    // so the current setting stays visible and is never
+                    // rewritten under the user. Picking a listed cap drops
+                    // it for good.
+                    if !Self.capChoices.contains(historyCap) {
+                        Text(historyCap, format: Self.capFormat).tag(historyCap)
+                    }
+                    ForEach(Self.capChoices, id: \.self) { choice in
+                        if choice == 0 {
+                            Text(loc("Unlimited")).tag(choice)
+                        } else {
+                            Text(choice, format: Self.capFormat).tag(choice)
+                        }
+                    }
+                } label: {
                     Label {
-                        Text(loc("Keep up to %d clips", historyCap))
+                        Text(loc("Keep up to"))
                     } icon: {
                         SettingsIcon(symbol: "tray.full.fill", tint: Color(nsColor: .systemTeal))
                     }
                 }
-                Picker(selection: $retentionDays) {
-                    Text(loc("Forever")).tag(0)
+                Picker(selection: retentionSelection) {
                     Text(loc("7 days")).tag(7)
                     Text(loc("30 days")).tag(30)
                     Text(loc("90 days")).tag(90)
+                    Text(loc("1 year")).tag(365)
+                    Text(loc("Forever")).tag(0)
                 } label: {
                     Label {
                         Text(loc("Delete clips older than"))
@@ -349,6 +384,16 @@ private struct HistorySettingsPane: View {
             }
 
             Section(loc("Storage")) {
+                LabeledContent {
+                    Text(storageText)
+                } label: {
+                    Label {
+                        Text(loc("On this Mac"))
+                    } icon: {
+                        SettingsIcon(symbol: "internaldrive.fill", tint: Color(nsColor: .systemGray))
+                    }
+                }
+                SettingsHint(loc("Screenshots stay where macOS saved them and are not counted."))
                 SettingsHint(loc("History lives in a local SwiftData file on this Mac. Clear it any time from the menu-bar menu (\"Clear All History…\") or the panel's nuke button."))
             }
 
@@ -403,6 +448,135 @@ private struct HistorySettingsPane: View {
             }
         }
         .formStyle(.grouped)
+        .task { await refreshStorage() }
+        .confirmationDialog(
+            confirmationTitle,
+            isPresented: limitConfirmationBinding,
+            titleVisibility: .visible
+        ) {
+            Button(loc("Delete"), role: .destructive) { confirmPendingLimit() }
+            Button(loc("Cancel"), role: .cancel) { pendingLimit = nil }
+                .keyboardShortcut(.defaultAction)
+        } message: {
+            Text(loc("Pinned clips are kept. This cannot be undone."))
+        }
+    }
+
+    /// Route a picked limit through the confirmation sheet when it would
+    /// delete clips, or write it straight through when it would not. A
+    /// raise, a return to Unlimited or Forever, and any limit the store is
+    /// already inside never ask.
+    private func propose(_ limit: ClipStore.HistoryLimit) {
+        let stored: Int
+        switch limit {
+        case .cap: stored = historyCap
+        case .retentionDays: stored = retentionDays
+        }
+        // Re-picking the current value is a no-op, not a deletion the store
+        // happens to be behind on.
+        guard limit.value != stored else { return }
+        let doomed = HistoryLimitsController.shared.deletionCount(under: limit)
+        if doomed > 0 {
+            pendingLimit = PendingLimit(limit: limit, doomed: doomed)
+        } else {
+            apply(limit)
+        }
+    }
+
+    /// Write the limit and enforce it now: leaving the counted rows for the
+    /// next maintenance pass would make a confirmed delete look like it did
+    /// not happen.
+    private func apply(_ limit: ClipStore.HistoryLimit) {
+        switch limit {
+        case .cap(let cap): historyCap = cap
+        case .retentionDays(let days): retentionDays = days
+        }
+        HistoryLimitsController.shared.enforce(limit)
+    }
+
+    private func confirmPendingLimit() {
+        guard let pendingLimit else { return }
+        self.pendingLimit = nil
+        apply(pendingLimit.limit)
+    }
+
+    /// The sheet is up exactly while a pick awaits confirmation; dismissing
+    /// it by any route (Esc, clicking out) drops the pick.
+    private var limitConfirmationBinding: Binding<Bool> {
+        Binding(
+            get: { pendingLimit != nil },
+            set: { if !$0 { pendingLimit = nil } }
+        )
+    }
+
+    /// "Delete 5,800 older clips?", singularized for a doomed count of one.
+    private var confirmationTitle: String {
+        guard let pendingLimit else { return "" }
+        if pendingLimit.doomed == 1 {
+            return loc("Delete 1 older clip?")
+        }
+        return loc(
+            "Delete %@ older clips?",
+            pendingLimit.doomed.formatted(.number.locale(L10n.locale))
+        )
+    }
+
+    /// The picker's selection, routed through `propose` so a limit that
+    /// would delete clips has to survive the sheet first.
+    private var capSelection: Binding<Int> {
+        Binding(
+            get: { historyCap },
+            set: { propose(.cap($0)) }
+        )
+    }
+
+    /// Same routing as `capSelection`, for the retention window.
+    private var retentionSelection: Binding<Int> {
+        Binding(
+            get: { retentionDays },
+            set: { propose(.retentionDays($0)) }
+        )
+    }
+
+    /// "1,203 clips · 84 MB", or "Counting…" while the background pass runs.
+    private var storageText: String {
+        guard let storageReadout else { return loc("Counting…") }
+        return loc(
+            "%@ clips · %@",
+            storageReadout.clips.formatted(.number.locale(L10n.locale)),
+            ByteCountFormatter.string(fromByteCount: storageReadout.bytes, countStyle: .file)
+        )
+    }
+
+    /// Walk the store directory for the Storage readout. The walk is off the
+    /// main actor (`ClipStore.historyDiskUsage` is `nonisolated` for exactly
+    /// this) and the clip count is a `fetchCount` on it; the whole thing runs
+    /// on appear, so re-showing the pane recomputes and nothing watches live.
+    private func refreshStorage() async {
+        storageReadout = nil
+        let clips = HistoryLimitsController.shared.clipCount()
+        // prepareStoreLocation is idempotent by now: the directory exists and
+        // any legacy store already migrated at launch.
+        let storeAt = (try? ClipStore.prepareStoreLocation()) ?? ClipStore.storeURL
+        let bytes = await Task.detached(priority: .utility) {
+            ClipStore.historyDiskUsage(storeAt: storeAt)
+        }.value
+        guard !Task.isCancelled else { return }
+        storageReadout = StorageReadout(clips: clips, bytes: bytes)
+    }
+
+    /// A picked limit that would delete clips, parked while its sheet is up.
+    private struct PendingLimit {
+        let limit: ClipStore.HistoryLimit
+        /// The sheet's "Delete N", counted by the same
+        /// `ClipStore.deletionCount(under:)` enforcement consults.
+        let doomed: Int
+    }
+
+    /// The Storage row's two halves once the background pass lands.
+    private struct StorageReadout {
+        let clips: Int
+        let bytes: Int64
     }
 }
 
@@ -422,7 +596,7 @@ private struct PanelSettingsPane: View {
                         SettingsIcon(symbol: "text.viewfinder", tint: Color(nsColor: .systemPurple))
                     }
                 }
-                SettingsHint(loc("Runs on-device with the Vision framework, in the background, so image clips can be found by the text inside them."))
+                SettingsHint(loc("Runs on-device with the Vision framework, in the background, so copied images and screenshots can be found by the text inside them."))
             }
 
             Section(loc("Navigation")) {
@@ -461,6 +635,19 @@ private struct PrivacySettingsPane: View {
     /// What is in the "never clean" field, before it is added.
     @State private var hostDraft = ""
 
+    /// How many stored plaintext clips look like secrets — nil while the
+    /// off-actor scan runs, so the "Already in your history" row simply is
+    /// not there until it has an answer.
+    @State private var plaintextSecretCount: Int?
+    /// The uuids behind `plaintextSecretCount`, kept so the Encrypt button
+    /// seals exactly the clips the scan counted rather than re-detecting a
+    /// second, possibly different, set.
+    @State private var plaintextSecretUUIDs: Set<UUID> = []
+    /// Whether the batch seal just ran — drives the "Done:" line.
+    @State private var secretsEncrypted = false
+    /// How many the batch seal moved, for that line.
+    @State private var sealedSecretCount = 0
+
     var body: some View {
         Form {
             Section(loc("Lock")) {
@@ -485,6 +672,86 @@ private struct PrivacySettingsPane: View {
                     }
                 }
                 SettingsHint(loc("Skips likely card numbers (Luhn-validated) and anything copied in a known password manager. Pasteboard opt-out markers (transient, auto-generated, concealed) are always respected."))
+            }
+
+            Section(loc("Secrets")) {
+                Picker(selection: secretModeBinding) {
+                    Text(loc("Keep it encrypted")).tag(SecretMode.keepEncrypted.rawValue)
+                    Text(loc("Don't keep it")).tag(SecretMode.drop.rawValue)
+                    Text(loc("Keep it like any other clip")).tag(SecretMode.keepPlain.rawValue)
+                } label: {
+                    Label {
+                        Text(loc("When you copy a secret"))
+                    } icon: {
+                        SettingsIcon(symbol: "key.fill", tint: Color(nsColor: .systemIndigo))
+                    }
+                }
+                switch SecretMode(rawValue: secretMode) ?? .keepEncrypted {
+                case .keepEncrypted:
+                    SettingsHint(loc("Secret-looking clips are sealed with a key that lives in this Mac's Secure Enclave and never leaves it. Touch ID — or your password — is what shows or pastes one."))
+                case .drop:
+                    SettingsHint(loc("Secret-looking clips are never stored. The clipboard itself is untouched — you can still paste what you copied."))
+                case .keepPlain:
+                    SettingsHint(loc("Copied secrets are stored like any other clip, searchable and readable by anyone who can open the panel."))
+                }
+                if !SecretSettings.canProtect && secretMode == SecretMode.keepEncrypted.rawValue {
+                    SettingsCallout(text: loc("This Mac cannot protect secrets with Touch ID, so secret-looking clips are not kept."))
+                }
+
+                Toggle(isOn: genericTokensBinding) {
+                    Label {
+                        Text(loc("Also treat long random strings as secrets"))
+                    } icon: {
+                        SettingsIcon(symbol: "sparkles", tint: Color(nsColor: .systemPurple))
+                    }
+                }
+                SettingsHint(loc("Catches tokens nobody wrote a pattern for — a 40-character mix of letters and digits that is not a word. Off, only the named patterns below count."))
+
+                Toggle(isOn: forgetCodesBinding) {
+                    Label {
+                        Text(loc("Forget one-time codes after 10 minutes"))
+                    } icon: {
+                        SettingsIcon(symbol: "timer", tint: Color(nsColor: .systemOrange))
+                    }
+                }
+                Toggle(isOn: clearClipboardBinding) {
+                    Label {
+                        Text(loc("Clear the clipboard 90 seconds after pasting a secret"))
+                    } icon: {
+                        SettingsIcon(symbol: "clipboard", tint: Color(nsColor: .systemTeal))
+                    }
+                }
+
+                if let plaintextSecretCount, plaintextSecretCount > 0 {
+                    LabeledContent {
+                        Button(loc("Encrypt %d Secrets…", plaintextSecretCount)) { encryptExistingSecrets() }
+                    } label: {
+                        Label {
+                            Text(loc("Already in your history"))
+                        } icon: {
+                            SettingsIcon(symbol: "lock.rectangle.stack.fill", tint: Color(nsColor: .systemBlue))
+                        }
+                    }
+                    SettingsHint(loc("%d clips already in your history look like secrets. Sealing them replaces each clip's text with ciphertext, in place — nothing is re-copied.", plaintextSecretCount))
+                }
+                if secretsEncrypted {
+                    SettingsHint(loc("Done: %d secrets encrypted.", sealedSecretCount))
+                }
+
+                DisclosureGroup(loc("What counts as a secret")) {
+                    VStack(alignment: .leading, spacing: Design.Space.snug) {
+                        ForEach(SecretKind.allCases, id: \.rawValue) { kind in
+                            Text(loc(kind.label))
+                                .font(.caption)
+                                .foregroundStyle(Color(nsColor: .secondaryLabelColor))
+                        }
+                        Text(loc("The whole clip has to match, not just part of it — a password inside a paragraph is left alone. One-time codes are only recognised in Messages and Mail."))
+                            .font(.caption)
+                            .foregroundStyle(Color(nsColor: .tertiaryLabelColor))
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    .padding(.top, Design.Space.snug)
+                }
             }
 
             Section(loc("Links")) {
@@ -581,6 +848,38 @@ private struct PrivacySettingsPane: View {
             reloadExcluded()
             reloadExcludedHosts()
         }
+        .task { await scanPlaintextSecrets() }
+    }
+
+    /// Count the plaintext clips the detector would call secrets, off the
+    /// main actor — a 700-clip history is a few thousand classifier calls,
+    /// which has no business on the thread drawing this pane.
+    private func scanPlaintextSecrets() async {
+        guard let store = HistoryExportController.shared.store else { return }
+        let snapshots = store.plaintextSnapshots()
+        let allowGeneric = SecretSettings.detectsGenericTokens
+        let found = await Task.detached(priority: .userInitiated) {
+            snapshots.filter {
+                SecretDetector.classify(
+                    $0.text,
+                    sourceBundleID: $0.sourceBundleID,
+                    allowGenericToken: allowGeneric
+                ) != nil
+            }
+        }.value
+        plaintextSecretUUIDs = Set(found.map(\.uuid))
+        plaintextSecretCount = found.count
+    }
+
+    /// "Encrypt N Secrets…" — seals the scanned set in place. The count it
+    /// reports is what actually moved, so a clip that could not be sealed is
+    /// absent from it rather than silently claimed.
+    private func encryptExistingSecrets() {
+        guard let store = HistoryExportController.shared.store else { return }
+        sealedSecretCount = store.encryptSecrets(uuids: plaintextSecretUUIDs)
+        plaintextSecretUUIDs = []
+        plaintextSecretCount = 0
+        secretsEncrypted = true
     }
 
     private func reloadExcluded() {
@@ -651,6 +950,43 @@ private struct PrivacySettingsPane: View {
         Binding(
             get: { UserDefaults.standard.bool(forKey: SensitiveFilter.filteringEnabledKey) },
             set: { UserDefaults.standard.set($0, forKey: SensitiveFilter.filteringEnabledKey) }
+        )
+    }
+
+    /// The picker's raw value, seeded from the stored mode — the pane is
+    /// created when the window opens, so this reads the defaults at the
+    /// right moment.
+    @State private var secretMode = SecretSettings.mode.rawValue
+
+    private var secretModeBinding: Binding<String> {
+        Binding(
+            get: { secretMode },
+            set: {
+                secretMode = $0
+                UserDefaults.standard.set($0, forKey: SecretSettingsKeys.mode)
+            }
+        )
+    }
+
+    /// The three switches' bindings — all default-true keys.
+    private var genericTokensBinding: Binding<Bool> {
+        Binding(
+            get: { SecretSettings.detectsGenericTokens },
+            set: { UserDefaults.standard.set($0, forKey: SecretSettingsKeys.genericTokens) }
+        )
+    }
+
+    private var forgetCodesBinding: Binding<Bool> {
+        Binding(
+            get: { SecretSettings.forgetsOneTimeCodes },
+            set: { UserDefaults.standard.set($0, forKey: SecretSettingsKeys.forgetCodes) }
+        )
+    }
+
+    private var clearClipboardBinding: Binding<Bool> {
+        Binding(
+            get: { SecretSettings.clearsClipboardAfterPaste },
+            set: { UserDefaults.standard.set($0, forKey: SecretSettingsKeys.clearClipboard) }
         )
     }
 }
@@ -852,18 +1188,21 @@ private struct ScreenshotSettingsPane: View {
 
             Section(loc("What gets stored")) {
                 SettingsHint(loc("A link, not a copy: the clip points at the screenshot where it already is, plus a small thumbnail. Deleting a clip — or letting it expire — never deletes your file."))
-                Toggle(isOn: $ocrEnabled) {
-                    Label {
-                        Text(loc("Extract text from images (OCR)"))
-                    } icon: {
-                        SettingsIcon(symbol: "text.viewfinder", tint: Color(nsColor: .systemPurple))
-                    }
-                }
-                SettingsHint(loc("Reads the text in each screenshot on-device so you can search for it. The same setting as the one in the Panel pane; it is repeated here because it is what makes a screenshot findable."))
+                // The OCR switch itself lives once, in the Panel pane: it
+                // governs copied images as much as screenshots, and two
+                // toggles bound to one key read as two settings. This pane
+                // only says which way it is set and where to change it.
+                SettingsHint(ocrHint)
             }
         }
         .formStyle(.grouped)
         .onAppear { folder = ScreenshotWatcher.resolvedFolder() }
+    }
+
+    private var ocrHint: String {
+        ocrEnabled
+            ? loc("Text inside each screenshot is read on-device, so you can search for it. Settings → Panel → Extract text from images (OCR) turns this off.")
+            : loc("Text inside screenshots is not being read, so a screenshot is found by its file name only. Turn on Settings → Panel → Extract text from images (OCR) to search it.")
     }
 
     private var folderDisplayPath: String {

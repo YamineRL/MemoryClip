@@ -1,3 +1,4 @@
+import SwiftData
 import XCTest
 
 @testable import MemoryClip
@@ -183,6 +184,52 @@ final class ClipStoreMigrationTests: XCTestCase {
     }
 
     // MARK: - External image storage
+
+    // MARK: - Schema migration
+
+    /// The 0.7 schema adds `Pinboard` and the secret fields to a store that
+    /// shipped with ClipItem alone. SwiftData's lightweight migration adds
+    /// the table and the nullable columns in place: an existing file must
+    /// open, keep its rows and accept the new entity.
+    func testStoreWrittenWithoutPinboardsOpensUnderTheCombinedSchema() throws {
+        let store = root.appendingPathComponent("MemoryClip.store")
+
+        // Write a row under the ClipItem-only schema every version before
+        // 0.7 had: the pinboard entity and the secret columns do not exist
+        // in this file yet.
+        let narrow = try ModelContainer(
+            for: Schema([ClipItem.self]),
+            configurations: [ModelConfiguration(url: store)]
+        )
+        let writing = ModelContext(narrow)
+        writing.insert(ClipItem(kind: .text, text: "kept across the upgrade", contentHash: "a1"))
+        try writing.save()
+
+        // Reopen under the combined schema `ClipStore` ships in 0.7.
+        let wide = try ModelContainer(
+            for: Schema([ClipItem.self, Pinboard.self]),
+            configurations: [ModelConfiguration(url: store)]
+        )
+        let reading = ModelContext(wide)
+        let clips = try reading.fetch(FetchDescriptor<ClipItem>())
+        XCTAssertEqual(clips.map(\.text), ["kept across the upgrade"],
+                       "the old row survives the added table and columns")
+        XCTAssertNil(clips[0].pinboard)
+        XCTAssertNil(clips[0].pinboardOrder)
+        XCTAssertFalse(clips[0].isSecret)
+        XCTAssertNil(clips[0].secretCipher)
+
+        // The new entity works on the migrated store: file the old row.
+        let board = try XCTUnwrap(Pinboard.create(named: "Work", in: reading))
+        clips[0].file(into: board)
+        try reading.save()
+
+        let members = try XCTUnwrap(
+            reading.fetch(FetchDescriptor<Pinboard>()).first
+        ).orderedClips
+        XCTAssertEqual(members.map(\.uuid), [clips[0].uuid])
+        XCTAssertEqual(clips[0].pinboardUUID, board.uuid)
+    }
 
     /// Core Data keeps large image blobs in a `.NAME_SUPPORT` directory keyed by
     /// the store's file name, so it has to travel with the store — otherwise a

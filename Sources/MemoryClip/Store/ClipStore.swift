@@ -14,8 +14,16 @@ final class ClipStore {
     /// the same clips (the drain awaits, so a second caller can arrive).
     private var isBackfillingThumbnails = false
 
-    init(inMemory: Bool = false) throws {
-        let schema = Schema([ClipItem.self])
+    /// The vault captures seal through: the sealer, the dedup HMAC key and
+    /// the "Not a Secret" allow-list. nil only for an in-memory store whose
+    /// test did not bring one — every real store has its own.
+    let secrets: SecretVault?
+
+    /// `secrets` defaults to the vault beside the store; nil is only ever
+    /// handed in by an in-memory store whose test wants no vault at all.
+    init(inMemory: Bool = false, secrets: SecretVault? = nil) throws {
+        let schema = Schema([ClipItem.self, Pinboard.self])
+        self.secrets = secrets ?? (inMemory ? nil : SecretVault(directory: Self.storeDirectory))
         if inMemory {
             container = try ModelContainer(
                 for: schema,
@@ -34,19 +42,23 @@ final class ClipStore {
     // MARK: - On-disk location, permissions and legacy migration
 
     /// `~/Library/Application Support`.
-    static var applicationSupportDirectory: URL {
+    ///
+    /// `nonisolated` (like the accessors below it) because it is pure path
+    /// arithmetic: the disk-usage readout walks it from a detached task,
+    /// which a main-actor path helper would make impossible.
+    nonisolated static var applicationSupportDirectory: URL {
         FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
             ?? URL(fileURLWithPath: NSHomeDirectory())
                 .appendingPathComponent("Library/Application Support")
     }
 
     /// Directory holding MemoryClip's store, namespaced by bundle identifier.
-    static var storeDirectory: URL {
+    nonisolated static var storeDirectory: URL {
         applicationSupportDirectory.appendingPathComponent("app.memoryclip", isDirectory: true)
     }
 
     /// The store MemoryClip uses from now on.
-    static var storeURL: URL {
+    nonisolated static var storeURL: URL {
         storeDirectory.appendingPathComponent("MemoryClip.store")
     }
 
@@ -149,7 +161,7 @@ final class ClipStore {
     /// directory beside the store, which it creates world-readable (0755/0644).
     /// Those files are clip contents like any other, so they get the same
     /// owner-only treatment as the store itself.
-    static func externalStorageDirectory(forStoreAt url: URL) -> URL {
+    nonisolated static func externalStorageDirectory(forStoreAt url: URL) -> URL {
         let name = url.deletingPathExtension().lastPathComponent
         return url.deletingLastPathComponent()
             .appendingPathComponent(".\(name)_SUPPORT", isDirectory: true)
@@ -172,6 +184,41 @@ final class ClipStore {
                 ofItemAtPath: entry.path
             )
         }
+    }
+
+    /// The history's footprint on this Mac: the store's directory walked
+    /// recursively, which covers the store file, its -wal/-shm sidecars and
+    /// the `.NAME_SUPPORT` folder `externalStorageDirectory` names. The
+    /// folder sits inside that directory, so one walk sums all of it
+    /// exactly once.
+    ///
+    /// `storeURL` is the default, the same URL `prepareStoreLocation` hands
+    /// the container.
+    nonisolated static func historyDiskUsage(storeAt url: URL = storeURL) -> Int64 {
+        diskUsage(under: url.deletingLastPathComponent())
+    }
+
+    /// Every regular file under `directory`, summed. Hidden entries count
+    /// (the external-storage folder is dot-prefixed) while a symlink
+    /// contributes nothing: a screenshot clip is a link to wherever macOS
+    /// saved the file, and this bill must never reach it. (The enumerator
+    /// does not descend into a symlinked directory either.)
+    nonisolated static func diskUsage(under directory: URL) -> Int64 {
+        let keys: Set<URLResourceKey> = [.isRegularFileKey, .isSymbolicLinkKey, .fileSizeKey]
+        guard let enumerator = FileManager.default.enumerator(
+            at: directory,
+            includingPropertiesForKeys: Array(keys)
+        ) else { return 0 }
+        var total: Int64 = 0
+        for case let url as URL in enumerator {
+            guard let values = try? url.resourceValues(forKeys: keys),
+                  values.isSymbolicLink != true,
+                  values.isRegularFile == true,
+                  let size = values.fileSize
+            else { continue }
+            total += Int64(size)
+        }
+        return total
     }
 
     /// Move a broken store out of the way (keeping it for forensics/recovery)
@@ -251,10 +298,12 @@ final class ClipStore {
     ///
     /// - Parameter items: clips built by `ExportService.item(from:)`, each
     ///   already carrying its derived hash.
-    /// - Returns: how many were new.
+    /// - Returns: the clips that were actually inserted, so the caller can
+    ///   file exactly those into pinboards (a clip the store already held is
+    ///   left untouched, boards and all).
     @discardableResult
-    func insertImported(_ items: [ClipItem]) -> Int {
-        var inserted = 0
+    func insertImported(_ items: [ClipItem]) -> [ClipItem] {
+        var inserted: [ClipItem] = []
         // A file can hold the same clip twice, and a pending insert is not
         // reliably visible to the fetch below, so identity is tracked here as
         // well as in the store.
@@ -263,14 +312,111 @@ final class ClipStore {
             guard seen.insert(item.contentHash).inserted else { continue }
             guard fetchByHash(item.contentHash).isEmpty else { continue }
             context.insert(item)
-            inserted += 1
+            inserted.append(item)
         }
-        guard inserted > 0 else { return 0 }
+        guard !inserted.isEmpty else { return [] }
         save()
         if items.contains(where: { $0.kind == .image }) {
             scheduleThumbnailBackfill()
         }
         return inserted
+    }
+
+    // MARK: - Pinboards (PRD 06)
+
+    /// Every pinboard, in chip order.
+    func pinboards() -> [Pinboard] {
+        Pinboard.all(in: context)
+    }
+
+    /// One board row for an import: the normalized name, the colour the file
+    /// claimed when it names a real one, `order` as given.
+    private func createImportBoard(
+        named raw: String,
+        colorHint: String?,
+        order: Int,
+        boards: [Pinboard]
+    ) -> Pinboard? {
+        guard let name = Pinboard.normalizedName(raw) else { return nil }
+        let color = PinboardColor(named: colorHint) ?? PinboardColor.nextUnused(in: boards)
+        let board = Pinboard(name: name, colorName: color.rawValue, order: order)
+        context.insert(board)
+        return board
+    }
+
+    /// Recreate the pinboards an export lists, appending any that do not
+    /// exist yet in the file's order. Names merge case-insensitively: an
+    /// existing board keeps its own colour and position, and only the
+    /// missing ones are created.
+    ///
+    /// - Returns: the live boards keyed by lowercased name, for the caller's
+    ///   clip-filing pass.
+    @discardableResult
+    func importPinboards(_ records: [PinboardExport]) -> [String: Pinboard] {
+        var boards: [String: Pinboard] = [:]
+        var nextOrder = -1
+        for board in Pinboard.all(in: context) {
+            boards[board.name.lowercased()] = board
+            nextOrder = max(nextOrder, board.order)
+        }
+        var changed = false
+        for record in records {
+            let key = record.name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            guard boards[key] == nil,
+                  let board = createImportBoard(
+                      named: record.name,
+                      colorHint: record.color,
+                      order: nextOrder + 1,
+                      boards: Array(boards.values)
+                  )
+            else { continue }
+            nextOrder = board.order
+            boards[key] = board
+            changed = true
+        }
+        if changed { save() }
+        return boards
+    }
+
+    /// File freshly imported clips into the boards their records name.
+    ///
+    /// `pairs` must be narrowed to the clips `insertImported` actually
+    /// accepted: the import leaves a clip the store already holds untouched,
+    /// boards included. A `pinboard` name no top-level record describes is
+    /// created on the spot, taking its colour from the clip's
+    /// `pinboardColor` hint (or the next unused one). Boards the export
+    /// describes but no clip references are still created: a board with no
+    /// members is a real board.
+    func fileImported(
+        _ pairs: [(item: ClipItem, record: ClipExport)],
+        pinboards records: [PinboardExport]
+    ) {
+        var boards = importPinboards(records)
+        var nextOrder = (boards.values.map(\.order).max() ?? -1) + 1
+        var filed = false
+        for (item, record) in pairs {
+            guard let raw = record.pinboard,
+                  let name = Pinboard.normalizedName(raw) else { continue }
+            let key = name.lowercased()
+            if boards[key] == nil,
+               let board = createImportBoard(
+                   named: name,
+                   colorHint: record.pinboardColor,
+                   order: nextOrder,
+                   boards: Array(boards.values)
+               ) {
+                nextOrder += 1
+                boards[key] = board
+            }
+            guard let board = boards[key] else { continue }
+            // The order the file carried is written back verbatim: into a
+            // fresh board it restores the export's manual order; into an
+            // existing one it may tie a member's, which `comesBefore`
+            // absorbs by createdAt.
+            item.file(into: board, order: record.pinboardOrder)
+            filed = true
+        }
+        if filed { save() }
     }
 
     /// Record a screenshot that landed in the screenshot folder.
@@ -340,6 +486,17 @@ final class ClipStore {
         )
         descriptor.fetchLimit = limit
         return fetch(descriptor)
+    }
+
+    /// Every clip in the store, pinned or not: the "1,203 clips" half of the
+    /// Storage readout in Settings. A `fetchCount`, so no row materializes.
+    func clipCount() -> Int {
+        do {
+            return try context.fetchCount(FetchDescriptor<ClipItem>())
+        } catch {
+            log.error("ClipStore clipCount failed: \(error.localizedDescription)")
+            return 0
+        }
     }
 
     /// Clips carrying pixels that still need OCR, newest first.
@@ -486,7 +643,11 @@ final class ClipStore {
     }
 
     func togglePinned(_ item: ClipItem) {
-        item.isPinned.toggle()
+        // Both rules at once: pinning an expiring secret clears its expiry
+        // (`togglePinned`), and a board member that loses its pin leaves the
+        // board with it (`unpin`) - "Unpin" must never strand a clip in a
+        // board it is no longer in.
+        if item.isPinned { item.unpin() } else { item.togglePinned() }
         save()
     }
 
@@ -495,13 +656,23 @@ final class ClipStore {
         save()
     }
 
-    /// Delete the entire history (pinned items included).
+    /// Delete the entire history (pinned items included). Pinboards survive:
+    /// they are groupings, not history, so a wipe leaves them standing empty.
     ///
     /// A batch delete: fetching every row and deleting it object-by-object
     /// froze the UI for 7.4 s at 50k clips (3.1 s in-memory), all of it on
-    /// the main actor.
+    /// the main actor. A batch delete bypasses relationship rules, so the
+    /// board memberships are detached first; otherwise every board's `clips`
+    /// would keep pointing at rows that no longer exist.
     func nukeAll() {
         do {
+            for board in Pinboard.all(in: context) {
+                for clip in board.clips {
+                    clip.pinboard = nil
+                    clip.pinboardOrder = nil
+                }
+            }
+            save()
             try context.delete(model: ClipItem.self)
             save()
             log.notice("nukeAll: deleted all clips")
@@ -513,6 +684,238 @@ final class ClipStore {
     /// Stamp lastUsedAt after a successful paste/copy-back.
     func markUsed(_ item: ClipItem) {
         item.lastUsedAt = .now
+        save()
+    }
+
+    // MARK: - Secrets
+
+    /// What must happen to a capture the detector has opinions about. The
+    /// watcher switches on this before the clip becomes a row.
+    enum SecretDisposition {
+        /// Not a secret — or one the allow-list cleared: store it as usual.
+        case ordinary
+        /// "Don't keep it" mode: the plaintext stays only on the pasteboard
+        /// the user copied it to; nothing is stored.
+        case drop(SecretKind)
+        /// "Keep it encrypted" mode: seal and store through the vault.
+        case protect(SecretKind, plaintext: String)
+    }
+
+    /// Classify one capture against the secrets rules, in the order the
+    /// rules run: the allow-list's verdict first (it is a verdict, not a
+    /// suggestion — `classify` is not asked again for an allow-listed
+    /// string), then the detector, then the mode picker.
+    ///
+    /// `clip.text` is the value examined — for a rich-text capture that is
+    /// its plain-text form, which is all the detector needs.
+    func secretDisposition(for clip: CapturedClip, sourceBundleID: String?) -> SecretDisposition {
+        guard let vault = secrets else { return .ordinary }
+        guard let text = clip.text, !text.isEmpty else { return .ordinary }
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, !vault.allows(trimmed) else { return .ordinary }
+        guard let kind = SecretDetector.classify(
+            text,
+            sourceBundleID: sourceBundleID,
+            allowGenericToken: SecretSettings.detectsGenericTokens
+        ) else { return .ordinary }
+        switch SecretSettings.effectiveMode {
+        case .keepEncrypted:
+            return .protect(kind, plaintext: text)
+        case .drop:
+            return .drop(kind)
+        case .keepPlain:
+            return .ordinary
+        }
+    }
+
+    /// Store a capture the detector called a secret: ciphertext, a label
+    /// and a mask — never the plaintext. The dedup identity is an HMAC of
+    /// the trimmed plaintext under the vault's key, so re-copying a secret
+    /// floats its row rather than writing a twin. One-time codes are the
+    /// deliberate exception: each message is a different code, so dedup is
+    /// disabled by hashing a fresh uuid instead.
+    ///
+    /// - Returns: the row, or nil when sealing failed — a secret that could
+    ///   not be sealed is dropped, never stored in the clear.
+    @discardableResult
+    func insertSecret(
+        kind: SecretKind,
+        plaintext: String,
+        sourceBundleID: String?,
+        sourceAppName: String?
+    ) -> ClipItem? {
+        guard let vault = secrets else { return nil }
+        let trimmed = plaintext.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        let hash = kind == .oneTimeCode
+            ? vault.hash(UUID().uuidString, for: .dedup)
+            : vault.hash(trimmed, for: .dedup)
+        if let existing = fetchByHash(hash).first {
+            existing.createdAt = .now
+            existing.sourceBundleID = sourceBundleID
+            existing.sourceAppName = sourceAppName
+            save()
+            return existing
+        }
+
+        let cipher: Data
+        do {
+            cipher = try vault.seal(plaintext)
+        } catch {
+            log.error("Secret sealing failed; the clip was dropped, not stored in the clear: \(error.localizedDescription)")
+            return nil
+        }
+
+        let item = ClipItem(
+            kind: .text,
+            contentHash: hash,
+            sourceBundleID: sourceBundleID,
+            sourceAppName: sourceAppName,
+            isSecret: true,
+            secretCipher: cipher,
+            secretLabel: kind.label,
+            secretMasked: SecretMask.mask(trimmed, kind: kind),
+            expiresAt: kind == .oneTimeCode && SecretSettings.forgetsOneTimeCodes
+                ? Date(timeIntervalSinceNow: SecretSettings.oneTimeCodeLifetime)
+                : nil
+        )
+        context.insert(item)
+        save()
+        enforceCap()
+        return item
+    }
+
+    /// Turn an ordinary clip into a secret in place. No authentication: the
+    /// plaintext is already on this machine — what changes is where it
+    /// lives.
+    ///
+    /// Every field that ever carried the plaintext or a derivative of it is
+    /// wiped; a note or event already exported is NOT retracted (the file
+    /// and the calendar entry live outside the store). Only a clip whose
+    /// payload is its `text` can be marked — an image's pixels are the
+    /// secret, and sealing `text` would leave them standing.
+    ///
+    /// - Returns: false when the clip could not be sealed; it is left as is.
+    @discardableResult
+    func markAsSecret(_ item: ClipItem) -> Bool {
+        guard let vault = secrets, !item.isSecret else { return false }
+        guard let plaintext = item.text, !plaintext.isEmpty else { return false }
+        let cipher: Data
+        do {
+            cipher = try vault.seal(plaintext)
+        } catch {
+            log.error("markAsSecret: sealing failed, clip left unchanged: \(error.localizedDescription)")
+            return false
+        }
+        let trimmed = plaintext.trimmingCharacters(in: .whitespacesAndNewlines)
+        let kind = SecretDetector.classify(
+            trimmed,
+            sourceBundleID: item.sourceBundleID,
+            allowGenericToken: SecretSettings.detectsGenericTokens
+        ) ?? .genericToken
+
+        item.text = nil
+        item.richTextData = nil
+        item.ocrText = nil
+        item.originalText = nil
+        item.refinedTitle = nil
+        item.refinedSummary = nil
+        item.refinedText = nil
+        item.refinedTags = []
+        item.translatedText = nil
+        item.clipTranslationText = nil
+        item.clipTranslationSource = nil
+        item.clipTranslationTarget = nil
+        item.sourceLanguage = nil
+        item.notePath = nil
+        item.noteExportedAt = nil
+        item.calendarEventID = nil
+        item.kind = .text
+        item.isSecret = true
+        item.secretCipher = cipher
+        item.secretLabel = kind.label
+        item.secretMasked = SecretMask.mask(trimmed, kind: kind)
+        item.contentHash = vault.hash(trimmed, for: .dedup)
+        save()
+        return true
+    }
+
+    /// "Not a Secret": the caller has already authenticated and opened the
+    /// ciphertext once; the plaintext's hash joins the allow-list (so the
+    /// detector never speaks for it again) and the row becomes an ordinary
+    /// clip again.
+    func markNotSecret(_ item: ClipItem, plaintext: String) {
+        guard let vault = secrets, item.isSecret else { return }
+        vault.allow(plaintext.trimmingCharacters(in: .whitespacesAndNewlines))
+        item.isSecret = false
+        item.secretCipher = nil
+        item.secretLabel = nil
+        item.secretMasked = nil
+        item.expiresAt = nil
+        item.text = plaintext
+        item.contentHash = ContentParser.hashText("text:\(plaintext)")
+        save()
+    }
+
+    /// How many stored clips are sealed secrets — the export sheet's
+    /// "N secrets were not exported" line reads it.
+    func secretCount() -> Int {
+        do {
+            return try context.fetchCount(
+                FetchDescriptor<ClipItem>(predicate: #Predicate { $0.isSecret })
+            )
+        } catch {
+            log.error("ClipStore secretCount failed: \(error.localizedDescription)")
+            return 0
+        }
+    }
+
+    /// Stored plaintext that the detector would call a secret — the number
+    /// behind Settings' "N clips already in your history look like secrets".
+    /// Secrets themselves are skipped by `text == nil`; the detector runs on
+    /// what is left, in Swift, because its rules are not SQL.
+    func plaintextSecretCandidateCount() -> Int {
+        plaintextSnapshots().filter { snapshot in
+            SecretDetector.classify(
+                snapshot.text,
+                sourceBundleID: snapshot.sourceBundleID,
+                allowGenericToken: SecretSettings.detectsGenericTokens
+            ) != nil
+        }.count
+    }
+
+    /// (uuid, text, sourceBundleID) of every non-secret text clip — Sendable
+    /// snapshots, so the Settings pane's "already in your history" scan can
+    /// classify them OFF the main actor instead of holding it while the
+    /// detector works.
+    func plaintextSnapshots() -> [(uuid: UUID, text: String, sourceBundleID: String?)] {
+        fetch(FetchDescriptor<ClipItem>(
+            predicate: #Predicate { !$0.isSecret && $0.text != nil }
+        )).map { ($0.uuid, $0.text ?? "", $0.sourceBundleID) }
+    }
+
+    /// Seal the listed plaintext clips in place — the pass behind Settings'
+    /// "Encrypt N Secrets…". `markAsSecret` wipes each row field by field;
+    /// the count returned is what actually moved, so a clip that could not
+    /// be sealed is left out of it rather than silently counted.
+    @discardableResult
+    func encryptSecrets(uuids: Set<UUID>) -> Int {
+        items(withUUIDs: Array(uuids)).filter { !$0.isSecret }.reduce(0) { count, item in
+            markAsSecret(item) ? count + 1 : count
+        }
+    }
+
+    /// Delete every secret whose `expiresAt` has passed. Runs from the
+    /// maintenance timer and again each time the panel opens, so a dead
+    /// code is gone before the user can see it rather than within minutes.
+    func expireSecrets() {
+        let doomed = fetch(FetchDescriptor<ClipItem>(
+            predicate: #Predicate { $0.expiresAt != nil && !$0.isPinned }
+        )).filter { $0.expiresAt ?? .distantFuture < .now }
+        guard !doomed.isEmpty else { return }
+        for item in doomed {
+            context.delete(item)
+        }
         save()
     }
 
@@ -634,6 +1037,144 @@ final class ClipStore {
         return fetch(descriptor).first
     }
 
+    // MARK: - Editing
+
+    /// Replace a clip's text with the edited draft.
+    ///
+    /// Kind and content hash are re-derived from the edited string through
+    /// the same rules capture runs (`ContentParser.parseText`), so a link
+    /// fixed into a sentence comes out `.text` and a URL typed over a note
+    /// comes out `.link`; a rich-text clip flattens to whatever its new text
+    /// parses as, and its `richTextData` is always cleared.
+    ///
+    /// If another clip already carries the resulting hash the edit merges
+    /// rather than leaving a duplicate: this clip is the survivor, it keeps
+    /// the older of the two `createdAt` dates, a pin on either side
+    /// survives, and anything only the duplicate held (note, event, source,
+    /// refinement, translation: all still true of this identical text)
+    /// moves across before the row goes. `createdAt` otherwise does not
+    /// move, the clip keeps its place in the list, and
+    /// `notePath`/`calendarEventID` stay: the note and the event still
+    /// exist, and an export should update them, not write a second one.
+    ///
+    /// Everything derived from the old text is dropped (all `refined*`,
+    /// `refineAttempted`, `translatedText`, `sourceLanguage` and the
+    /// `clipTranslation*` cache) because it describes content that is gone.
+    /// `refineAttempted` resets to false so the pipeline may refine the new
+    /// text (it only picks up clips that also have `ocrText`, which an
+    /// edited clip cannot grow here, so nothing re-queues spontaneously).
+    ///
+    /// - Returns: the pre-edit snapshot the caller keeps for the session
+    ///   undo, or nil when the clip is not an editable kind.
+    @discardableResult
+    func applyEdit(_ item: ClipItem, newText: String) -> ClipEdit.Snapshot? {
+        guard ClipDisplay.canEdit(item) else { return nil }
+        let snapshot = ClipEdit.Snapshot(
+            uuid: item.uuid,
+            text: item.text,
+            richTextData: item.richTextData,
+            kind: item.kind,
+            colorHex: item.colorHex,
+            contentHash: item.contentHash
+        )
+
+        if let parsed = ContentParser.parseText(newText) {
+            item.kind = parsed.kind
+            item.text = parsed.text
+            item.colorHex = parsed.colorHex
+            item.contentHash = parsed.hash
+        } else {
+            // A copy never produces whitespace-only text, but an existing
+            // clip is not deleted by editing it to one: it stays, as plain
+            // text carrying exactly what was typed.
+            item.kind = .text
+            item.text = newText
+            item.colorHex = nil
+            item.contentHash = ContentParser.hashText("text:" + newText)
+        }
+        item.richTextData = nil
+
+        // Everything derived from the previous text is stale now.
+        item.refinedTitle = nil
+        item.refinedSummary = nil
+        item.refinedText = nil
+        item.refinedTags = []
+        item.refineAttempted = false
+        item.sourceLanguage = nil
+        item.translatedText = nil
+        item.clipTranslationText = nil
+        item.clipTranslationSource = nil
+        item.clipTranslationTarget = nil
+
+        // Merge every other clip already carrying the new hash into this one
+        // (fetchByHash's limit-1 would answer only the newest match, and the
+        // edited row itself can be it, so the merge fetches them all).
+        //
+        // The edited row is the survivor: same hash means same content, so
+        // the merge is a union. The older creation date wins (the clip was
+        // copied then, whatever row carried it), a pin on either side stays
+        // pinned, the fresher lastUsedAt wins, and data the survivor lacks,
+        // like a note path, a calendar event, source app, and any refinement
+        // or translation still valid for this identical text, is absorbed
+        // rather than thrown away with the duplicate.
+        let hash = item.contentHash
+        let duplicates = fetch(FetchDescriptor<ClipItem>(
+            predicate: #Predicate { $0.contentHash == hash }
+        )).filter { $0 !== item }
+        for duplicate in duplicates {
+            if duplicate.createdAt < item.createdAt {
+                item.createdAt = duplicate.createdAt
+            }
+            if let used = duplicate.lastUsedAt, item.lastUsedAt.map({ used > $0 }) ?? true {
+                item.lastUsedAt = used
+            }
+            item.isPinned = item.isPinned || duplicate.isPinned
+            if item.notePath == nil {
+                item.notePath = duplicate.notePath
+                item.noteExportedAt = duplicate.noteExportedAt
+            }
+            if item.calendarEventID == nil {
+                item.calendarEventID = duplicate.calendarEventID
+            }
+            if item.sourceBundleID == nil {
+                item.sourceBundleID = duplicate.sourceBundleID
+                item.sourceAppName = duplicate.sourceAppName
+            }
+            if item.refinedTitle == nil {
+                item.refinedTitle = duplicate.refinedTitle
+                item.refinedSummary = duplicate.refinedSummary
+                item.refinedText = duplicate.refinedText
+                item.refinedTags = duplicate.refinedTags
+                item.refineAttempted = item.refineAttempted || duplicate.refineAttempted
+            }
+            if item.translatedText == nil {
+                item.translatedText = duplicate.translatedText
+                item.sourceLanguage = item.sourceLanguage ?? duplicate.sourceLanguage
+            }
+            if item.clipTranslationText == nil {
+                item.clipTranslationText = duplicate.clipTranslationText
+                item.clipTranslationSource = duplicate.clipTranslationSource
+                item.clipTranslationTarget = duplicate.clipTranslationTarget
+            }
+            context.delete(duplicate)
+        }
+
+        save()
+        return snapshot
+    }
+
+    /// Put a clip back to what `applyEdit` returned: the panel's in-memory
+    /// undo, held for the session only. No-op when the clip is gone.
+    func restoreEdit(_ snapshot: ClipEdit.Snapshot) {
+        guard let item = item(withUUID: snapshot.uuid) else { return }
+        item.text = snapshot.text
+        item.richTextData = snapshot.richTextData
+        item.kind = snapshot.kind
+        item.colorHex = snapshot.colorHex
+        item.contentHash = snapshot.contentHash
+        save()
+    }
+
     // MARK: - Periodic maintenance
 
     /// Run retention + cap enforcement now, and then every `interval`.
@@ -663,8 +1204,67 @@ final class ClipStore {
     /// any missing thumbnails (clips captured before thumbnails existed).
     func performMaintenance() {
         enforceRetention()
+        expireSecrets()
         enforceCap()
         scheduleThumbnailBackfill()
+    }
+
+    /// A history limit the History pane can change, in one shape for the
+    /// two pickers because the confirmation sheet and the enforcement below
+    /// must agree on what "lowering this" deletes.
+    enum HistoryLimit {
+        /// Keep at most this many unpinned clips. 0 is the stored value for
+        /// Unlimited, which is already what `enforceCap` reads it as.
+        case cap(Int)
+        /// Sweep unpinned clips older than this many days. 0 is Forever.
+        case retentionDays(Int)
+
+        /// The number written into the setting.
+        var value: Int {
+            switch self {
+            case .cap(let cap): return cap
+            case .retentionDays(let days): return days
+            }
+        }
+    }
+
+    /// How many unpinned clips applying `limit` would delete right now.
+    ///
+    /// The History pane's confirmation sheet counts with this and
+    /// `enforceCap`/`enforceRetention` count with it too. One function is
+    /// what makes the sheet's "Delete N older clips?" a promise rather than
+    /// an estimate: a confirmation can never lie about its own number.
+    func deletionCount(under limit: HistoryLimit) -> Int {
+        switch limit {
+        case .cap(let cap):
+            guard cap > 0 else { return 0 }
+            return max(0, unpinnedCount() - cap)
+        case .retentionDays(let days):
+            guard let cutoff = Self.retentionCutoff(days: days) else { return 0 }
+            do {
+                return try context.fetchCount(
+                    FetchDescriptor<ClipItem>(predicate: expiredPredicate(olderThan: cutoff))
+                )
+            } catch {
+                log.error("ClipStore deletion count failed: \(error.localizedDescription)")
+                return 0
+            }
+        }
+    }
+
+    /// The instant before which a `days` retention window expires clips, or
+    /// nil when `days` is 0 or less (the stored meaning of Forever). The
+    /// preview count and the delete both draw the line here.
+    static func retentionCutoff(days: Int, now: Date = .now) -> Date? {
+        guard days > 0 else { return nil }
+        return Calendar.current.date(byAdding: .day, value: -days, to: now)
+    }
+
+    /// What retention deletes: unpinned clips created before `cutoff`.
+    /// Written once, as a value, so `deletionCount` and `enforceRetention`
+    /// run the very same predicate rather than two kept equal by hand.
+    private func expiredPredicate(olderThan cutoff: Date) -> Predicate<ClipItem> {
+        #Predicate { !$0.isPinned && $0.createdAt < cutoff }
     }
 
     /// Trim history down to the configured cap (UserDefaults historyCap).
@@ -677,7 +1277,6 @@ final class ClipStore {
     /// needs trimming at all, and only the doomed rows are materialized.
     func enforceCap() {
         let cap = UserDefaults.standard.integer(forKey: SettingsKeys.historyCap)
-        guard cap > 0 else { return }
 
         // A capture is one row over the cap, so the common case is the exact
         // path below. A user lowering the cap in Settings (or a first launch
@@ -685,7 +1284,10 @@ final class ClipStore {
         // deleting those one object at a time took 6.6 s on the main actor —
         // hence the batch pass first.
         while true {
-            let overflow = unpinnedCount() - cap
+            // `deletionCount` is the arithmetic the Settings confirmation
+            // previews, so the number the user agreed to delete is the
+            // number deleted here.
+            let overflow = deletionCount(under: .cap(cap))
             guard overflow > 0 else { return }
             if overflow <= Self.exactTrimLimit {
                 trimOldestUnpinned(count: overflow)
@@ -759,17 +1361,20 @@ final class ClipStore {
     /// A retentionDays value of 0 (or less) means keep forever.
     func enforceRetention() {
         let days = UserDefaults.standard.integer(forKey: SettingsKeys.retentionDays)
-        guard days > 0 else { return }
-        guard let cutoff = Calendar.current.date(byAdding: .day, value: -days, to: .now) else {
-            return
-        }
+        // `deletionCount` is the arithmetic the Settings confirmation
+        // previews, as it is for the cap: the number the user agreed to
+        // delete is the number deleted here.
+        guard deletionCount(under: .retentionDays(days)) > 0,
+              let cutoff = Self.retentionCutoff(days: days) else { return }
 
         // Batch delete: the expired rows never have to be materialized
-        // (2.9 s object-by-object at 50k clips).
+        // (2.9 s object-by-object at 50k clips). The predicate is the same
+        // value `deletionCount` counts, so a confirmed sheet always deletes
+        // exactly what it showed.
         do {
             try context.delete(
                 model: ClipItem.self,
-                where: #Predicate { !$0.isPinned && $0.createdAt < cutoff }
+                where: expiredPredicate(olderThan: cutoff)
             )
             save()
         } catch {

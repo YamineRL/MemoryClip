@@ -244,7 +244,8 @@ final class SettingsTests: XCTestCase {
     func testPanelGroupDocumentsTheKeysPanelViewHandles() throws {
         let entries = ShortcutReference.panel.entries
         let documented = entries.map(\.keys).joined(separator: "\u{1F}")
-        for key in ["↑", "↓", "←", "→", "Return", "⇧Return", "⌘1…⌘9", "⌘C", "⌘S", "⌘E", "Space", "Esc", "⌘W"] {
+        for key in ["↑", "↓", "←", "→", "Return", "⇧Return", "⌘1…⌘9", "⌘C", "⌘S", "⌘E", "⌘I", "Space", "Esc", "⌘W",
+                    "⌘P", "⌥← ⌥→", "⌃1…⌃9"] {
             XCTAssertTrue(
                 documented.contains(key),
                 "\(key) is handled by PanelView but has no row in the panel key reference"
@@ -409,9 +410,11 @@ final class SettingsTests: XCTestCase {
             (.top, "jump to top"), (.bottom, "jump to bottom"),
             (.halfPageDown, "half-page down"), (.halfPageUp, "half-page up"),
             (.paste, "paste"), (.pastePlain, "paste as plain text"),
-            (.pin, "pin"), (.delete, "delete"),
+            (.pin, "pin"), (.pinboard, "file under a pinboard"), (.delete, "delete"),
             (.queueToggle, "queue a clip"), (.queuePaste, "paste the queue"),
-            (.enterSearch, "start a fresh search"), (.enterInsert, "edit the current query")
+            (.enterSearch, "start a fresh search"), (.enterInsert, "edit the current query"),
+            (.saveNote, "save a note"), (.addToCalendar, "add to the calendar"),
+            (.edit, "edit the clip"), (.visual, "toggle visual mode")
         ]
         for (command, description) in mustBeDocumented {
             XCTAssertTrue(
@@ -419,5 +422,58 @@ final class SettingsTests: XCTestCase {
                 "no documented key produces \(command) (\(description)) — the Shortcuts pane is missing a binding"
             )
         }
+    }
+
+    // MARK: History limit defaults
+
+    /// The fresh-install promise: "Your clipboard, remembered" starts at
+    /// 5,000 clips / 90 days. These are registered defaults, so an
+    /// `UserDefaults` that has never seen the keys still resolves them.
+    func testHistoryLimitDefaultsAreFiveThousandClipsAndNinetyDays() throws {
+        let suite = "SettingsTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        SettingsKeys.registerDefaults(in: defaults)
+
+        XCTAssertEqual(defaults.integer(forKey: SettingsKeys.historyCap), 5_000)
+        XCTAssertEqual(defaults.integer(forKey: SettingsKeys.retentionDays), 90)
+    }
+
+    /// A value the user ever chose lives in the persistent domain, where
+    /// `register(defaults:)` cannot reach it: a cap of 350 left over from
+    /// the retired stepper, or a 7-day window, survives re-registration
+    /// untouched.
+    func testUserChosenHistoryLimitsSurviveRegisteredDefaults() throws {
+        let suite = "SettingsTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        defaults.set(350, forKey: SettingsKeys.historyCap)
+        defaults.set(7, forKey: SettingsKeys.retentionDays)
+        SettingsKeys.registerDefaults(in: defaults)
+
+        XCTAssertEqual(defaults.integer(forKey: SettingsKeys.historyCap), 350)
+        XCTAssertEqual(defaults.integer(forKey: SettingsKeys.retentionDays), 7)
+    }
+
+    /// The upgrade path for a user who never touched the limits: the old
+    /// launch's 200/30 existed only in the registration domain, so the new
+    /// registration replaces them outright: limits grow to 5,000/90 and
+    /// nothing is deleted.
+    func testOldRegisteredDefaultsOnlyGrowAfterUpgrade() throws {
+        let suite = "SettingsTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        // What launches before this build registered: 200 clips / 30 days.
+        defaults.register(defaults: [
+            SettingsKeys.historyCap: 200,
+            SettingsKeys.retentionDays: 30
+        ])
+        SettingsKeys.registerDefaults(in: defaults)
+
+        XCTAssertEqual(defaults.integer(forKey: SettingsKeys.historyCap), 5_000)
+        XCTAssertEqual(defaults.integer(forKey: SettingsKeys.retentionDays), 90)
     }
 }

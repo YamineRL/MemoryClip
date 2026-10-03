@@ -71,7 +71,10 @@ enum TextDetector {
     /// Mirrors `ContentParser.isWebURL(_:)` — deliberately duplicated rather
     /// than called: `ContentParser` is `@MainActor`-isolated while this
     /// detector must stay nonisolated pure logic. Keep the two in sync.
-    private static func isWebURL(_ string: String) -> Bool {
+    ///
+    /// Internal rather than private: `SecretDetector`'s generic rule excludes
+    /// URLs through this same check.
+    static func isWebURL(_ string: String) -> Bool {
         guard !string.contains(" "), !string.contains("\n") else { return false }
         // "www.example.com" has no scheme; prepend one for validation only.
         let candidate = string.lowercased().hasPrefix("www.") ? "https://" + string : string
@@ -104,7 +107,10 @@ enum TextDetector {
     /// Hoisting it to a `static let` is not an option under Swift 6 strict
     /// concurrency — `Regex` is not `Sendable`. Since '.' is not in the
     /// character class, splitting on '.' is exactly equivalent to the regex.
-    private static func isJWT(_ string: String) -> Bool {
+    /// Internal rather than private: `SecretDetector`'s JWT rule is this
+    /// check, and keeping one implementation is what keeps "a JWT is a
+    /// badge" and "a JWT is a secret" from drifting apart.
+    static func isJWT(_ string: String) -> Bool {
         let segments = string.split(separator: ".", omittingEmptySubsequences: false)
         guard segments.count == 3,
               !segments[0].isEmpty, !segments[1].isEmpty,

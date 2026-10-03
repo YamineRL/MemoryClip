@@ -74,13 +74,13 @@ final class PerformanceBenchmarks: XCTestCase {
         let dir = try tempDirectory(name)
         let file = dir.appendingPathComponent("bench.store")
         let config = ModelConfiguration(url: file)
-        let container = try ModelContainer(for: Schema([ClipItem.self]), configurations: [config])
+        let container = try ModelContainer(for: Schema([ClipItem.self, Pinboard.self]), configurations: [config])
         return (container, dir)
     }
 
     private func inMemoryContainer() throws -> ModelContainer {
         try ModelContainer(
-            for: Schema([ClipItem.self]),
+            for: Schema([ClipItem.self, Pinboard.self]),
             configurations: [ModelConfiguration(isStoredInMemoryOnly: true)]
         )
     }
@@ -609,7 +609,7 @@ final class PerformanceBenchmarks: XCTestCase {
 
             // Fresh container = cold caches, like opening the panel at launch.
             let cold = try ModelContainer(
-                for: Schema([ClipItem.self]),
+                for: Schema([ClipItem.self, Pinboard.self]),
                 configurations: [ModelConfiguration(url: dir.appendingPathComponent("bench.store"))]
             )
             let ctx = cold.mainContext
@@ -658,7 +658,7 @@ final class PerformanceBenchmarks: XCTestCase {
 
         // Fresh container so nothing is already resident.
         let cold = try ModelContainer(
-            for: Schema([ClipItem.self]),
+            for: Schema([ClipItem.self, Pinboard.self]),
             configurations: [ModelConfiguration(url: dir.appendingPathComponent("bench.store"))]
         )
         let ctx = cold.mainContext
@@ -779,13 +779,13 @@ final class PerformanceBenchmarks: XCTestCase {
             // Cold ModelContainer init — the AppDelegate's `try ClipStore()`.
             ms("startup/ModelContainer init n=\(size)") {
                 _ = try? ModelContainer(
-                    for: Schema([ClipItem.self]),
+                    for: Schema([ClipItem.self, Pinboard.self]),
                     configurations: [ModelConfiguration(url: file)]
                 )
             }
 
             let fresh = try ModelContainer(
-                for: Schema([ClipItem.self]),
+                for: Schema([ClipItem.self, Pinboard.self]),
                 configurations: [ModelConfiguration(url: file)]
             )
             let ctx = fresh.mainContext
@@ -801,7 +801,7 @@ final class PerformanceBenchmarks: XCTestCase {
 
             // And the first panel open right after: full sorted fetch.
             let fresh2 = try ModelContainer(
-                for: Schema([ClipItem.self]),
+                for: Schema([ClipItem.self, Pinboard.self]),
                 configurations: [ModelConfiguration(url: file)]
             )
             ms("startup/first @Query after retention n=\(size)") {

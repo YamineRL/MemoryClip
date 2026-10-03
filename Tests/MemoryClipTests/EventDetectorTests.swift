@@ -60,7 +60,10 @@ final class EventDetectorTests: XCTestCase {
 
     func testBareDateIsNotStrongEvenWithALink() {
         // The case the setting exists to refuse: prose that mentions a day.
-        let event = detect("Q3 ends September 30, 2026 — details at https://us02web.zoom.us/j/89123456789")
+        // It names the day outright rather than "ends September 30" — that
+        // phrasing parses as a range anchored at today and stops matching
+        // once the date passes.
+        let event = detect("Q3 deadline: September 30, 2026 — details at https://us02web.zoom.us/j/89123456789")
         XCTAssertNotNil(event)
         XCTAssertEqual(event?.isStrongSignal, false)
         XCTAssertEqual(event?.isAllDay, true)
@@ -104,9 +107,10 @@ final class EventDetectorTests: XCTestCase {
     }
 
     func testAbsurdDurationIsRefused() {
-        // "ends September 30" reads as a range running from today, which the
-        // detector reports as tens of days.
-        let event = detect("The quarter ends September 30, 2026 at 5:00 PM")
+        // A stated month-long range reports tens of days whichever today it
+        // runs on — "ends <date>" would anchor the range at today instead
+        // and stop matching once the date passes.
+        let event = detect("The quarter runs September 1, 2026 9:00 AM through September 30, 2026 5:00 PM")
         XCTAssertNotNil(event)
         XCTAssertLessThanOrEqual(event?.duration ?? .infinity, EventDetector.maxTextDuration)
     }

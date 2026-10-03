@@ -107,16 +107,23 @@ irreversible one kept a separator away from the item people actually come to cli
 
 | Key | Does |
 | --- | --- |
-| `↑` `↓` | Move through the list (`←` `→` as well, while the search field is empty) |
+| `↑` `↓` | Move through the list, or choose a suggestion while one is open (`←` `→` move too, while the search field is empty) |
 | `⇧`+`↑` `↓` | Extend the selection; `⇧`-click and `⌘`-click do the same with the mouse |
-| `Return` | Paste the selected clip, or the whole selection in order |
+| `Return` | Paste the selected clip, or the whole selection in order; accepts the highlighted suggestion while the list is open |
+| `Tab` | Accept the highlighted suggestion while the list is open |
 | `⇧Return` | Paste it as **plain text**, dropping fonts and colours |
 | `⌘1`–`⌘9` | Paste any of the first nine results directly |
 | `⌘C` | Copy the selected clip, leaving the panel open |
 | `⌘S` | Save the selected clip as a note, if it carries any text |
 | `⌘E` | Add the selected clip to the calendar, if it names a date |
+| `⌘I` | Edit the selected clip in the preview pane |
+| `⌘P` | File the selected clip under a pinboard |
+| `⌥←` `⌥→` | Move between **All**, **Pinned** and the pinboards |
+| `⌃1`–`⌃9` | Jump to the pinboard at that strip position |
+| `⌥⇧←` `⌥⇧→` | Move the selected clip along its pinboard's order |
 | `Space` | Open the preview pane; press it again on a picture or a file for full-size **Quick Look** |
-| `Esc` | Close Quick Look, then the preview, then the panel |
+| `?` | Show the search operator cheat-sheet (a lone `?` as the whole query) |
+| `Esc` | Leave the editor, close the suggestion list, then Quick Look, then the preview, then the panel |
 
 Pasting puts the clip on the clipboard, reactivates your previous app and sends a ⌘V. If
 macOS blocks that synthetic keystroke the clip is still on the clipboard — see
@@ -151,6 +158,25 @@ a prefix of what you typed, so it can widen a search and never narrow it. Common
 dropped, the database is asked for the longest term alone, and the rest of the sentence is
 checked over the page that comes back.
 
+**Search operators** narrow a query to *where* and *when*, not just *what*. A `key:value`
+token anywhere in the field filters as you type, a leading `-` excludes (`-app:Slack`),
+and a value with spaces takes quotes (`app:"Google Chrome"`):
+
+| Operator | Narrows to | Values |
+| --- | --- | --- |
+| `app:` | clips from an app, matched by name prefix | `app:saf` reaches Safari |
+| `is:` | a state | `pinned`, `screenshot`, `noted`, `event`, `translated` |
+| `type:` | a clip kind | `text`, `image`, `link`, `file`, `color` |
+| `after:` | copied on or after | `today`, `yesterday`, `2026-09-01`, `7d`, `2w`, `3m` |
+| `before:` | copied before | the same values |
+| `on:` | copied on one day | the same values |
+
+Typing a key and `:` offers the values it knows, source apps most-used first, with
+`↓`/`↑` to choose and `Return` or `Tab` to accept; `Esc` closes the list. A lone `?` in
+the field shows this whole table as a cheat-sheet, a click on a previewed clip's app name
+filters to it (`app:"Name"`), and an empty result names its constraints in words with a
+**Clear filters** button that keeps the words and drops the operators.
+
 **Along the way** it badges emails, URLs, phone numbers, JWTs and JSON, shows `= 84` under
 a copied `12*7`, and offers a QR code for links. Right-click to transform a clip on the
 way out — grouped as Case, JSON, Encoding, Color, Time and Lines, so the menu stays
@@ -158,6 +184,16 @@ readable at twenty-five of them — or **Add to Queue**, and **Paste N** sends t
 order. Colours convert between hex, `rgb()` and `hsl()`; a Unix timestamp becomes a date
 and back; and a clip can be dragged straight out of the panel into any app, a screenshot
 travelling as the file it already is rather than as a copy of its bytes.
+
+**Pinboards** turn the one flat pin list into named sets: addresses, canned replies,
+commands, signatures. A strip under the search field holds **All**, **Pinned** and one
+chip per board, with `+` at the end to name a new one. Pinning keeps a clip in Pinned;
+filing it to a board is one press of `⌘P` (a type-to-filter picker that can also create
+the board on the spot), the **Pin to ▸** submenu on the card, or a drag onto the chip.
+Right-click a chip to rename, recolour, reorder or delete it; deleting a board sends its
+clips back to Pinned rather than deleting them. Inside a board, clips keep the order you
+put them in (`⌥⇧←` and `⌥⇧→` slide the selected clip along it), and searching filters the
+board you are looking at. Boards ride along in a JSON export and come back on import.
 
 **Translation** — off by default, **Settings → Translation → Clip preview**. Copy
 something in a language you do not read and the preview shows it in one you do, above the
@@ -178,19 +214,53 @@ in the search bar. In NORMAL:
 | `⌃d` `⌃u` | Half-page down / up |
 | `o` | Paste (`⇧O` pastes as plain text) |
 | `p` | Pin the clip |
+| `P` | File it under a pinboard |
 | `v` | Visual mode — `j` and `k` extend the selection, `Esc` leaves |
 | `dd` | Delete the clip, after a confirmation |
 | `q` `⇧Q` | Add to the queue / paste the whole queue |
 | `n` | Save the clip as a note (`⌘S` does the same in either mode) |
 | `c` | Add the clip to the calendar (`⌘E` does the same in either mode) |
+| `e` | Edit the clip in the preview pane (`⌘I` does the same in either mode) |
 | `/` `i` | Fresh search / edit the existing query → INSERT |
 
-**Housekeeping.** The newest 200 clips are kept and anything older than 30 days is swept,
-both adjustable in **Settings → History**, both exempting pins. Re-copying bumps a clip to
-the top instead of duplicating it. Pause capture from the menu bar, clear everything from
-the dropdown or the panel, and export to JSON or CSV from **Settings → History**.
-**Import…** in the same place reads a JSON export back, keeping the times clips were first
-copied and skipping any already here, so moving to a new Mac keeps the history.
+**Editing**: `⌘I` (or `e` in vim NORMAL mode) turns the preview pane into an
+editor for a text, rich-text, link or colour clip. `⌘Return` saves and pastes,
+`⌘S` saves and stays, and `Esc` leaves; on a dirty draft the first press asks
+and the second discards. What you save is read again the way a fresh copy is: a
+clip edited into `#RRGGBB` becomes a colour, an `https://` line becomes a link,
+and a draft that matches a clip already in history merges into it rather than
+duplicating. Rich text is stored flattened, and the preview says so before you
+save. `⌘Z` restores the clip as it was before your last edit, for as long as
+the panel session lives. Images, files and screenshots are not editable, and a
+dirty draft kept open when the panel closes is still there when you come back
+to that clip, held in memory and never written to disk.
+
+**Housekeeping.** The newest 5,000 clips are kept and anything older than 90 days is
+swept, both adjustable in **Settings → History**, both exempting pins. The cap goes up
+to **Unlimited**, the retention window up to a year, and the pane shows how much disk
+the history takes on this Mac. Lowering either limit asks first, with the exact count
+of clips it would delete. Re-copying bumps a clip to the top instead of duplicating it.
+Pause capture from the menu bar, clear everything from the dropdown or the panel, and
+export to JSON or CSV from **Settings → History**. **Import…** in the same place reads
+a JSON export back, keeping the times clips were first copied and skipping any already
+here, so moving to a new Mac keeps the history.
+
+## Shortcuts and Spotlight
+
+MemoryClip exposes four App Intents, so Shortcuts can build automations out of the
+history and Spotlight can run them directly:
+
+- **Get Latest Clip** — the newest clip, optionally only of one kind (text, image,
+  link, file, color). Text comes back as text; an image arrives as the image itself.
+- **Search Clips** — the panel's own matching, returned as a list of clips a shortcut
+  can loop over, capped at 100.
+- **Copy Clip** — puts a clip back on the clipboard without opening the panel.
+- **Open MemoryClip** — shows the panel, optionally with the search already filled in.
+
+If the app lock (Touch ID) is on, every intent but Open asks for it first — Open leaves
+it to the panel, which gates itself like the hotkey does. All four are read-only: no
+intent edits or deletes history. (Once secrets land, they are never handed out in
+clear: they are skipped entirely or returned with only their masked label.)
 
 ## Screenshots into notes
 
@@ -370,6 +440,33 @@ which sends nothing about you and installs nothing on its own).
 - **Optional Touch ID lock** gates the panel, redacts the dropdown to clip kinds, and
   always re-authenticates for Export and Clear All History.
 
+### Secrets
+
+Copy an API key, a private key, a token, a connection string or a one-time code and
+MemoryClip recognises it — the whole clip has to match a pattern, so a password inside a
+paragraph is left alone — and, by default, **keeps it encrypted**: the row in your
+history holds only ciphertext, sealed with a P-256 key that lives in this Mac's Secure
+Enclave and can never leave it (ephemeral key agreement, HKDF-SHA256, AES-GCM). The card
+shows a lock, a label and a mask like `AKIA••••••••••••7Q2X` — which is also all that
+search can match — and the value behind it asks for Touch ID or your password before it
+is shown or pasted. One authentication covers 60 seconds of reveals, so a queue of
+secrets pastes behind a single prompt. Two alternatives live in **Settings → Privacy →
+Secrets**: **Don't keep it** drops the clip entirely, and **Keep it like any other clip**
+turns the feature off. Right-click → **Not a Secret** unseals a false positive once, and
+**Mark as Secret** seals an ordinary clip you already have.
+
+A reveal lasts 30 seconds and relocks on Esc or on changing clips; a concealed paste is
+wiped from the clipboard 90 seconds later (both switchable). One-time codes — recognised
+only in Messages and Mail — delete themselves after ten minutes unless pinned. Exported
+histories omit secret rows entirely and the export dialog says how many were left out.
+
+**What this protects against:** a copied store directory, a Time Machine backup, another
+process reading the SwiftData file — everywhere the ciphertext goes, the key stays in the
+enclave. **What it does not:** malware running as you while a secret is revealed, the
+clipboard for the 90 seconds a pasted secret lives there, secrets copied while plaintext
+mode was selected, and a move to another Mac — the enclave key cannot leave this one, so
+sealed history does not follow you.
+
 VoiceOver is supported throughout: rows carry labels for kind, content and state, mode and
 selection changes are announced, and every row action is reachable from the keyboard.
 
@@ -409,8 +506,8 @@ where you left it.
 | --- | --- | --- |
 | General | **General** | Launch at login, theme, auto-paste, the daily update check |
 | General | **Shortcuts** | The global hotkey recorder (⇧⌘V is only the default), plus a key reference |
-| Clipboard | **History** | History cap, retention window, export |
-| Clipboard | **Screenshots** | Screenshot capture, the folder to watch, image OCR |
+| Clipboard | **History** | History cap (to Unlimited), retention window, disk use on this Mac, export |
+| Clipboard | **Screenshots** | Screenshot capture, the folder to watch |
 | Clipboard | **Panel** | Image OCR, vim navigation |
 | Clipboard | **Privacy** | Touch ID lock, sensitive-content filtering, permission notes |
 | Clip actions | **Notes** | The on-device model, note destination, automatic notes |

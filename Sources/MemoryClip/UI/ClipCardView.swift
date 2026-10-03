@@ -39,10 +39,14 @@ struct ClipCardView: View {
     let isSelected: Bool
     /// 1-based place in the paste queue, or nil when not queued.
     let queuePosition: Int?
+    /// Every pinboard, for the `Pin to ▸` menu (PRD 06).
+    let pinboards: [Pinboard]
     /// True while this clip's note is being written.
     let isSavingNote: Bool
     let onPaste: (Bool) -> Void
     let onCopyOnly: () -> Void
+    /// Open this clip's text for editing in the preview pane.
+    let onEdit: () -> Void
     let onCopyExtractedText: () -> Void
     let onTransform: (Transform) -> Void
     let onShowQR: () -> Void
@@ -51,6 +55,17 @@ struct ClipCardView: View {
     let onAddToCalendar: () -> Void
     let onOpenNote: () -> Void
     let onRevealInFinder: () -> Void
+    /// Locked secret: the menu's Show — opens the cipher behind Touch ID.
+    let onRevealSecret: () -> Void
+    /// Secret row's "Not a Secret" — authenticates, then demotes it.
+    let onDemoteSecret: () -> Void
+    /// Ordinary text clip's "Mark as Secret".
+    let onMarkSecret: () -> Void
+    /// File the clip under a pinboard scope (PRD 06).
+    let onFile: (PinboardScope) -> Void
+    /// Open the board picker for this clip: the menu's `Pinboard…` item,
+    /// for when the list of boards is longer than a submenu should carry.
+    let onOpenPinboardPicker: () -> Void
 
     @State private var isHovering = false
     /// Cached instant-calc result. Computed once per content change off the
@@ -62,9 +77,11 @@ struct ClipCardView: View {
         index: Int,
         isSelected: Bool,
         queuePosition: Int? = nil,
+        pinboards: [Pinboard] = [],
         isSavingNote: Bool = false,
         onPaste: @escaping (Bool) -> Void,
         onCopyOnly: @escaping () -> Void,
+        onEdit: @escaping () -> Void = {},
         onCopyExtractedText: @escaping () -> Void = {},
         onTransform: @escaping (Transform) -> Void,
         onShowQR: @escaping () -> Void,
@@ -72,15 +89,22 @@ struct ClipCardView: View {
         onSaveNote: @escaping () -> Void = {},
         onAddToCalendar: @escaping () -> Void = {},
         onOpenNote: @escaping () -> Void = {},
-        onRevealInFinder: @escaping () -> Void = {}
+        onRevealInFinder: @escaping () -> Void = {},
+        onRevealSecret: @escaping () -> Void = {},
+        onDemoteSecret: @escaping () -> Void = {},
+        onMarkSecret: @escaping () -> Void = {},
+        onFile: @escaping (PinboardScope) -> Void = { _ in },
+        onOpenPinboardPicker: @escaping () -> Void = {}
     ) {
         self.item = item
         self.index = index
         self.isSelected = isSelected
         self.queuePosition = queuePosition
+        self.pinboards = pinboards
         self.isSavingNote = isSavingNote
         self.onPaste = onPaste
         self.onCopyOnly = onCopyOnly
+        self.onEdit = onEdit
         self.onCopyExtractedText = onCopyExtractedText
         self.onTransform = onTransform
         self.onShowQR = onShowQR
@@ -89,9 +113,25 @@ struct ClipCardView: View {
         self.onAddToCalendar = onAddToCalendar
         self.onOpenNote = onOpenNote
         self.onRevealInFinder = onRevealInFinder
+        self.onRevealSecret = onRevealSecret
+        self.onDemoteSecret = onDemoteSecret
+        self.onMarkSecret = onMarkSecret
+        self.onFile = onFile
+        self.onOpenPinboardPicker = onOpenPinboardPicker
     }
 
     var body: some View {
+        // A secret card never drags out: its only payload is ciphertext, so
+        // nothing an item provider could lawfully carry exists — and a
+        // masked or empty drag would just paste the wrong thing.
+        if item.isSecret {
+            card
+        } else {
+            card.onDrag { ClipDragProvider.itemProvider(for: item) ?? NSItemProvider() }
+        }
+    }
+
+    private var card: some View {
         VStack(spacing: 0) {
             header
             contentWell
@@ -109,50 +149,97 @@ struct ClipCardView: View {
         .shadow(color: Design.Palette.cardShadow, radius: 3, x: 0, y: 1)
         .onHover { isHovering = $0 }
         .task(id: contentKey) { await refreshCalc() }
-        // The third way out of the panel, beside Return and ⌘C. It sits on the
-        // whole card rather than on the content well so the picture the
-        // pointer carries is the card, and it starts on the drag threshold —
-        // the tap that pastes, the right-click menu and the header's own
-        // buttons all still see their events.
-        .onDrag { ClipDragProvider.itemProvider(for: item) ?? NSItemProvider() }
         .contextMenu {
-            Button(loc("Paste")) { onPaste(false) }
-            Button(loc("Paste as Plain Text")) { onPaste(true) }
-            Button(loc("Copy Only")) { onCopyOnly() }
-            Divider()
-            if item.kind == .link {
-                Button(loc("Show QR Code")) { onShowQR() }
-            }
-            if extractedText != nil {
-                Button(loc("Copy Extracted Text")) { onCopyExtractedText() }
-            }
-            if isTextBearing {
-                Menu(loc("Transform")) {
-                    ForEach(TransformGroup.allCases) { group in
-                        Menu(group.label) {
-                            ForEach(group.transforms) { transform in
-                                Button(transform.label) { onTransform(transform) }
+            if item.isSecret {
+                // A secret's menu is the four things that can lawfully act
+                // on ciphertext plus the two that change what the row is.
+                // Transform / Note / Calendar / QR / Copy Extracted Text are
+                // all absent: every one of them would run on empty text or
+                // demand plaintext the row does not have.
+                Button(loc("Show")) { onRevealSecret() }
+                Button(loc("Paste")) { onPaste(false) }
+                Button(loc("Copy")) { onCopyOnly() }
+                Divider()
+                Button(queuePosition == nil ? loc("Add to Queue") : loc("Remove from Queue")) {
+                    onToggleQueue()
+                }
+                Button(item.isPinned ? loc("Unpin") : loc("Pin")) { togglePinned() }
+                Divider()
+                Button(loc("Not a Secret")) { onDemoteSecret() }
+                Button(loc("Delete"), role: .destructive) { deleteItem() }
+            } else {
+                Button(loc("Paste")) { onPaste(false) }
+                Button(loc("Paste as Plain Text")) { onPaste(true) }
+                Button(loc("Copy Only")) { onCopyOnly() }
+                if canEdit {
+                    Button(loc("Edit…")) { onEdit() }
+                }
+                Divider()
+                if item.kind == .link {
+                    Button(loc("Show QR Code")) { onShowQR() }
+                }
+                if extractedText != nil {
+                    Button(loc("Copy Extracted Text")) { onCopyExtractedText() }
+                }
+                if isTextBearing {
+                    Menu(loc("Transform")) {
+                        ForEach(TransformGroup.allCases) { group in
+                            Menu(group.label) {
+                                ForEach(group.transforms) { transform in
+                                    Button(transform.label) { onTransform(transform) }
+                                }
                             }
                         }
                     }
                 }
+                if item.isScreenshot {
+                    Button(loc("Reveal in Finder")) { onRevealInFinder() }
+                }
+                if canSaveNote {
+                    Button(item.notePath == nil ? loc("Save as Note") : loc("Update Note")) { onSaveNote() }
+                }
+                if item.notePath != nil {
+                    Button(loc("Open Note")) { onOpenNote() }
+                }
+                if mightHaveEvent {
+                    Button(calendarTitle) { onAddToCalendar() }
+                }
+                if canMarkSecret {
+                    Button(loc("Mark as Secret")) { onMarkSecret() }
+                }
+                Divider()
+                Button(queuePosition == nil ? loc("Add to Queue") : loc("Remove from Queue")) { onToggleQueue() }
+                Button(item.isPinned ? loc("Unpin") : loc("Pin")) { togglePinned() }
+                // `Pin to ▸` files the clip under a board: the pinned sets are
+                // listed flat (Pinned for no board at all, then every board)
+                // with the clip's current filing checked. Picked from the clip
+                // a selection cannot speak for, this is the one-clip menu.
+                Menu(loc("Pin to")) {
+                    Button {
+                        onFile(.pinned)
+                    } label: {
+                        if item.isPinned, item.pinboard == nil {
+                            Label(loc("Pinned"), systemImage: "checkmark")
+                        } else {
+                            Label(loc("Pinned"), systemImage: "pin")
+                        }
+                    }
+                    ForEach(pinboards, id: \.uuid) { board in
+                        Button {
+                            onFile(.board(board.uuid))
+                        } label: {
+                            if item.pinboard?.uuid == board.uuid {
+                                Label(board.name, systemImage: "checkmark")
+                            } else {
+                                Label(board.name, systemImage: "pin")
+                            }
+                        }
+                    }
+                    Divider()
+                    Button(loc("Pinboard…")) { onOpenPinboardPicker() }
+                }
+                Button(loc("Delete"), role: .destructive) { deleteItem() }
             }
-            if item.isScreenshot {
-                Button(loc("Reveal in Finder")) { onRevealInFinder() }
-            }
-            if canSaveNote {
-                Button(item.notePath == nil ? loc("Save as Note") : loc("Update Note")) { onSaveNote() }
-            }
-            if item.notePath != nil {
-                Button(loc("Open Note")) { onOpenNote() }
-            }
-            if mightHaveEvent {
-                Button(calendarTitle) { onAddToCalendar() }
-            }
-            Divider()
-            Button(queuePosition == nil ? loc("Add to Queue") : loc("Remove from Queue")) { onToggleQueue() }
-            Button(item.isPinned ? loc("Unpin") : loc("Pin")) { togglePinned() }
-            Button(loc("Delete"), role: .destructive) { deleteItem() }
         }
         // One element per card: the default leaf-by-leaf exposure made a card
         // an unlabelled pile of glyphs.
@@ -165,6 +252,13 @@ struct ClipCardView: View {
             onToggleQueue()
         }
         .accessibilityActions {
+            if item.isSecret {
+                Button(loc("Show")) { onRevealSecret() }
+                Button(loc("Not a Secret")) { onDemoteSecret() }
+            }
+            if canMarkSecret {
+                Button(loc("Mark as Secret")) { onMarkSecret() }
+            }
             if canSaveNote {
                 Button(item.notePath == nil ? loc("Save as Note") : loc("Update Note")) { onSaveNote() }
             }
@@ -188,6 +282,9 @@ struct ClipCardView: View {
                 Button(loc("Copy Extracted Text")) { onCopyExtractedText() }
             }
             Button(loc("Copy Only")) { onCopyOnly() }
+            if canEdit {
+                Button(loc("Edit…")) { onEdit() }
+            }
         }
     }
 
@@ -260,7 +357,16 @@ struct ClipCardView: View {
                         .background(Circle().fill(Design.Palette.accent))
                         .help(loc("Queued at position %d", queuePosition))
                 }
-                if item.isPinned {
+                if let board = item.pinboard {
+                    // The pin takes the board's colour: at a glance the card
+                    // says not just "pinned" but "pinned where". The board's
+                    // name is in the card's accessibility label; a colour
+                    // alone is not a label.
+                    Image(systemName: "pin.fill")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundStyle(board.color)
+                        .accessibilityHidden(true)
+                } else if item.isPinned {
                     Image(systemName: "pin.fill")
                         .font(.system(size: 10, weight: .semibold))
                         // The system orange, which macOS retunes per
@@ -301,6 +407,7 @@ struct ClipCardView: View {
     }
 
     private var kindSymbol: String {
+        if item.isSecret { return "lock.fill" }
         if item.isScreenshot { return "camera.viewfinder" }
         switch item.kind {
         case .text: return "text.alignleft"
@@ -361,25 +468,53 @@ struct ClipCardView: View {
 
     @ViewBuilder
     private var kindContent: some View {
-        switch item.kind {
-        case .image:
-            imageContent
-        case .color:
-            colorContent
-        case .file:
-            // A screenshot is a file clip that draws as its picture: the
-            // thumbnail is already there (the backfill treats it as an
-            // image), and a row showing only a path would waste it.
-            if item.isScreenshot {
+        if item.isSecret {
+            secretContent
+        } else {
+            switch item.kind {
+            case .image:
                 imageContent
-            } else {
-                fileContent
+            case .color:
+                colorContent
+            case .file:
+                // A screenshot is a file clip that draws as its picture: the
+                // thumbnail is already there (the backfill treats it as an
+                // image), and a row showing only a path would waste it.
+                if item.isScreenshot {
+                    imageContent
+                } else {
+                    fileContent
+                }
+            default:
+                Text(previewText)
+                    .font(.system(size: Design.Typography.cardBodySize))
+                    .foregroundStyle(Color(nsColor: .labelColor))
+                    .lineLimit(6)
+                    .multilineTextAlignment(.leading)
             }
-        default:
-            Text(previewText)
-                .font(.system(size: Design.Typography.cardBodySize))
-                .foregroundStyle(Color(nsColor: .labelColor))
-                .lineLimit(6)
+        }
+    }
+
+    /// What a secret card shows: the lock glyph, the catalogue label, and
+    /// the mask — the only plaintext-derived characters the row keeps.
+    /// Nothing else exists to draw: `text`, OCR, notes and translations are
+    /// all nil by construction.
+    private var secretContent: some View {
+        VStack(alignment: .leading, spacing: Design.Space.snug) {
+            HStack(spacing: Design.Space.snug) {
+                Image(systemName: "lock.fill")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(Color(nsColor: .systemGray))
+                    .accessibilityHidden(true)
+                Text(item.secretLabel.map(loc) ?? loc("Token"))
+                    .font(.system(size: Design.Typography.cardBodySize, weight: .medium))
+                    .foregroundStyle(Color(nsColor: .labelColor))
+                    .lineLimit(1)
+            }
+            Text(item.secretMasked ?? loc("Secret"))
+                .font(.system(size: Design.Typography.cardBodySize, design: .monospaced))
+                .foregroundStyle(Color(nsColor: .secondaryLabelColor))
+                .lineLimit(5)
                 .multilineTextAlignment(.leading)
         }
     }
@@ -491,6 +626,15 @@ struct ClipCardView: View {
     /// "· not translated" ranks under all three of those and over "text
     /// found" — see `untranslated`.
     private var statLine: String {
+        // A secret's stat line is the one piece of metadata worth keeping
+        // on the row: for a one-time code, how long until it forgets itself.
+        if item.isSecret {
+            if let expiry = item.expiresAt {
+                let minutes = max(1, Int(expiry.timeIntervalSinceNow / 60))
+                return loc("Secret · forgets in %d min", minutes)
+            }
+            return loc("Secret")
+        }
         let noted = item.notePath != nil
         let scheduled = item.calendarEventID != nil
         // Checked before the kind switch: a screenshot IS a file clip, and
@@ -553,12 +697,30 @@ struct ClipCardView: View {
         ClipDisplay.canSaveNote(item)
     }
 
+    /// Whether this clip may be edited in place.
+    ///
+    /// Shared with the panel's ⌘I / `e` keys and the preview's Edit button:
+    /// the one predicate, so menu, key and button agree about which clips
+    /// show the action at all.
+    private var canEdit: Bool {
+        ClipDisplay.canEdit(item)
+    }
+
     /// Whether this clip is worth offering the calendar for.
     ///
     /// Shared with the panel's ⌘E / `c` keys, and cheap by design: the real
     /// detection runs once, when the action is taken.
     private var mightHaveEvent: Bool {
         ClipDisplay.mightHaveEvent(item)
+    }
+
+    /// Whether "Mark as Secret" applies: any ordinary text clip with
+    /// non-empty text. The store re-detects before sealing, so offering it
+    /// on non-secret-looking text is safe — the menu is a shortcut for the
+    /// judgement the detector would not make on its own.
+    private var canMarkSecret: Bool {
+        !item.isSecret && ClipDisplay.isTextBearing(item.kind)
+            && !(item.text ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     /// The calendar item's title. A clip that already has an event keeps one
@@ -598,7 +760,18 @@ struct ClipCardView: View {
     // MARK: Accessibility
 
     private var accessibilityLabel: String {
-        ClipDisplay.rowLabel(
+        // A secret's label is spoken from its catalogue label, never its
+        // mask — "Secret, AWS access key, from Terminal, 2 minutes ago,
+        // locked" rather than a row of bullet characters.
+        if item.isSecret {
+            return ClipDisplay.secretRowLabel(
+                label: item.secretLabel.map { loc($0) },
+                appName: item.sourceAppName,
+                relativeTime: item.createdAt.formatted(.relative(presentation: .named)),
+                expiresAt: item.expiresAt
+            )
+        }
+        return ClipDisplay.rowLabel(
             kind: item.kind,
             summary: summaryText,
             appName: item.sourceAppName,
@@ -609,7 +782,8 @@ struct ClipCardView: View {
             calcResult: calcSuffix,
             isScreenshot: item.isScreenshot,
             hasNote: item.notePath != nil,
-            hasCalendarEvent: item.calendarEventID != nil
+            hasCalendarEvent: item.calendarEventID != nil,
+            pinboardName: item.pinboard?.name
         )
     }
 
@@ -645,7 +819,14 @@ struct ClipCardView: View {
     // MARK: Mutations
 
     private func togglePinned() {
-        item.isPinned.toggle()
+        // `unpin()` rather than a toggle: a clip that leaves the pinned set
+        // also leaves its board: membership needs the pin (PRD 06). Pinning
+        // goes through `togglePinned` so an expiring secret drops its timer.
+        if item.isPinned {
+            item.unpin()
+        } else {
+            item.togglePinned()
+        }
         try? modelContext.save()
     }
 

@@ -24,6 +24,26 @@ enum SettingsKeys {
     /// (`SettingsPane.default`), and registering a default here would mean two
     /// places to change if the first pane ever moves.
     static let settingsPane: String = "settingsPane"
+
+    /// The fresh-install history limits: how many clips are kept and how far
+    /// back they reach before maintenance sweeps them. The History pane's
+    /// `@AppStorage` fallbacks read these same constants, which is what keeps
+    /// the registered defaults and the pane from drifting apart.
+    static let defaultHistoryCap = 5_000
+    static let defaultRetentionDays = 90
+
+    /// Seed the fresh-install values. `register(defaults:)` only fills the
+    /// registration domain, so a value the user ever chose keeps winning.
+    /// - Parameter defaults: injectable for tests, like
+    ///   `PlainPasteApps.registerDefaults(in:)`.
+    static func registerDefaults(in defaults: UserDefaults = .standard) {
+        defaults.register(defaults: [
+            historyCap: defaultHistoryCap,
+            retentionDays: defaultRetentionDays,
+            autoPaste: true,
+            vimMode: false
+        ])
+    }
 }
 
 @MainActor
@@ -58,19 +78,45 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// expired clip is never visible for long.
     static let maintenanceStartDelay: Duration = .seconds(2)
 
+    /// An "Open MemoryClip" intent that arrived before the panel controller
+    /// existed — the intent can land inside the same launch that finishes
+    /// wiring it. Double-optional on purpose: `.some(nil)` is a pending open
+    /// with no query, `nil` is nothing pending.
+    private static var pendingPanelQuery: String??
+
+    /// The "Open MemoryClip" intent's entry point. The intent runs
+    /// in-process once the app is up (`openAppWhenRun`), so this is a hop
+    /// onto the live panel — or, arriving during launch, a note that the
+    /// end of `applicationDidFinishLaunching` drains.
+    static func openPanelFromIntent(query: String?) {
+        if let delegate = NSApp.delegate as? AppDelegate, delegate.panelController != nil {
+            delegate.panelController.show(prefilling: query)
+        } else {
+            pendingPanelQuery = query
+        }
+    }
+
     func applicationDidFinishLaunching(_ notification: Notification) {
-        UserDefaults.standard.register(defaults: [
-            SettingsKeys.historyCap: 200,
-            SettingsKeys.retentionDays: 30,
-            SettingsKeys.autoPaste: true,
-            SettingsKeys.vimMode: false
-        ])
+        // Probe for the secrets work: `--secrets-selftest` exercises the
+        // Secure Enclave key (create or reload, seal, open with user
+        // presence, survival across a rebuilt binary) and exits, instead of
+        // the normal launch.
+        if SecretsSelfTest.isRequested {
+            SecretsSelfTest.runAndExit()
+        }
+
+        SettingsKeys.registerDefaults()
 
         // Phase-2 defaults: sensitive-content filter (on), the user's own
         // per-app exclusions (none) and app lock (off).
         SensitiveFilter.registerDefaults()
         ExcludedApps.registerDefaults()
         AppLockService.registerDefaults()
+
+        // Secrets defaults: keep recognised secrets sealed under the Secure
+        // Enclave (on, for new and existing users), with its three switches
+        // on (generic tokens, code expiry, clipboard clearing).
+        SecretSettings.registerDefaults()
 
         // The apps a paste is always stripped to plain text for, seeded with
         // the terminals and editors (`PlainPasteApps.defaultBundleIDs`).
@@ -108,11 +154,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         self.store = store
 
         // The Settings window is built from plain SwiftUI structs that are
-        // handed no services, so the History pane's export buttons reach the
-        // store the way the About pane reaches the tour: through a singleton
-        // controller. This is the one place that owns the store, so this is
-        // the only place that can hand it over.
+        // handed no services, so the History pane's export buttons and limit
+        // pickers reach the store the way the About pane reaches the tour:
+        // through singleton controllers. This is the one place that owns the
+        // store, so this is the only place that can hand it over.
         HistoryExportController.shared.store = store
+        HistoryLimitsController.shared.store = store
 
         watcher = PasteboardWatcher(store: store)
         pasteService = PasteService(store: store, watcher: watcher)
@@ -120,18 +167,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         screenshotWatcher = ScreenshotWatcher(store: store)
         noteCoordinator = NoteCoordinator(store: store)
         calendarCoordinator = CalendarCoordinator(store: store)
+        let secretsService = SecretsService(store: store, pasteService: pasteService)
         panelController = PanelController(
             store: store,
             pasteService: pasteService,
             watcher: watcher,
             noteCoordinator: noteCoordinator,
-            calendarCoordinator: calendarCoordinator
+            calendarCoordinator: calendarCoordinator,
+            secretsService: secretsService
         )
         statusController = StatusController(
             store: store,
             watcher: watcher,
             pasteService: pasteService,
-            panelController: panelController
+            panelController: panelController,
+            secretsService: secretsService
         )
 
         watcher.sourceAppProvider = { [weak self] in
@@ -242,6 +292,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // read — what a switched-on feature is missing outright.
         if !PermissionRecoveryController.shared.showIfNeeded() {
             PermissionRecoveryController.shared.showBlockedOnce()
+        }
+
+        // An "Open MemoryClip" intent that arrived during this launch —
+        // `openAppWhenRun` can run the perform before the controllers are
+        // wired, so `openPanelFromIntent` parks the ask and it lands here.
+        if let pending = Self.pendingPanelQuery {
+            Self.pendingPanelQuery = nil
+            panelController.show(prefilling: pending)
         }
     }
 

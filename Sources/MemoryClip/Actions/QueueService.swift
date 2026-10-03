@@ -68,6 +68,15 @@ final class QueueService: ObservableObject {
     /// been cancelled or superseded, and clearing it would wipe a NEWER run.
     private var currentRunID: UUID?
 
+    /// How a secret clip is pasted inside a run. `PanelController` wires it
+    /// to `SecretsService.pasteOutcome`, which opens the cipher behind one
+    /// prompt — the sealer's reuse window covers the whole batch — and writes
+    /// the plaintext concealed. Unwired, or with a refused prompt, the clip
+    /// is skipped rather than pasted as its mask.
+    /// `@MainActor` like the rest of the queue: `ClipItem` is a main-actor
+    /// model, and the run already hops actors for the pasteboard writes.
+    var secretPaste: (@MainActor (ClipItem, NSRunningApplication?) async -> PasteService.PasteOutcome)?
+
     init(store: ClipStore, pasteService: PasteService) {
         self.store = store
         self.pasteService = pasteService
@@ -112,11 +121,20 @@ final class QueueService: ObservableObject {
                     if Task.isCancelled { break }
                 }
                 guard !item.isDeleted else { continue }
-                let outcome = await self.pasteService.pasteAndWait(
-                    item,
-                    plainOnly: plainOnly,
-                    target: target
-                )
+                let outcome: PasteService.PasteOutcome
+                if item.isSecret {
+                    // The row holds no payload `pasteAndWait` could write;
+                    // the seam opens the cipher instead. A skipped secret
+                    // does not abort the run the way `targetLost` does — it
+                    // simply contributes nothing to the pasteboard.
+                    outcome = await (self.secretPaste?(item, target) ?? .failed)
+                } else {
+                    outcome = await self.pasteService.pasteAndWait(
+                        item,
+                        plainOnly: plainOnly,
+                        target: target
+                    )
+                }
                 if outcome == .targetLost {
                     // The target app is no longer frontmost. Continuing would
                     // type the remaining clips into whatever now has focus.

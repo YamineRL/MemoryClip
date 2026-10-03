@@ -98,6 +98,17 @@ enum ContentParser {
 
         // 6. Plain string (with hex-color and web-URL refinement).
         guard let string = pasteboard.string(forType: .string) else { return nil }
+        return parseText(string)
+    }
+
+    /// Parse a bare string the same way a copied one is: a hex colour when it
+    /// spells one, a link when it is a web URL, plain text otherwise.
+    ///
+    /// Edited clips come back through this too: saving an edit has no
+    /// pasteboard to parse, so the same rules run on the edited string
+    /// itself. Returns nil for an empty or whitespace-only string, the one
+    /// input a copy would never have produced.
+    static func parseText(_ string: String) -> CapturedClip? {
         let trimmed = string.trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmed.isEmpty { return nil }
 

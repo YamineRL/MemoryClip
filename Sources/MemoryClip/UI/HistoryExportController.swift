@@ -83,7 +83,7 @@ final class HistoryExportController {
             log.error("Export skipped: no store")
             return
         }
-        guard confirmExport(asCSV: asCSV) else { return }
+        guard confirmExport(asCSV: asCSV, secretCount: store.secretCount()) else { return }
 
         let savePanel = NSSavePanel()
         savePanel.canCreateDirectories = true
@@ -141,12 +141,23 @@ final class HistoryExportController {
         let handle = try FileHandle(forWritingTo: url)
         defer { try? handle.close() }
 
-        var stream = ExportService.Stream(format: asCSV ? .csv : .json)
+        // Pinboards ride at the top of the JSON document, ahead of the clip
+        // stream: the boards exist even when the history under them is
+        // empty. CSV has no place for them: the board a clip was in lands in
+        // its `pinboard` column.
+        let boards = asCSV ? [] : store.pinboards().map(ExportService.export(from:))
+        var stream = ExportService.Stream(format: asCSV ? .csv : .json, pinboards: boards)
         try handle.write(contentsOf: Data(stream.header.utf8))
 
         var written = 0
         while true {
+            // Secret rows never reach the file: an export is a bulk
+            // disclosure in plaintext, and a sealed clip's only lawful
+            // export form (its ciphertext) is useless anywhere else. The
+            // predicate, not a skip in the loop, so `written` still counts
+            // real pages and paging never stalls on a page of secrets.
             var descriptor = FetchDescriptor<ClipItem>(
+                predicate: #Predicate { !$0.isSecret },
                 sortBy: [SortDescriptor(\ClipItem.createdAt, order: .reverse)]
             )
             descriptor.fetchOffset = written
@@ -244,9 +255,26 @@ final class HistoryExportController {
     /// nothing, and there is no half-restored history to explain.
     static func readImport(from url: URL, store: ClipStore) throws -> ImportOutcome {
         let text = try String(contentsOf: url, encoding: .utf8)
-        let items = try ExportService.items(from: ExportService.imports(fromJSON: text))
+        let document = try ExportService.imports(fromJSON: text)
+        let items = try ExportService.items(from: document.clips)
         let inserted = store.insertImported(items)
-        return ImportOutcome(inserted: inserted, skipped: items.count - inserted)
+        // Only the clips the store actually accepted are filed: a clip the
+        // history already holds is left exactly as it is, board included.
+        // A board a skipped record names is still created — the document
+        // says it exists, and an empty board is a real board.
+        let accepted = Set(inserted.map(\.uuid))
+        let pairs = zip(items, document.clips)
+        let boardsSkippedRecordsName = pairs
+            .filter { !accepted.contains($0.0.uuid) }
+            .compactMap { $0.1.pinboard }
+            .map { PinboardExport(name: $0, color: nil, order: nil) }
+        store.fileImported(
+            pairs
+                .filter { accepted.contains($0.0.uuid) }
+                .map { (item: $0.0, record: $0.1) },
+            pinboards: document.pinboards + boardsSkippedRecordsName
+        )
+        return ImportOutcome(inserted: inserted.count, skipped: items.count - inserted.count)
     }
 
     /// Say what an import will and will not touch before the panel opens.
@@ -281,18 +309,25 @@ final class HistoryExportController {
         alert.runModal()
     }
 
-    /// Spell out exactly what the exported file contains before writing it.
-    private func confirmExport(asCSV: Bool) -> Bool {
+    /// Spell out exactly what the exported file contains — and what it does
+    /// not — before writing it. `secretCount` names the omission rather than
+    /// leaving it implied: "0 clips exported" next to a visible secret would
+    /// otherwise read as a bug.
+    private func confirmExport(asCSV: Bool, secretCount: Int) -> Bool {
         let alert = NSAlert()
         alert.alertStyle = .warning
         alert.messageText = loc("Export your entire clipboard history?")
         let payload = asCSV
             ? loc("every clip's text, source app and timestamps")
             : loc("every clip's text, source app, timestamps and Base64 copies of image and rich-text clips")
-        alert.informativeText = loc(
-            "The file is UNENCRYPTED plain text containing %@ — including any passwords, tokens or other secrets you have copied.\n\nMemoryClip writes it readable by your user account only, but anyone who can open the file can read your whole history. Store it somewhere you trust, or delete it when done.",
+        var informative = loc(
+            "The file is UNENCRYPTED plain text containing %@ — including any secrets you kept as ordinary clips.\n\nMemoryClip writes it readable by your user account only, but anyone who can open the file can read your whole history. Store it somewhere you trust, or delete it when done.",
             payload
         )
+        if secretCount > 0 {
+            informative += "\n\n" + loc("%d secrets are not exported.", secretCount)
+        }
+        alert.informativeText = informative
         alert.addButton(withTitle: loc("Export…"))
         alert.addButton(withTitle: loc("Cancel"))
         return alert.runModal() == .alertFirstButtonReturn

@@ -38,7 +38,7 @@ final class PanelQueryBenchmarks: XCTestCase {
 
     private func container() throws -> ModelContainer {
         try ModelContainer(
-            for: Schema([ClipItem.self]),
+            for: Schema([ClipItem.self, Pinboard.self]),
             configurations: [ModelConfiguration(isStoredInMemoryOnly: true)]
         )
     }
@@ -119,6 +119,14 @@ final class PanelQueryBenchmarks: XCTestCase {
             _ = try each("filter new (type+source) n=\(size)", count: 5) { _ in
                 let f = ClipFilter(type: .image, source: "Safari")
                 _ = f.refine(try context.fetch(f.fetchDescriptor()))
+            }
+
+            // Operator queries run the same fetch+refine pipeline: `app:`
+            // pushes a widened CONTAINS, the date bounds are exact, and the
+            // pinned flag is a stored Bool - so this should cost a search.
+            let operators = ClipFilter(search: "zebra app:Saf is:pinned after:7d")
+            _ = try each("operators new (app+is+after) n=\(size)", count: 5) { _ in
+                _ = operators.refine(try context.fetch(operators.fetchDescriptor()))
             }
 
             // The source-app menu: was a Set over every faulted clip on every

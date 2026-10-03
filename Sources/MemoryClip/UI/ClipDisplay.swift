@@ -60,6 +60,28 @@ enum ClipDisplay {
         return !(item.text ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
+    // MARK: - Editing
+
+    /// Whether this clip may be edited in place in the preview pane.
+    ///
+    /// The editable kinds are the ones whose payload is plain text: `.text`,
+    /// `.richText` (which saves flattened), `.link` and `.color`. Images,
+    /// files and screenshots have nothing a text editor can rewrite, and
+    /// secrets are excluded on their flag rather than their kind: a secret
+    /// stays `.text`, and the ciphertext it holds must not be rewritten by
+    /// hand.
+    ///
+    /// Shared by every entry point for the same reason `canSaveNote` is: the
+    /// menus hide the item where it does not apply, while a key press can
+    /// only decline, and two copies would eventually disagree.
+    static func canEdit(_ item: some ClipDisplayable) -> Bool {
+        guard !item.isSecret else { return false }
+        switch item.kind {
+        case .text, .richText, .link, .color: return true
+        case .image, .file: return false
+        }
+    }
+
     // MARK: - Calendar
 
     /// Longest prefix of a clip's text the calendar gate reads.
@@ -213,7 +235,8 @@ enum ClipDisplay {
         calcResult: String? = nil,
         isScreenshot: Bool = false,
         hasNote: Bool = false,
-        hasCalendarEvent: Bool = false
+        hasCalendarEvent: Bool = false,
+        pinboardName: String? = nil
     ) -> String {
         var parts: [String] = [kindLabel(kind, isScreenshot: isScreenshot)]
 
@@ -223,11 +246,35 @@ enum ClipDisplay {
         if let appName, !appName.isEmpty { parts.append(loc("from %@", appName)) }
         if !relativeTime.isEmpty { parts.append(relativeTime) }
         if isPinned { parts.append(loc("pinned")) }
+        if let pinboardName, !pinboardName.isEmpty {
+            parts.append(loc("in pinboard %@", pinboardName))
+        }
         if let queuePosition { parts.append(loc("queued position %d", queuePosition)) }
         if hasExtractedText { parts.append(loc("contains extracted text")) }
         if hasNote { parts.append(loc("saved as a note")) }
         if hasCalendarEvent { parts.append(loc("added to the calendar")) }
 
+        return parts.joined(separator: ", ")
+    }
+
+    /// The spoken label for a secret row: "Secret, AWS access key, from
+    /// Terminal, 2 minutes ago, locked". The mask is not spoken — its
+    /// bullets read as noise, and its last-four characters are not a
+    /// sentence. A one-time code that will delete itself says so.
+    static func secretRowLabel(
+        label: String?,
+        appName: String?,
+        relativeTime: String,
+        expiresAt: Date? = nil
+    ) -> String {
+        var parts: [String] = [loc("Secret")]
+        if let label, !label.isEmpty { parts.append(label) }
+        if let appName, !appName.isEmpty { parts.append(loc("from %@", appName)) }
+        if !relativeTime.isEmpty { parts.append(relativeTime) }
+        if let expiresAt {
+            parts.append(loc("forgets in %d min", max(1, Int(expiresAt.timeIntervalSinceNow / 60))))
+        }
+        parts.append(loc("Locked"))
         return parts.joined(separator: ", ")
     }
 }

@@ -7,6 +7,7 @@ final class StatusController: NSObject, NSMenuDelegate {
     private let watcher: PasteboardWatcher
     private let pasteService: PasteService
     private let panelController: PanelController
+    private let secretsService: SecretsService
     private let statusItem: NSStatusItem
 
     /// The app that was frontmost when the dropdown opened; paste targets it.
@@ -41,11 +42,18 @@ final class StatusController: NSObject, NSMenuDelegate {
         }
     }
 
-    init(store: ClipStore, watcher: PasteboardWatcher, pasteService: PasteService, panelController: PanelController) {
+    init(
+        store: ClipStore,
+        watcher: PasteboardWatcher,
+        pasteService: PasteService,
+        panelController: PanelController,
+        secretsService: SecretsService
+    ) {
         self.store = store
         self.watcher = watcher
         self.pasteService = pasteService
         self.panelController = panelController
+        self.secretsService = secretsService
         self.statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         super.init()
 
@@ -187,6 +195,14 @@ final class StatusController: NSObject, NSMenuDelegate {
     /// Title for a quick-history row. `redacted` renders the clip's *kind*
     /// only, so a locked MemoryClip never puts clip contents on screen.
     static func menuTitle(for item: ClipItem, redacted: Bool = false) -> String {
+        // A secret's title is its label and mask, in BOTH states: the
+        // plaintext is not on this menu even unlocked (there is no reveal
+        // here), and locked mode needs no second, vaguer answer.
+        if item.isSecret {
+            let label = item.secretLabel.map { loc($0) } ?? loc("Secret")
+            guard let mask = item.secretMasked, !mask.isEmpty else { return label }
+            return "\(label) · \(mask)"
+        }
         guard !redacted else {
             switch item.kind {
             case .text: return loc("Text clip")
@@ -236,6 +252,15 @@ final class StatusController: NSObject, NSMenuDelegate {
     private func performPaste(uuid: UUID, target: NSRunningApplication?) {
         guard let item = store.items(withUUIDs: [uuid]).first, !item.isDeleted else {
             log.notice("Menu paste skipped: the clip no longer exists")
+            return
+        }
+        // A secret from the dropdown authenticates, then copies — the menu
+        // is a quick-grab list, so the result lands on the pasteboard
+        // (concealed, clear-armed) rather than in a ⌘V into the target.
+        if item.isSecret {
+            Task { @MainActor [weak self] in
+                _ = await self?.secretsService.copy(item)
+            }
             return
         }
         pasteService.paste(item, plainOnly: false, target: target)
