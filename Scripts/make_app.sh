@@ -5,7 +5,34 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 echo "==> Building MemoryClip (release)"
-swift build -c release
+
+# App Intents metadata, part 1 of 2. Shortcuts and Spotlight see only the
+# intents that appintentsmetadataprocessor writes into Metadata.appintents,
+# and it reads them from the compiler's "const values": a JSON dump of the
+# literals (title, description, phrases) on every type conforming to one of
+# the AppIntents protocols. A plain swift build emits neither the dump nor
+# the bundle, so:
+#   -emit-const-values            a swiftc driver flag: writes
+#                                 <SourceFile>.swiftconstvalues beside each
+#                                 object file in MemoryClip.build/
+#   -const-gather-protocols-file  frontend-only (hence the -Xfrontend pairs):
+#                                 a JSON array naming the protocols whose
+#                                 conformers get gathered. This list mirrors
+#                                 the file Xcode's build system generates and
+#                                 covers everything the intents need
+#                                 (AppIntent, AppEntity, AppEnum, EntityQuery,
+#                                 AppShortcutsProvider, DynamicOptionsProvider).
+APPINTENTS_DIR=".build/appintents"
+CONST_PROTOCOLS="$APPINTENTS_DIR/const_extract_protocols.json"
+mkdir -p "$APPINTENTS_DIR"
+cat > "$CONST_PROTOCOLS" <<'EOF'
+["AppIntent","EntityQuery","AppEntity","TransientEntity","AppEnum","AppShortcutProviding","AppShortcutsProvider","AnyResolverProviding","AppIntentsPackage","DynamicOptionsProvider"]
+EOF
+
+swift build -c release \
+    -Xswiftc -emit-const-values \
+    -Xswiftc -Xfrontend -Xswiftc -const-gather-protocols-file \
+    -Xswiftc -Xfrontend -Xswiftc "$PWD/$CONST_PROTOCOLS"
 
 BIN=".build/release/MemoryClip"
 if [ ! -f "$BIN" ]; then
@@ -51,6 +78,73 @@ for lproj in Resources/*.lproj; do
     [ -d "$lproj" ] || continue
     cp -R "$lproj" "$APP/Contents/Resources/"
 done
+
+# App Intents metadata, part 2 of 2: what Xcode's ExtractAppIntentsMetadata
+# build phase does for an .xcodeproj, done by hand for this SwiftPM build.
+# The processor writes <output>/Metadata.appintents/{extract.actionsdata,
+# version.json}, so --output is the app's Resources directory, and it has to
+# land before the ad-hoc signature so the bundle signs as a whole.
+#
+# The invocation mirrors the Xcode 15+ one (cross-checked against
+# rules_apple's app_intents.bzl, which replays it flag for flag):
+#   --toolchain-dir    active toolchain, home of the extractor's helpers
+#   --sdk-root         SDK the module was compiled against
+#   --module-name      the Swift module the intents live in
+#   --xcode-version    Xcode build version string, recorded in version.json
+#   --platform-family  macOS for an app target
+#   --deployment-target  matches platforms: [.macOS(.v26)] in Package.swift
+#   --target-triple    one per built arch; this build is the host arch only
+#   --binary-file      required even in compile-time mode (Apple FB347041279):
+#                      the executable is passed although it is not read
+#   --source-file-list       newline-separated list of the module's .swift
+#                            files (scanned for @AppIntent(schema:) macros)
+#   --swift-const-vals-list  newline-separated list of .swiftconstvalues paths
+#   --compile-time-extraction  read the const values (Xcode 15+ mode; without
+#                            it the tool does a legacy binary scan instead)
+#   --force            skip the .dat dependency-file check, which expects a
+#                      libtool dependency file SwiftPM does not produce
+BUILD_DIR="$(dirname "$BIN")"
+SOURCE_LIST="$APPINTENTS_DIR/sources.list"
+CONST_LIST="$APPINTENTS_DIR/constvalues.list"
+find "$PWD/Sources/MemoryClip" -name '*.swift' -print | sort > "$SOURCE_LIST"
+find "$BUILD_DIR/MemoryClip.build" -name '*.swiftconstvalues' -print | sort > "$CONST_LIST"
+if [ ! -s "$CONST_LIST" ]; then
+    echo "error: no .swiftconstvalues under $BUILD_DIR/MemoryClip.build" >&2
+    echo "       an incremental build skips unchanged files; delete .build and rerun" >&2
+    exit 1
+fi
+
+XCODE_BUILD="$(xcodebuild -version 2>/dev/null | awk '/Build version/ {print $3}')"
+META_LOG="$APPINTENTS_DIR/metadataprocessor.log"
+if ! xcrun appintentsmetadataprocessor \
+    --toolchain-dir "$(xcode-select -p)/Toolchains/XcodeDefault.xctoolchain" \
+    --sdk-root "$(xcrun --sdk macosx --show-sdk-path)" \
+    --module-name MemoryClip \
+    --xcode-version "${XCODE_BUILD:-unknown}" \
+    --platform-family macOS \
+    --deployment-target 26.0 \
+    --target-triple "$(uname -m)-apple-macos26.0" \
+    --binary-file "$BIN" \
+    --source-file-list "$SOURCE_LIST" \
+    --swift-const-vals-list "$CONST_LIST" \
+    --output "$APP/Contents/Resources" \
+    --force --compile-time-extraction \
+    > "$META_LOG" 2>&1
+then
+    cat "$META_LOG" >&2
+    echo "error: appintentsmetadataprocessor exited nonzero" >&2
+    exit 1
+fi
+
+# The processor is known to exit 0 even on halting extraction errors, and a
+# target with no gathered intents only logs "skipping writing output": the
+# bundle on disk is the ground truth either way.
+cat "$META_LOG"
+if [ ! -f "$APP/Contents/Resources/Metadata.appintents/extract.actionsdata" ]; then
+    echo "error: $APP/Contents/Resources/Metadata.appintents was not produced" >&2
+    exit 1
+fi
+echo "==> Wrote $APP/Contents/Resources/Metadata.appintents"
 
 # Ad-hoc signature: no Developer ID, no notarisation (local/personal use).
 codesign --force --sign - "$APP"

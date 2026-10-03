@@ -332,7 +332,6 @@
 "Languages" = "Languages";
 "Any language this Mac can translate" = "Any language this Mac can translate";
 "%d languages" = "%d languages";
-"Downloading…" = "Downloading…";
 "Waiting…" = "Waiting…";
 "Downloaded" = "Downloaded";
 "Downloads when ticked" = "Downloads when ticked";
@@ -637,6 +636,26 @@
 "more than %d days ago" = "more than %d days ago";
 "more than %d weeks ago" = "more than %d weeks ago";
 "more than %d months ago" = "more than %d months ago";
+/* App Intents (Shortcuts, Spotlight). */
+"Nothing copied yet" = "Nothing copied yet";
+"Latest clip has no text" = "Latest clip has no text";
+"Get Latest Clip" = "Get Latest Clip";
+"Reads the newest clip in MemoryClip's history, optionally only of one kind." = "Reads the newest clip in MemoryClip's history, optionally only of one kind.";
+"Search Clips" = "Search Clips";
+"Finds clips whose text, title, file name or source app match a query." = "Finds clips whose text, title, file name or source app match a query.";
+"Copy Clip" = "Copy Clip";
+"Puts the chosen clip back on the clipboard." = "Puts the chosen clip back on the clipboard.";
+"Shows the MemoryClip panel, optionally pre-filling its search." = "Shows the MemoryClip panel, optionally pre-filling its search.";
+"Query" = "Query";
+"Limit" = "Limit";
+"Kind" = "Kind";
+"Clip kind" = "Clip kind";
+"Any" = "Any";
+"MemoryClip is locked." = "MemoryClip is locked.";
+"Could not open the clip store." = "Could not open the clip store.";
+"That clip is not in the history anymore." = "That clip is not in the history anymore.";
+"That clip has nothing to put on the clipboard." = "That clip has nothing to put on the clipboard.";
+"Unlock MemoryClip to answer a shortcut" = "Unlock MemoryClip to answer a shortcut";
 /* The link cleaner. */
 "Cleaned" = "Cleaned";
 "Cleaned · removed %@" = "Cleaned · removed %@";

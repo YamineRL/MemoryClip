@@ -245,6 +245,23 @@ export to JSON or CSV from **Settings → History**. **Import…** in the same p
 a JSON export back, keeping the times clips were first copied and skipping any already
 here, so moving to a new Mac keeps the history.
 
+## Shortcuts and Spotlight
+
+MemoryClip exposes four App Intents, so Shortcuts can build automations out of the
+history and Spotlight can run them directly:
+
+- **Get Latest Clip** — the newest clip, optionally only of one kind (text, image,
+  link, file, color). Text comes back as text; an image arrives as the image itself.
+- **Search Clips** — the panel's own matching, returned as a list of clips a shortcut
+  can loop over, capped at 100.
+- **Copy Clip** — puts a clip back on the clipboard without opening the panel.
+- **Open MemoryClip** — shows the panel, optionally with the search already filled in.
+
+If the app lock (Touch ID) is on, every intent but Open asks for it first — Open leaves
+it to the panel, which gates itself like the hotkey does. All four are read-only: no
+intent edits or deletes history. (Once secrets land, they are never handed out in
+clear: they are skipped entirely or returned with only their masked label.)
+
 ## Screenshots into notes
 
 ⇧⌘3, ⇧⌘4 and ⇧⌘5 write a file and never touch the clipboard. Turn on

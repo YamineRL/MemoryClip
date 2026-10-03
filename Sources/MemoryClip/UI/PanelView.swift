@@ -1423,6 +1423,19 @@ struct PanelView: View {
             queue: queue,
             actions: actions
         )
+        .onAppear { consumePendingSearch() }
+        .onChange(of: uiState.pendingSearch) { _, _ in consumePendingSearch() }
+    }
+
+    /// The "Open MemoryClip" intent's prefill: a search the controller asked
+    /// for lands here once the panel is shown, becomes the filter, and is
+    /// cleared so it fires once per ask — before the panel exists `onAppear`
+    /// catches it, once it does `onChange` does.
+    private func consumePendingSearch() {
+        guard let query = uiState.pendingSearch else { return }
+        uiState.pendingSearch = nil
+        filter = ClipFilter(search: query)
+        pageLimit = ClipFilter.pageSize
     }
 }
 
