@@ -107,9 +107,10 @@ irreversible one kept a separator away from the item people actually come to cli
 
 | Key | Does |
 | --- | --- |
-| `↑` `↓` | Move through the list (`←` `→` as well, while the search field is empty) |
+| `↑` `↓` | Move through the list, or choose a suggestion while one is open (`←` `→` move too, while the search field is empty) |
 | `⇧`+`↑` `↓` | Extend the selection; `⇧`-click and `⌘`-click do the same with the mouse |
-| `Return` | Paste the selected clip, or the whole selection in order |
+| `Return` | Paste the selected clip, or the whole selection in order; accepts the highlighted suggestion while the list is open |
+| `Tab` | Accept the highlighted suggestion while the list is open |
 | `⇧Return` | Paste it as **plain text**, dropping fonts and colours |
 | `⌘1`–`⌘9` | Paste any of the first nine results directly |
 | `⌘C` | Copy the selected clip, leaving the panel open |
@@ -121,7 +122,8 @@ irreversible one kept a separator away from the item people actually come to cli
 | `⌃1`–`⌃9` | Jump to the pinboard at that strip position |
 | `⌥⇧←` `⌥⇧→` | Move the selected clip along its pinboard's order |
 | `Space` | Open the preview pane; press it again on a picture or a file for full-size **Quick Look** |
-| `Esc` | Leave the editor, then Quick Look, then the preview, then the panel |
+| `?` | Show the search operator cheat-sheet (a lone `?` as the whole query) |
+| `Esc` | Leave the editor, close the suggestion list, then Quick Look, then the preview, then the panel |
 
 Pasting puts the clip on the clipboard, reactivates your previous app and sends a ⌘V. If
 macOS blocks that synthetic keystroke the clip is still on the clipboard — see
@@ -155,6 +157,25 @@ to production failed*. Words are reduced to the stem they share with their dicti
 a prefix of what you typed, so it can widen a search and never narrow it. Common words are
 dropped, the database is asked for the longest term alone, and the rest of the sentence is
 checked over the page that comes back.
+
+**Search operators** narrow a query to *where* and *when*, not just *what*. A `key:value`
+token anywhere in the field filters as you type, a leading `-` excludes (`-app:Slack`),
+and a value with spaces takes quotes (`app:"Google Chrome"`):
+
+| Operator | Narrows to | Values |
+| --- | --- | --- |
+| `app:` | clips from an app, matched by name prefix | `app:saf` reaches Safari |
+| `is:` | a state | `pinned`, `screenshot`, `noted`, `event`, `translated` |
+| `type:` | a clip kind | `text`, `image`, `link`, `file`, `color` |
+| `after:` | copied on or after | `today`, `yesterday`, `2026-09-01`, `7d`, `2w`, `3m` |
+| `before:` | copied before | the same values |
+| `on:` | copied on one day | the same values |
+
+Typing a key and `:` offers the values it knows, source apps most-used first, with
+`↓`/`↑` to choose and `Return` or `Tab` to accept; `Esc` closes the list. A lone `?` in
+the field shows this whole table as a cheat-sheet, a click on a previewed clip's app name
+filters to it (`app:"Name"`), and an empty result names its constraints in words with a
+**Clear filters** button that keeps the words and drops the operators.
 
 **Along the way** it badges emails, URLs, phone numbers, JWTs and JSON, shows `= 84` under
 a copied `12*7`, and offers a QR code for links. Right-click to transform a clip on the

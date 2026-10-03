@@ -184,9 +184,15 @@ final class LocalizationTests: XCTestCase {
     }
 
     /// `//` lines dropped, so prose quoting a UI string is not read as one.
+    /// A line carrying `// loc:skip` is exempt as well: a literal there is a
+    /// data-format token (a CSV column name, a coding key) that happens to
+    /// share its spelling with a catalogue key, not a string a user reads.
     private static func withoutComments(_ text: String) -> String {
         text.split(separator: "\n", omittingEmptySubsequences: false)
-            .filter { !$0.trimmingCharacters(in: .whitespaces).hasPrefix("//") }
+            .filter {
+                !$0.trimmingCharacters(in: .whitespaces).hasPrefix("//")
+                    && !$0.contains("// loc:skip")
+            }
             .joined(separator: "\n")
     }
 

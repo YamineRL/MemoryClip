@@ -128,6 +128,17 @@ protocol ClipDisplayable {
     var colorHex: String? { get }
     var fileURLStrings: [String] { get }
     var sourceAppName: String? { get }
+    /// `is:pinned` reads it; `-is:pinned` is the one state clause the SQL
+    /// predicate can also carry, since it is a stored Bool. The pinboard
+    /// scopes (PRD 06) read the same flag.
+    var isPinned: Bool { get }
+    /// `is:noted` reads it: a clip has a note exactly when `notePath` was
+    /// filled in.
+    var notePath: String? { get }
+    /// `is:event` reads it.
+    var calendarEventID: String? { get }
+    /// `after:`/`before:`/`on:` filter on it.
+    var createdAt: Date { get }
     /// The local model's title for the clip, when one was produced.
     var refinedTitle: String? { get }
     /// The local model's cleaned-up version of `ocrText`, when one was
@@ -159,8 +170,6 @@ protocol ClipDisplayable {
     var secretMasked: String? { get }
     /// When a one-time code is deleted; nil for anything else.
     var expiresAt: Date? { get }
-    /// Whether the clip is pinned (PRD 06).
-    var isPinned: Bool { get }
     /// The pinboard the clip is filed in, by identifier (PRD 06).
     var pinboardUUID: UUID? { get }
     /// The clip's spot in its board's manual order, when filed.
@@ -193,6 +202,11 @@ extension ClipDisplayable {
     var isPinned: Bool { false }
     var pinboardUUID: UUID? { nil }
     var pinboardOrder: Double? { nil }
+    var notePath: String? { nil }
+    var calendarEventID: String? { nil }
+    /// A double that never set it is old rather than undated: a date
+    /// operator excludes it, which is what "no date known" means.
+    var createdAt: Date { .distantPast }
 
     /// One-line description used for VoiceOver announcements.
     var announcementSummary: String {
@@ -254,20 +268,55 @@ extension ClipDisplayable {
 /// colour rather than a hex fragment.
 struct ClipQuery: Equatable {
     /// The terms a clip has to carry, all of them. Empty when nothing has
-    /// been typed.
+    /// been typed, or when the query is operators alone.
     let terms: [String]
 
-    init(_ search: String) {
+    /// The `key:value` operators, resolved into bounds - see
+    /// `SearchOperators.swift` for the grammar they were read with.
+    let constraints: ClipConstraints
+
+    /// Every operator-shaped span of the query, valid or not, for the
+    /// search field's pill styling and the empty state's "Clear filters".
+    let operatorTokens: [SearchOperatorToken]
+
+    /// `now` and `calendar` are what `after:7d` and `on:today` resolve
+    /// against. Injecting them keeps date parsing testable and freezes a
+    /// relative bound at the moment the query was typed instead of letting
+    /// it slide while the user edits.
+    init(_ search: String, now: Date = .now, calendar: Calendar = .current) {
         let trimmed = search.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else {
             terms = []
+            constraints = ClipConstraints()
+            operatorTokens = []
             return
         }
-        let parsed = ClipQuery.parse(trimmed)
+        var constraints = ClipConstraints()
+        var operators: [SearchOperatorToken] = []
+        var words: [Substring] = []
+        for token in ClipQuery.scan(trimmed) {
+            if let key = token.key, let value = token.value, let head = token.head {
+                // An operator with a value its key does not know contributes
+                // nothing - the token is kept for styling, not narrowed on.
+                let known = constraints.apply(
+                    key, value: value, negated: token.negated, now: now, calendar: calendar
+                )
+                operators.append(SearchOperatorToken(
+                    range: token.range, head: head, key: key, value: value,
+                    negated: token.negated, valueIsKnown: known
+                ))
+            } else {
+                words.append(trimmed[token.range])
+            }
+        }
+        let parsed = ClipQuery.parse(words)
+        self.constraints = constraints
+        operatorTokens = operators
         // A query that is nothing but stop words is a query for those words:
         // someone who types "the" and nothing else means the letters, not
-        // "show me everything".
-        terms = parsed.isEmpty ? [trimmed] : parsed
+        // "show me everything". The fallback only fires when there were no
+        // operators either - `is:pinned` alone means exactly that.
+        terms = parsed.isEmpty && operators.isEmpty ? [trimmed] : parsed
     }
 
     /// The one term the SQL predicate narrows on: the longest, and so the
@@ -287,13 +336,29 @@ struct ClipQuery: Equatable {
         "pas", "pour", "que", "qui", "sa", "se", "ses", "son", "sont", "sur", "un", "une"
     ]
 
-    /// The typed words, minus the stop words, each reduced to its stem.
-    private static func parse(_ query: String) -> [String] {
+    /// The scanned words, minus the stop words, each reduced to its stem.
+    /// `words` are the non-operator tokens of the query, rejoined for the
+    /// tagger: left in place they keep their operators as sentence context,
+    /// which changes what the tagger reads ("deploy failing is:pinned"
+    /// lemmatizes "failing" to itself, a gerund ahead of "is"), and operator
+    /// text has no lemma worth knowing anyway.
+    private static func parse(_ words: [Substring]) -> [String] {
+        // Operators alone leave no words to stem - and no reason to build a
+        // tagger, which costs a millisecond for nothing.
+        guard !words.isEmpty else { return [] }
+        var joined = ""
+        var wordRanges: [Range<String.Index>] = []
+        for word in words {
+            if !joined.isEmpty { joined.append(" ") }
+            let start = joined.endIndex
+            joined.append(contentsOf: word)
+            wordRanges.append(start..<joined.endIndex)
+        }
         var lemmas: [Range<String.Index>: String] = [:]
         let tagger = NLTagger(tagSchemes: [.lemma])
-        tagger.string = query
+        tagger.string = joined
         tagger.enumerateTags(
-            in: query.startIndex..<query.endIndex,
+            in: joined.startIndex..<joined.endIndex,
             unit: .word,
             scheme: .lemma,
             options: [.omitPunctuation, .omitWhitespace]
@@ -301,12 +366,12 @@ struct ClipQuery: Equatable {
             if let lemma = tag?.rawValue, !lemma.isEmpty { lemmas[range] = lemma }
             return true
         }
-        return query.split(whereSeparator: \.isWhitespace).compactMap { word in
+        return zip(words, wordRanges).compactMap { word, range in
             guard !stopWords.contains(word.lowercased()) else { return nil }
             // Only a word the tagger read whole has a lemma to offer. A term
             // it read in pieces — `hello.example`, `%20` — is taken as typed,
             // which is the same thing as having no lemma for it.
-            return stem(String(word), lemma: lemmas[word.startIndex..<word.endIndex])
+            return stem(String(word), lemma: lemmas[range])
         }
     }
 
@@ -322,17 +387,22 @@ struct ClipQuery: Equatable {
     }
 }
 
-/// The panel's three filters (search text, content type, source app) as one
-/// value. Pure: no SwiftUI, no model context.
+/// The panel's filters (search text, content type, operators) as one value.
+/// Pure: no SwiftUI, no model context.
 struct ClipFilter: Equatable {
     var search: String = "" {
-        didSet { query = ClipQuery(search) }
+        didSet { query = ClipQuery(search, now: now, calendar: calendar) }
     }
 
     var type: TypeFilter = .all
-    var source: String?
     /// The pinned subset the panel is scoped to (PRD 06).
     var board: PinboardScope = .all
+
+    /// The instant and calendar the query's `after:`/`before:`/`on:` values
+    /// resolve against - what `ClipQuery.init` documents. Readable so the
+    /// panel can hand the same resolution to the suggestion details.
+    let now: Date
+    let calendar: Calendar
 
     /// `search`, parsed. Held rather than derived on demand: the panel
     /// rebuilds this filter on every keystroke and then matches it against a
@@ -344,17 +414,67 @@ struct ClipFilter: Equatable {
         search: String = "",
         type: TypeFilter = .all,
         source: String? = nil,
-        board: PinboardScope = .all
+        board: PinboardScope = .all,
+        now: Date = .now,
+        calendar: Calendar = .current
     ) {
         self.search = search
         self.type = type
-        self.source = source
         self.board = board
-        query = ClipQuery(search)
+        self.now = now
+        self.calendar = calendar
+        query = ClipQuery(search, now: now, calendar: calendar)
+        // Set after the rest so the setter's `search` rewrite lands on a
+        // fully initialised filter - and only when a source was asked for,
+        // since nil means "leave whatever the query typed alone".
+        if let source { self.source = source }
+    }
+
+    /// Two filters are the same filter when they would produce the same
+    /// list: `now`/`calendar` are the clock `after:7d` was resolved against,
+    /// not part of what was asked.
+    static func == (lhs: ClipFilter, rhs: ClipFilter) -> Bool {
+        lhs.search == rhs.search && lhs.type == rhs.type
+            && lhs.board == rhs.board && lhs.query == rhs.query
+    }
+
+    /// The source-app constraint the footer menu binds to.
+    ///
+    /// `app:` and the menu are one code path: writing this rewrites the
+    /// query's `app:` token - picking "Safari" is the same constraint as
+    /// typing `app:Safari` - and reading it reports back whatever the query
+    /// constrains to, so a typed `app:saf` shows in the menu too.
+    var source: String? {
+        get {
+            let apps = query.constraints.apps
+            return apps.count == 1 ? apps[0] : nil
+        }
+        set {
+            search = ClipQuery.settingApp(newValue, in: search)
+        }
     }
 
     /// True when nothing is being narrowed down.
-    var isIdentity: Bool { search.isEmpty && type == .all && source == nil && board == .all }
+    var isIdentity: Bool {
+        search.isEmpty && type == .all && board == .all
+    }
+
+    /// The active constraints in words - "from Slack, before 1 September" -
+    /// for the empty state's "No clips …" sentence. Nil when only words are
+    /// filtering, which keeps the generic "No Matches" copy for them.
+    var constraintSummary: String? {
+        var parts: [String] = []
+        // The words as typed rather than their stems: the sentence is for
+        // reading, and "matching \"fail\"" is a worse echo of "failing".
+        let words = ClipQuery.clearingOperators(from: search)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        if !words.isEmpty {
+            parts.append(loc("matching \"%@\"", words))
+        }
+        parts += query.constraints.phrases
+        if type != .all { parts.append(type.phrase) }
+        return parts.isEmpty ? nil : parts.joined(separator: ", ")
+    }
 
     /// Whether a clip survives the board scope alone. `nil` board membership
     /// answers `.pinned`, the matching identifier answers `.board`; `.all`
@@ -376,15 +496,27 @@ struct ClipFilter: Equatable {
     /// one term of a multi-word query that the expression had room for.
     /// Everywhere else the predicate is the whole question, and a COUNT of
     /// it is the answer.
-    var needsSwiftSideRefinement: Bool { type == .image || !search.isEmpty }
+    var needsSwiftSideRefinement: Bool { type == .image || !query.terms.isEmpty }
 
     func matchesType(_ item: some ClipDisplayable) -> Bool {
         type.matches(item.kind, isScreenshot: item.isScreenshot)
     }
 
+    /// Whether the clip's source app satisfies the `app:` operators - the
+    /// one code path the footer menu and a typed `app:saf` share.
+    /// `matchesConstraints(_:)` asks the same question as part of the whole
+    /// constraint set; this is the single-aspect form the tests pin.
     func matchesSource(_ item: some ClipDisplayable) -> Bool {
-        guard let source else { return true }
-        return item.sourceAppName == source
+        let constraints = query.constraints
+        return constraints.apps
+            .allSatisfy { ClipConstraints.hasAppPrefix(item.sourceAppName, $0) }
+            && constraints.notApps
+                .allSatisfy { !ClipConstraints.hasAppPrefix(item.sourceAppName, $0) }
+    }
+
+    /// Whether the clip satisfies every `key:value` constraint.
+    func matchesConstraints(_ item: some ClipDisplayable) -> Bool {
+        query.constraints.matches(item)
     }
 
     /// Whether a clip carries every term of the query.
@@ -437,7 +569,7 @@ struct ClipFilter: Equatable {
     }
 
     func matches(_ item: some ClipDisplayable) -> Bool {
-        matchesBoard(item) && matchesType(item) && matchesSource(item) && matchesSearch(item)
+        matchesBoard(item) && matchesType(item) && matchesConstraints(item) && matchesSearch(item)
     }
 
     func apply<T: ClipDisplayable>(to items: [T]) -> [T] {
@@ -471,32 +603,10 @@ private func clipOneOf(
     )
 }
 
-/// `item[keyPath:] == true` — the Bool sibling of `clipEquals`, for
-/// `isSecret`.
-private func clipIsTrue(
-    _ item: ClipVariable,
-    _ keyPath: any KeyPath<ClipItem, Bool> & Sendable
-) -> some StandardPredicateExpression<Bool> {
-    PredicateExpressions.build_Equal(
-        lhs: PredicateExpressions.build_KeyPath(root: PredicateExpressions.build_Arg(item), keyPath: keyPath),
-        rhs: PredicateExpressions.build_Arg(true)
-    )
-}
-
-private func clipEquals(
-    _ item: ClipVariable,
-    _ keyPath: any KeyPath<ClipItem, String?> & Sendable,
-    _ value: String?
-) -> some StandardPredicateExpression<Bool> {
-    PredicateExpressions.build_Equal(
-        lhs: PredicateExpressions.build_KeyPath(root: PredicateExpressions.build_Arg(item), keyPath: keyPath),
-        rhs: PredicateExpressions.build_Arg(value)
-    )
-}
-
-/// `item[keyPath:] == value` for a Bool: the pin test, which the pinboard
-/// scopes lean on to keep the SQL half of the filter honest.
-private func clipEquals(
+/// `item[keyPath:] == value` for a stored Bool — `is:pinned`, the pinboard
+/// scope's pin test and the search clause's secret admission all emit their
+/// flag through this.
+private func clipFlag(
     _ item: ClipVariable,
     _ keyPath: any KeyPath<ClipItem, Bool> & Sendable,
     _ value: Bool
@@ -504,6 +614,20 @@ private func clipEquals(
     PredicateExpressions.build_Equal(
         lhs: PredicateExpressions.build_KeyPath(root: PredicateExpressions.build_Arg(item), keyPath: keyPath),
         rhs: PredicateExpressions.build_Arg(value)
+    )
+}
+
+/// `item[keyPath:] <op> value` - `after:`/`before:`'s `createdAt` bounds.
+private func clipCompare(
+    _ item: ClipVariable,
+    _ keyPath: any KeyPath<ClipItem, Date> & Sendable,
+    _ op: PredicateExpressions.ComparisonOperator,
+    _ value: Date
+) -> some StandardPredicateExpression<Bool> {
+    PredicateExpressions.build_Comparison(
+        lhs: PredicateExpressions.build_KeyPath(root: PredicateExpressions.build_Arg(item), keyPath: keyPath),
+        rhs: PredicateExpressions.build_Arg(value),
+        op: op
     )
 }
 
@@ -529,11 +653,67 @@ private func clipContains(
     )
 }
 
+/// Anchored form of `clipContains`, compiling to `BEGINSWITH` - a prefix
+/// compare instead of a substring scan, which is what the `app:` operator's
+/// anchored-prefix rule actually asks the store for.
+private func clipStartsWith(
+    _ item: ClipVariable,
+    _ keyPath: any KeyPath<ClipItem, String?> & Sendable,
+    _ needle: String
+) -> some StandardPredicateExpression<Bool> {
+    PredicateExpressions.build_Equal(
+        lhs: PredicateExpressions.build_flatMap(
+            PredicateExpressions.build_KeyPath(root: PredicateExpressions.build_Arg(item), keyPath: keyPath)
+        ) {
+            PredicateExpressions.build_starts(
+                PredicateExpressions.build_Arg($0),
+                with: PredicateExpressions.build_Arg(needle)
+            )
+        },
+        rhs: PredicateExpressions.build_Arg(true)
+    )
+}
+
 private func clipOr<L: StandardPredicateExpression<Bool>, R: StandardPredicateExpression<Bool>>(
     _ lhs: L,
     _ rhs: R
 ) -> some StandardPredicateExpression<Bool> {
     PredicateExpressions.build_Disjunction(lhs: lhs, rhs: rhs)
+}
+
+/// The free-text clause of `ClipFilter.predicate`: everything but the
+/// constant guard is skipped when no words are typed.
+private func clipSearch(
+    _ item: ClipVariable,
+    searching: Bool,
+    needle: String,
+    fileKind: [String]
+) -> some StandardPredicateExpression<Bool> {
+    clipOr(
+        clipConstant(!searching),
+        clipOr(
+            clipOr(
+                // File clips carry their searchable content in
+                // `fileURLStrings`, which SwiftData stores as one opaque
+                // blob; they are admitted here and sifted by `refine(_:)`.
+                // Secret rows likewise: their searchable part is the
+                // label/mask pair `refine` checks — their `text` is nil
+                // by construction.
+                clipOr(
+                    clipOneOf(item, \.kindRaw, fileKind),
+                    clipFlag(item, \.isSecret, true)
+                ),
+                clipContains(item, \.text, needle)
+            ),
+            clipOr(
+                clipOr(
+                    clipContains(item, \.ocrText, needle),
+                    clipContains(item, \.colorHex, needle)
+                ),
+                clipContains(item, \.sourceAppName, needle)
+            )
+        )
+    )
 }
 
 private func clipAnd<L: StandardPredicateExpression<Bool>, R: StandardPredicateExpression<Bool>>(
@@ -551,14 +731,17 @@ extension ClipFilter {
     /// predicate-side fetch with this limit is flat in store size (~8 ms).
     static let pageSize = 200
 
-    /// The panel's query: type, source and (most of) search pushed into
-    /// SQLite, newest first, capped at `limit` rows.
+    /// The panel's query: type (chip and `type:` together), the first `app:`
+    /// prefix, `is:pinned`, the `createdAt` bounds and (most of) search
+    /// pushed into SQLite, newest first, capped at `limit` rows.
     ///
     /// What is *not* expressible here is the file-path search: SwiftData
     /// stores `fileURLStrings` as one opaque blob, so no predicate can look
     /// inside it. File clips are therefore let through the search clause
     /// wholesale and re-checked in Swift by `refine(_:)` — a Swift-side pass
-    /// over at most `limit` rows instead of the whole store.
+    /// over at most `limit` rows instead of the whole store. Everything else
+    /// `refine(_:)` re-checks is in `predicate`'s doc: the anchored `app:`
+    /// prefix rule, and the states and exclusions no column answers.
     ///
     /// Every clause is written in the forms CoreData can actually compile.
     /// In particular `optional?.localizedStandardContains(x) == true`, and
@@ -599,13 +782,65 @@ extension ClipFilter {
     /// and never a narrowing, so nothing findable is lost. A clip carrying
     /// every term carries that one, so the fetch returns a superset of the
     /// answer and `refine(_:)` asks the rest of the question over the page.
+    ///
+    /// The same superset rule decides where each operator lives. Into SQL:
+    /// `type:` (folded into the kind set the chips already feed), one `app:`
+    /// value as a BEGINSWITH that the anchored prefix rule widens from, the
+    /// `createdAt` bounds of `after:`/`before:`/`on:` and `-on:`'s inverse,
+    /// and `isPinned` for either sign of `is:pinned` - all exact or strictly
+    /// widening over stored columns. Left for `refine(_:)`: the second and
+    /// later `app:` prefixes, every `-app:`, the prefix anchor itself, the
+    /// `is:` states that are nil-checks, every `-on:` day, and the semantic
+    /// difference between `type:image` (a file row that is a screenshot) and
+    /// `type:file` - all of which are cheap over one bounded page and
+    /// impossible or clause-hungry in SQL.
+    /// The clip kinds the fetch may return: the chip and every `type:`
+    /// constraint folded into one set of `kindRaw` values, since both name
+    /// the same column. `nil` is unrestricted; empty means the constraints
+    /// contradict each other - `type:text` with the Images chip, or
+    /// `-type:text -type:image -type:link -type:file -type:color` - and the
+    /// predicate is written to return nothing rather than widen into all.
+    private var effectiveKindRaws: (all: Bool, raws: [String]) {
+        var allowed: Set<ClipKind> = Set(ClipKind.allCases)
+        if let chip = type.kinds { allowed.formIntersection(chip) }
+        for constraint in query.constraints.types {
+            allowed.formIntersection(constraint.kinds ?? Set(ClipKind.allCases))
+        }
+        for constraint in query.constraints.notTypes {
+            // Only a kind the constraint rejects either way may leave the
+            // SQL set: `-type:file` still owes the fetch the screenshot
+            // rows, which `matches` keeps and `refine(_:)` alone can tell
+            // apart from the other files.
+            allowed.subtract(
+                (constraint.kinds ?? []).filter {
+                    constraint.matches($0, isScreenshot: true)
+                        && constraint.matches($0, isScreenshot: false)
+                }
+            )
+        }
+        return (allowed.count == ClipKind.allCases.count,
+                allowed.map(\.rawValue).sorted())
+    }
+
     var predicate: Predicate<ClipItem> {
         let needle = query.narrowing
-        let searching = !search.isEmpty
-        let source = source
-        let anySource = source == nil
-        let kinds = type.kindRawValues
-        let anyKind = kinds.isEmpty
+        let searching = !query.terms.isEmpty
+        let constraints = query.constraints
+        // `app:`'s real rule is an anchored prefix, which is exactly what
+        // BEGINSWITH is in SQL - case-folding in the store's LIKE collation.
+        // `refine(_:)` re-asks it with the stricter localizedStandard anchor
+        // over the rows it got back.
+        // Only the first value is pushed: a match satisfies them all, so
+        // the fetch stays a superset, and each extra clause is one the
+        // expression does not have room for.
+        let appNeedle = constraints.apps.first ?? ""
+        let anyApp = constraints.apps.isEmpty
+        // Date bounds and `is:pinned` are exact: they read stored columns.
+        let after = constraints.after
+        let before = constraints.before
+        let pinned: Bool? = constraints.states.contains(.pinned) ? true
+            : constraints.notStates.contains(.pinned) ? false : nil
+        let kinds = effectiveKindRaws
         let fileKind = [ClipKind.file.rawValue]
         // Both pinned scopes (Pinned proper and a board) are subsets of
         // `isPinned`, which SQL CAN ask about. Which subset is the Swift-side
@@ -613,39 +848,92 @@ extension ClipFilter {
         // no predicate can express.
         let anyScope = board == .all
 
+        // A contradiction between the chip and `type:` means nothing can
+        // match - the predicate says so outright instead of shipping a
+        // tautology that `refine(_:)` would still empty.
+        guard !kinds.raws.isEmpty || kinds.all else {
+            return Predicate<ClipItem> { _ in clipConstant(false) }
+        }
+
+        // The common case - chips, the app menu and plain words, with no
+        // date or pin operator in play - keeps the shape the filter has
+        // always had rather than paying three constant-ORs per row for
+        // clauses that are never set.
+        if after == nil, before == nil, pinned == nil {
+            if !searching {
+                // Nothing typed, only the chip, the menu and the scope:
+                // bare intersections, with no constant OR to pay per row.
+                if anyScope {
+                    if kinds.all, anyApp {
+                        return Predicate<ClipItem> { _ in clipConstant(true) }
+                    }
+                    if anyApp {
+                        return Predicate<ClipItem> { item in
+                            clipOr(clipConstant(kinds.all), clipOneOf(item, \.kindRaw, kinds.raws))
+                        }
+                    }
+                    if kinds.all {
+                        return Predicate<ClipItem> { item in
+                            clipStartsWith(item, \.sourceAppName, appNeedle)
+                        }
+                    }
+                    return Predicate<ClipItem> { item in
+                        clipAnd(
+                            clipOneOf(item, \.kindRaw, kinds.raws),
+                            clipStartsWith(item, \.sourceAppName, appNeedle)
+                        )
+                    }
+                }
+                // A pinned scope adds its flag test to the chip and menu.
+                return Predicate<ClipItem> { item in
+                    clipAnd(
+                        clipAnd(
+                            clipOr(clipConstant(kinds.all), clipOneOf(item, \.kindRaw, kinds.raws)),
+                            clipOr(clipConstant(anyApp), clipStartsWith(item, \.sourceAppName, appNeedle))
+                        ),
+                        clipFlag(item, \.isPinned, true)
+                    )
+                }
+            }
+            return Predicate<ClipItem> { item in
+                clipAnd(
+                    clipAnd(
+                        clipOr(clipConstant(kinds.all), clipOneOf(item, \.kindRaw, kinds.raws)),
+                        clipOr(clipConstant(anyApp), clipStartsWith(item, \.sourceAppName, appNeedle))
+                    ),
+                    clipAnd(
+                        clipOr(clipConstant(anyScope), clipFlag(item, \.isPinned, true)),
+                        clipSearch(item, searching: searching, needle: needle, fileKind: fileKind)
+                    )
+                )
+            }
+        }
         return Predicate<ClipItem> { item in
             clipAnd(
                 clipAnd(
-                    clipOr(clipConstant(anyKind), clipOneOf(item, \.kindRaw, kinds)),
-                    clipOr(clipConstant(anySource), clipEquals(item, \.sourceAppName, source))
+                    clipAnd(
+                        clipOr(clipConstant(kinds.all), clipOneOf(item, \.kindRaw, kinds.raws)),
+                        clipOr(clipConstant(anyApp), clipStartsWith(item, \.sourceAppName, appNeedle))
+                    ),
+                    clipOr(clipConstant(anyScope), clipFlag(item, \.isPinned, true))
                 ),
                 clipAnd(
-                    clipOr(clipConstant(anyScope), clipEquals(item, \.isPinned, true)),
-                    clipOr(
-                        clipConstant(!searching),
+                    clipAnd(
                         clipOr(
-                            clipOr(
-                                // File clips carry their searchable content in
-                                // `fileURLStrings`, which SwiftData stores as one
-                                // opaque blob; they are admitted here and sifted
-                                // by `refine(_:)`. Secret rows likewise: their
-                                // searchable part is the label/mask pair, which
-                                // `refine` checks — their `text` is nil by
-                                // construction.
-                                clipOr(
-                                    clipOneOf(item, \.kindRaw, fileKind),
-                                    clipIsTrue(item, \.isSecret)
-                                ),
-                                clipContains(item, \.text, needle)
-                            ),
-                            clipOr(
-                                clipOr(
-                                    clipContains(item, \.ocrText, needle),
-                                    clipContains(item, \.colorHex, needle)
-                                ),
-                                clipContains(item, \.sourceAppName, needle)
-                            )
+                            clipConstant(after == nil),
+                            clipCompare(item, \.createdAt, .greaterThanOrEqual, after ?? .distantPast)
+                        ),
+                        clipOr(
+                            clipConstant(before == nil),
+                            clipCompare(item, \.createdAt, .lessThan, before ?? .distantPast)
                         )
+                    ),
+                    clipAnd(
+                        clipOr(
+                            clipConstant(pinned == nil),
+                            clipFlag(item, \.isPinned, pinned ?? false)
+                        ),
+                        clipSearch(item, searching: searching, needle: needle, fileKind: fileKind)
                     )
                 )
             )
@@ -655,12 +943,15 @@ extension ClipFilter {
     /// The part of the filter the predicate could not express, applied to
     /// rows the predicate already returned.
     ///
-    /// Three things SQL waved through. The type, because Images admits file
-    /// rows in order to reach the screenshots among them, and the ones that
-    /// are not screenshots have to go. The search over file clips, whose
+    /// What SQL waved through: the type, because Images admits file rows in
+    /// order to reach the screenshots among them and the ones that are not
+    /// have to go; every `app:` detail beyond the first widened BEGINSWITH -
+    /// the anchored prefix itself, extra prefixes, every `-app:` - plus the
+    /// `is:` states that are nil-checks and `-on:`'s excluded days, all
+    /// re-checked by `matchesConstraints`; the search over file clips, whose
     /// searchable content lives in `fileURLStrings` — one opaque blob to
     /// SwiftData — so they are admitted unconditionally while a search is
-    /// active and sifted here. And every other term of a multi-word query,
+    /// active and sifted here; and every other term of a multi-word query,
     /// since the predicate only ever asked about one of them.
     ///
     /// A row a single-term search returned is still taken on trust: SQL was
@@ -676,7 +967,12 @@ extension ClipFilter {
         let filtered = items.filter { item in
             guard matchesBoard(item) else { return false }
             guard matchesType(item) else { return false }
-            guard !search.isEmpty else { return true }
+            guard matchesConstraints(item) else { return false }
+            guard !query.terms.isEmpty else { return true }
+            // A single-term non-file row is taken on trust: SQL was asked
+            // the whole question. File rows and secret rows still need the
+            // Swift-side pass — files for `fileURLStrings`, secrets for the
+            // label/mask their nil `text` cannot answer.
             guard query.terms.count > 1 || item.kind == .file || item.isSecret else { return true }
             return matchesSearch(item)
         }
@@ -1189,6 +1485,17 @@ struct PanelContentView: View {
     /// Cached choices for the source-app menu. Derived from the whole store,
     /// so it is refreshed when the panel opens rather than per render.
     @State private var sourceAppNames: [String] = []
+    /// Clip counts per source app, for the `app:` suggestion ordering.
+    /// Filled lazily by `refreshAppCounts` - one `fetchCount` per distinct
+    /// app is a full scan each, so it waits until someone actually types
+    /// `app:` rather than taxing every panel open.
+    @State private var sourceAppCounts: [(name: String, count: Int)] = []
+    /// The highlighted suggestion row in the list under the search field.
+    @State private var suggestionIndex = 0
+    /// The operator key the suggestion list was Esc'd away for. Esc closes
+    /// the list, not the context: it reopens on the next context change
+    /// rather than on the next keystroke of the same key.
+    @State private var suggestionDismissedKey: ClipOperatorKey?
     /// Whether the deck's navigation hint has been answered. Set by the first
     /// movement of any kind, cleared when the query goes and when the panel
     /// reopens: the bubble is there to be dismissed by using the keys it
@@ -1305,6 +1612,57 @@ struct PanelContentView: View {
         vimModeEnabled && inputMode.readsVimKeys
     }
 
+    // MARK: Operator suggestions
+
+    /// The operator token being completed at the end of the query, if any -
+    /// `app:` just typed, `is:pi` half-finished.
+    private var suggestionContext: ClipQuery.SuggestionContext? {
+        ClipQuery.suggestionContext(in: filter.search)
+    }
+
+    /// The source-app rows for `app:` - most-used first once counts are in,
+    /// alphabetical until then.
+    private var appSuggestionRows: [(name: String, count: Int)] {
+        sourceAppCounts.sorted {
+            $0.count != $1.count
+                ? $0.count > $1.count
+                : $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending
+        }
+    }
+
+    /// The suggestion rows for the token being completed.
+    private var suggestionItems: [SearchSuggestion] {
+        guard let context = suggestionContext else { return [] }
+        return ClipQuery.suggestions(
+            for: context,
+            apps: appSuggestionRows,
+            now: filter.now,
+            calendar: filter.calendar
+        )
+    }
+
+    /// Whether the list is up. It is a typing aid, so it stands down in vim
+    /// normal mode (no keystroke reaches the field anyway) and stays down
+    /// for the key it was Esc'd away from.
+    private var suggestionsVisible: Bool {
+        guard !readsVimKeys,
+              let context = suggestionContext,
+              context.key != suggestionDismissedKey else { return false }
+        return !suggestionItems.isEmpty
+    }
+
+    /// The row Return/Tab would accept, clamped to what is shown.
+    private var highlightedSuggestion: SearchSuggestion? {
+        suggestionItems.indices.contains(suggestionIndex)
+            ? suggestionItems[suggestionIndex]
+            : suggestionItems.first
+    }
+
+    /// The `?` cheat-sheet: a lone `?` as the whole query.
+    private var showsCheatSheet: Bool {
+        filter.search.trimmingCharacters(in: .whitespaces) == "?"
+    }
+
     /// The stored preview height, held to what the panel's screen allows.
     private var resolvedPreviewHeight: CGFloat {
         PanelGeometry.clampPreviewHeight(
@@ -1355,10 +1713,71 @@ struct PanelContentView: View {
             .compactMap { $0 }
             .filter { !$0.isEmpty }
             .sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }
+        // Stale counts are worse than none: the `app:` suggestion list
+        // orders alphabetically until they are counted again.
+        sourceAppCounts = []
     }
 
     /// How many distinct source apps the footer menu will list.
     private static let sourceAppLimit = 50
+
+    /// Clip counts per source app, for ordering `app:` suggestions
+    /// most-used first. One `fetchCount` per distinct name - a scan apiece
+    /// on an unindexed column - so this runs only when the `app:` context
+    /// appears, and only once per set of names.
+    private func refreshAppCounts() {
+        var counts: [(name: String, count: Int)] = []
+        for name in sourceAppNames {
+            // `needle` is lifted to String? so the comparison is the same
+            // optional-equals-optional shape `clipEquals` emits.
+            let needle: String? = name
+            var descriptor = FetchDescriptor<ClipItem>(
+                predicate: #Predicate<ClipItem> { $0.sourceAppName == needle }
+            )
+            descriptor.propertiesToFetch = [\.sourceAppName]
+            let count = (try? modelContext.fetchCount(descriptor)) ?? 0
+            counts.append((name, count))
+        }
+        sourceAppCounts = counts
+    }
+
+    /// Write the highlighted suggestion into the query - `is:` plus a
+    /// choice becomes `is:pinned `, trailing space and all, so the token
+    /// closes and the next keystroke starts a fresh one.
+    private func acceptSuggestion(_ suggestion: SearchSuggestion) {
+        guard let context = suggestionContext else { return }
+        filter.search = ClipQuery.accepting(context, suggestion.value, in: filter.search)
+        suggestionIndex = 0
+        searchFocused = true
+    }
+
+    /// ↑/↓ while the suggestion list is up move its highlight instead of
+    /// the card selection - the first thing those keys can mean while a
+    /// completion is on the table.
+    private func moveSuggestion(_ delta: Int) {
+        let count = suggestionItems.count
+        guard count > 0 else { return }
+        suggestionIndex = (suggestionIndex + delta + count) % count
+    }
+
+    /// The empty state's "Clear filters": the words stay, the operators and
+    /// the chip go - the two things that were narrowing the list.
+    private func clearConstraints() {
+        filter.search = ClipQuery.clearingOperators(from: filter.search)
+        filter.type = .all
+    }
+
+    /// `app:` from a preview's source badge. The clicked clip keeps its
+    /// place while the constraint lands: the filter change clears the
+    /// selection and re-syncs the preview, so both are re-pinned after it
+    /// settles.
+    private func filterToApp(_ name: String, keeping item: ClipItem) {
+        filter.source = name
+        Task { @MainActor in
+            selection = ClipSelection(id: item.uuid)
+            previewItem = item
+        }
+    }
 
     /// The whole store's answer to the filter, or nil when finding it would
     /// cost more than a footer number is worth.
@@ -1447,6 +1866,7 @@ struct PanelContentView: View {
                             onCopy: { actions.copyText(item, $0) },
                             paneHeight: resolvedPreviewHeight,
                             onEdit: ClipDisplay.canEdit(item) ? { startEditing(item) } : nil,
+                            onFilterApp: { name in filterToApp(name, keeping: item) },
                             onSelectionChange: { previewSelection = $0 },
                             // `uuid` is checked so a stale reveal can never be
                             // shown under a different secret's label.
@@ -1490,6 +1910,14 @@ struct PanelContentView: View {
                 RoundedRectangle(cornerRadius: Design.Radius.panel, style: .continuous)
                     .strokeBorder(Design.Palette.hairline, lineWidth: Design.Stroke.hairline)
             )
+            // The suggestion list floats over the card strip, dropped down
+            // from the search field it belongs to, rather than growing the
+            // top bar or the strip under it.
+            .overlay(alignment: .topLeading) {
+                suggestionOverlay
+                    .padding(.top, Design.Size.panelTopPadding + Design.Size.topBarHeight - Design.Space.snug)
+                    .padding(.leading, Design.Space.loose + 26)
+            }
         )
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .onAppear {
@@ -1557,6 +1985,8 @@ struct PanelContentView: View {
             editingPinboard = nil
             pinboardPendingDelete = nil
             dropTargetScope = nil
+            suggestionIndex = 0
+            suggestionDismissedKey = nil
             searchFocused = true
             refreshSourceAppNames()
         }
@@ -1578,6 +2008,24 @@ struct PanelContentView: View {
                !pinboards.contains(where: { $0.uuid == uuid }) {
                 filter.board = .pinned
             }
+        }
+        .onChange(of: suggestionContext) {
+            // A keystroke changed what is being completed - the highlight
+            // returns to the top, and a dismissed list reopens on a new
+            // token rather than staying shut.
+            suggestionIndex = 0
+            if suggestionContext == nil { suggestionDismissedKey = nil }
+        }
+        // `app:` suggestions are ordered by clip count, and the counts cost
+        // a scan per app - so they are only fetched once `app:` is typed.
+        .task(id: suggestionContext?.key == .app) {
+            guard suggestionContext?.key == .app, sourceAppCounts.isEmpty else { return }
+            refreshAppCounts()
+        }
+        .onChange(of: inputMode) {
+            // Leaving the field (normal mode) closes a completion that is
+            // no longer being typed into anything.
+            if readsVimKeys { suggestionDismissedKey = suggestionContext?.key }
         }
         .onChange(of: selection) {
             announceSelection()
@@ -1723,6 +2171,96 @@ struct PanelContentView: View {
             .foregroundStyle(Color(nsColor: editingActive || inputMode != .normal ? .labelColor : .secondaryLabelColor))
             .accessibilityLabel(editingActive ? loc("Editing mode") : inputMode.accessibilityName)
             .help(editingActive ? loc("Editing mode: Esc cancels, ⌘S saves") : inputMode.help)
+    }
+
+    // MARK: Suggestion list
+
+    /// The completion list under the search field while a `key:` token is
+    /// being typed - the values the key knows, filtered by what is there so
+    /// far. Rendered as an overlay on the panel so it floats over the card
+    /// strip rather than pushing it down.
+    @ViewBuilder
+    private var suggestionOverlay: some View {
+        if suggestionsVisible {
+            VStack(alignment: .leading, spacing: 0) {
+                ForEach(Array(suggestionItems.enumerated()), id: \.element.id) { index, suggestion in
+                    Button {
+                        acceptSuggestion(suggestion)
+                    } label: {
+                        HStack(spacing: Design.Space.normal) {
+                            Text(suggestion.token)
+                                .font(Design.Typography.chip.monospaced())
+                            Spacer(minLength: Design.Space.normal)
+                            Text(suggestion.detail)
+                                .font(Design.Typography.meta)
+                                .foregroundStyle(Color(nsColor: .secondaryLabelColor))
+                                .lineLimit(1)
+                        }
+                        .padding(.horizontal, Design.Space.roomy)
+                        .padding(.vertical, Design.Space.snug)
+                        .frame(minWidth: 240, maxWidth: 340, alignment: .leading)
+                        .background(
+                            index == suggestionIndex ? Design.Palette.surface : Color.clear
+                        )
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(.vertical, Design.Space.snug)
+            .background(.regularMaterial)
+            .clipShape(RoundedRectangle(cornerRadius: Design.Radius.control, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: Design.Radius.control, style: .continuous)
+                    .strokeBorder(Design.Palette.hairline, lineWidth: Design.Stroke.hairline)
+            )
+            .shadow(color: Design.Palette.cardShadow, radius: 12, y: 4)
+            // One list with one accessible name; the rows stay buttons
+            // underneath it rather than reading as ungrouped controls.
+            .accessibilityElement(children: .contain)
+            .accessibilityLabel(loc("Search suggestions"))
+            .accessibilityHint(loc("Down and Up choose a suggestion, Return or Tab accepts, Esc closes"))
+        }
+    }
+
+    // MARK: Cheat sheet
+
+    /// A lone `?` in the search field shows this instead of the strip: the
+    /// grammar's reference card, read out of the same lists the parser and
+    /// the suggestions use so the three cannot drift.
+    private var cheatSheet: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: Design.Space.roomy) {
+                Text(loc("Search operators"))
+                    .font(Design.Typography.chip.weight(.semibold))
+                Grid(alignment: .leading,
+                     horizontalSpacing: Design.Space.loose,
+                     verticalSpacing: Design.Space.snug) {
+                    ForEach(SearchCheatSheet.rows, id: \.token) { row in
+                        GridRow {
+                            Text(row.token)
+                                .font(.system(size: 11, design: .monospaced))
+                                .foregroundStyle(Color(nsColor: .secondaryLabelColor))
+                                .gridColumnAlignment(.trailing)
+                            Text(row.detail)
+                                .font(Design.Typography.meta)
+                                .foregroundStyle(Color(nsColor: .labelColor))
+                        }
+                    }
+                }
+                Text(loc("Down and Up choose a suggestion, Return or Tab accepts, Esc closes"))
+                    .font(Design.Typography.meta)
+                    .foregroundStyle(Color(nsColor: .secondaryLabelColor))
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, Design.Space.loose)
+            .padding(.vertical, Design.Space.normal)
+        }
+        .scrollIndicators(.hidden)
+        .frame(height: Design.Size.cardStripHeight)
+        // Treat it as one informative element rather than nine rows of
+        // static text to step through.
+        .accessibilityElement(children: .combine)
     }
 
     // MARK: Quick filters
@@ -2199,6 +2737,13 @@ struct PanelContentView: View {
                 // draft's caret, not the strip; a board-name field owns
                 // them too.
                 guard editing == nil, !auxiliaryFieldActive else { return .ignored }
+                // While the suggestion list is up, the arrows move its
+                // highlight rather than the card selection - the first
+                // thing they can mean with a completion on the table.
+                if suggestionsVisible {
+                    moveSuggestion(press.key == .downArrow ? 1 : -1)
+                    return .handled
+                }
                 moveSelection(
                     press.key == .downArrow ? 1 : -1,
                     extending: press.modifiers.contains(.shift),
@@ -2250,7 +2795,24 @@ struct PanelContentView: View {
                     saveEdit(andPaste: true)
                     return .handled
                 }
+                // An open suggestion list takes Return next: the highlighted
+                // completion is what the key just typed against.
+                if suggestionsVisible {
+                    if let suggestion = highlightedSuggestion {
+                        acceptSuggestion(suggestion)
+                    }
+                    return .handled
+                }
                 pasteSelected(plainOnly: press.modifiers.contains(.shift))
+                return .handled
+            }
+            // Tab accepts a suggestion too - the second completion key
+            // every AppKit field teaches - and otherwise keeps its usual
+            // meaning (moving focus), which the panel leaves to AppKit.
+            .onKeyPress(.tab, phases: .down) { _ in
+                guard suggestionsVisible, let suggestion = highlightedSuggestion
+                else { return .ignored }
+                acceptSuggestion(suggestion)
                 return .handled
             }
             .onKeyPress(.space, phases: .down) { _ in
@@ -2382,8 +2944,9 @@ struct PanelContentView: View {
             }
     }
 
-    /// Esc unwinds one layer at a time: editor → board-name field → pending
-    /// vim sequence → visual mode → search mode → preview → panel.
+    /// Esc unwinds one layer at a time: editor → board-name field →
+    /// suggestion list → pending vim sequence → visual mode → search mode →
+    /// preview → panel.
     private func handleEscape() {
         // The open editor is the innermost layer: leaving it (or answering
         // its discard confirm) never touches what is underneath.
@@ -2393,6 +2956,10 @@ struct PanelContentView: View {
         }
         if namingPinboard {
             cancelPinboardName()
+            return
+        }
+        if suggestionsVisible {
+            suggestionDismissedKey = suggestionContext?.key
             return
         }
         if vim.hasPending {
@@ -2445,7 +3012,9 @@ struct PanelContentView: View {
     /// sentinel, the empty states — moved with it and changed axis.
     @ViewBuilder
     private func cardStrip(_ visible: [ClipItem]) -> some View {
-        if visible.isEmpty {
+        if showsCheatSheet {
+            cheatSheet
+        } else if visible.isEmpty {
             if filter.isIdentity {
                 // Nothing filtered anything out, so the store really is empty.
                 ContentUnavailableView {
@@ -2471,7 +3040,23 @@ struct PanelContentView: View {
                 ContentUnavailableView {
                     Label(loc("No Matches"), systemImage: "magnifyingglass")
                 } description: {
-                    Text(loc("Try a different search or filter."))
+                    VStack(spacing: Design.Space.roomy) {
+                        // Constraints name what emptied the list - "No
+                        // clips from Slack, before 1 September." - so the
+                        // user can see the answer "none" came from them and
+                        // not from the store being empty.
+                        if let summary = filter.constraintSummary {
+                            Text(loc("No clips %@.", summary))
+                        } else {
+                            Text(loc("Try a different search or filter."))
+                        }
+                        if !filter.query.constraints.isEmpty {
+                            Button(loc("Clear filters")) { clearConstraints() }
+                                .buttonStyle(.bordered)
+                                .controlSize(.small)
+                                .help(loc("Remove the operators and the type chip, keep the words"))
+                        }
+                    }
                 }
                 .frame(maxWidth: .infinity)
                 .frame(height: Design.Size.cardStripHeight)
@@ -2707,6 +3292,7 @@ struct PanelContentView: View {
                 editing = nil
                 editDrafts = [:]
                 lastEditUndo = nil
+                sourceAppCounts = []
             }
         } message: {
             Text(loc("This permanently removes all clips, including pinned ones."))
@@ -3038,6 +3624,16 @@ struct PanelContentView: View {
         // swallowed here. `j`/`k` fall through to the navigator below, which
         // is where their pacing is decided.
         if press.phase.contains(.repeat), !Self.repeatableCharacters.contains(key) {
+            return .handled
+        }
+
+        // `?` is a panel gesture, not a vim command: it makes the query
+        // itself "?", which is what shows the operator cheat-sheet. Going
+        // to insert mode leaves the caret after it, ready to type over. A
+        // pending `g` or `d` keeps first refusal of the keystroke.
+        if key == "?", !vim.hasPending {
+            filter.search = "?"
+            setMode(.insert)
             return .handled
         }
 

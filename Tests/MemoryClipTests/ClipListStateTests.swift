@@ -82,12 +82,20 @@ final class ClipFilterTests: XCTestCase {
 
     // MARK: Source
 
-    func testSourceFilterIsExact() {
+    /// The footer menu and a typed `app:` are one code path - both write the
+    /// same operator into the query - so the rule is the operator's: an
+    /// anchored, case-insensitive prefix of the app name.
+    func testSourceFilterIsAnAnchoredPrefix() {
         let filter = ClipFilter(source: "Safari")
         XCTAssertTrue(filter.matchesSource(FakeClip(sourceAppName: "Safari")))
-        XCTAssertFalse(filter.matchesSource(FakeClip(sourceAppName: "Safari Technology Preview")))
+        XCTAssertTrue(
+            filter.matchesSource(FakeClip(sourceAppName: "Safari Technology Preview")),
+            "picking Safari is typing `app:Safari`, which is a prefix"
+        )
+        XCTAssertFalse(filter.matchesSource(FakeClip(sourceAppName: "Pro Safari")))
         XCTAssertFalse(filter.matchesSource(FakeClip(sourceAppName: nil)))
         XCTAssertTrue(ClipFilter(source: nil).matchesSource(FakeClip(sourceAppName: nil)))
+        XCTAssertEqual(ClipFilter(source: "Safari").search, "app:Safari")
     }
 
     // MARK: Combination

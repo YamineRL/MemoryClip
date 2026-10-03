@@ -188,6 +188,36 @@ final class ClipSearchTests: XCTestCase {
         }
     }
 
+    // MARK: Operators over the same table
+
+    /// `key:value` tokens narrow the word search rather than replacing it:
+    /// same store, same fetch+refine pipeline, the operators on top.
+    func testOperatorsNarrowTheWordsTheyStandBeside() throws {
+        let cases: [(query: String, expected: [String])] = [
+            ("app:Screenshots", ["arabic", "invoice", "japanese"]),
+            ("-app:Screenshots", ["color", "deploy", "hello", "noise", "report", "reunion"]),
+            // An anchored prefix, not a substring: nothing is named
+            // "Xscreenshots", so the prefix boundary is what is proven here.
+            ("app:Screen", ["arabic", "invoice", "japanese"]),
+            ("is:screenshot", ["arabic", "invoice", "japanese"]),
+            ("is:translated", ["arabic", "japanese"]),
+            ("-is:screenshot", ["color", "deploy", "hello", "noise", "report", "reunion"]),
+            // `type:file` follows the Files chip's rule: screenshots are
+            // pictures, not files.
+            ("type:file", ["report"]),
+            ("type:image", ["arabic", "invoice", "japanese"]),
+            ("-type:file", ["arabic", "color", "deploy", "hello", "invoice", "japanese", "noise", "reunion"]),
+            // Words and operators compose.
+            ("invoice is:screenshot", ["invoice"]),
+            ("screenshots -app:Finder", ["arabic", "invoice", "japanese"]),
+            // An unrecognised value narrows nothing and searches nothing.
+            ("is:bogus", ["arabic", "color", "deploy", "hello", "invoice", "japanese", "noise", "report", "reunion"])
+        ]
+        for (query, expected) in cases {
+            XCTAssertEqual(try found(query), expected, "search: \(query)")
+        }
+    }
+
     // MARK: The query itself
 
     func testQuerySplitsDropsStopWordsAndStems() {
@@ -268,7 +298,10 @@ final class ClipSearchTests: XCTestCase {
     func testTermDerivedPredicatesFetchWithoutCrashing() throws {
         let queries = [
             "", "   ", "the", "that error about the deploy failing", "réunion demain",
-            "#FF00AA", "%20", "https://hello.example/a?b=c", "🙂", "'; drop table zclipitem; --"
+            "#FF00AA", "%20", "https://hello.example/a?b=c", "🙂", "'; drop table zclipitem; --",
+            "app:Screenshots", "-app:Screenshots", "app:\"Google Chrome\"", "is:pinned",
+            "-is:noted", "type:image", "-type:file", "after:today", "before:2020-01-01",
+            "on:7d", "-on:yesterday", "is:bogus", "hello is:screenshot"
         ]
         for type in TypeFilter.allCases {
             for source in [nil, "Terminal", "Screenshots"] {

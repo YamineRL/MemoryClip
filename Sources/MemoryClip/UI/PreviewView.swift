@@ -19,6 +19,10 @@ struct PreviewView: View {
     /// Edit callback, wired by PanelView for clips `ClipDisplay.canEdit`
     /// accepts. Nil hides the header's Edit button rather than disabling it.
     var onEdit: (() -> Void)? = nil
+    /// Filter-to-this-app callback (wired by PanelView to `filter.source`):
+    /// clicking the source app in the meta line inserts `app:"Name"` in the
+    /// search field. The name renders plain when absent.
+    var onFilterApp: ((String) -> Void)? = nil
     /// The pane's current text selection, published upward so the panel's ⌘C
     /// can copy it. Nil when nothing is selected.
     var onSelectionChange: ((String?) -> Void)? = nil
@@ -78,11 +82,31 @@ struct PreviewView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: Design.Space.roomy) {
-            // The pane's header carries the Edit button for the clips that
-            // offer it; hidden, not disabled, for every other kind.
-            if let onEdit {
-                HStack {
-                    Spacer(minLength: Design.Space.tight)
+            // The pane's header answers "which Slack thing, yesterday" at a
+            // glance: where the clip came from, and when. The app name is a
+            // button because clicking it is the `app:` operator's one-tap
+            // form; a clip with no source just shows the when. The Edit
+            // button sits on the row's far end for the clips that offer it —
+            // hidden, not disabled, for every other kind.
+            HStack(spacing: Design.Space.snug) {
+                if let app = item.sourceAppName, !app.isEmpty {
+                    Button {
+                        onFilterApp?(app)
+                    } label: {
+                        Text(app)
+                            .font(Design.Typography.meta)
+                            .foregroundStyle(Color(nsColor: .secondaryLabelColor))
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(onFilterApp == nil)
+                    .help(loc("Show only %@", app))
+                    .accessibilityLabel(loc("Show only %@", app))
+                }
+                Text(item.createdAt, style: .relative)
+                    .font(Design.Typography.meta)
+                    .foregroundStyle(Color(nsColor: .tertiaryLabelColor))
+                Spacer(minLength: 0)
+                if let onEdit {
                     Button {
                         onEdit()
                     } label: {
