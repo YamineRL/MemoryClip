@@ -172,11 +172,17 @@ struct ClipConstraints: Equatable {
     /// `app:`'s match rule: an anchored prefix of the source app name,
     /// case- and diacritic-insensitive the way `localizedStandardContains`
     /// is - so `app:saf` reaches "Safari" and `app:xcode` reaches "Xcode"
-    /// without the user matching the app's capitalisation.
+    /// without the user matching the app's capitalisation. `.anchored`
+    /// asks for the same thing while stopping the scan at the prefix, and
+    /// the literal `hasPrefix` first - already a match on its own - keeps
+    /// the common case off the ICU path.
     static func hasAppPrefix(_ name: String?, _ prefix: String) -> Bool {
-        guard let name,
-              let found = name.localizedStandardRange(of: prefix) else { return false }
-        return found.lowerBound == name.startIndex
+        guard let name else { return false }
+        if name.hasPrefix(prefix) { return true }
+        return name.range(
+            of: prefix,
+            options: [.anchored, .caseInsensitive, .diacriticInsensitive, .widthInsensitive]
+        ) != nil
     }
 
     /// Whether the clip satisfies every constraint - the Swift-side twin of

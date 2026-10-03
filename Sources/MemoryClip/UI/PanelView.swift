@@ -285,6 +285,9 @@ struct ClipQuery: Equatable {
     /// lemmatizes "failing" to itself, a gerund ahead of "is"), and operator
     /// text has no lemma worth knowing anyway.
     private static func parse(_ words: [Substring]) -> [String] {
+        // Operators alone leave no words to stem - and no reason to build a
+        // tagger, which costs a millisecond for nothing.
+        guard !words.isEmpty else { return [] }
         var joined = ""
         var wordRanges: [Range<String.Index>] = []
         for word in words {
@@ -568,11 +571,61 @@ private func clipContains(
     )
 }
 
+/// Anchored form of `clipContains`, compiling to `BEGINSWITH` - a prefix
+/// compare instead of a substring scan, which is what the `app:` operator's
+/// anchored-prefix rule actually asks the store for.
+private func clipStartsWith(
+    _ item: ClipVariable,
+    _ keyPath: any KeyPath<ClipItem, String?> & Sendable,
+    _ needle: String
+) -> some StandardPredicateExpression<Bool> {
+    PredicateExpressions.build_Equal(
+        lhs: PredicateExpressions.build_flatMap(
+            PredicateExpressions.build_KeyPath(root: PredicateExpressions.build_Arg(item), keyPath: keyPath)
+        ) {
+            PredicateExpressions.build_starts(
+                PredicateExpressions.build_Arg($0),
+                with: PredicateExpressions.build_Arg(needle)
+            )
+        },
+        rhs: PredicateExpressions.build_Arg(true)
+    )
+}
+
 private func clipOr<L: StandardPredicateExpression<Bool>, R: StandardPredicateExpression<Bool>>(
     _ lhs: L,
     _ rhs: R
 ) -> some StandardPredicateExpression<Bool> {
     PredicateExpressions.build_Disjunction(lhs: lhs, rhs: rhs)
+}
+
+/// The free-text clause of `ClipFilter.predicate`: everything but the
+/// constant guard is skipped when no words are typed.
+private func clipSearch(
+    _ item: ClipVariable,
+    searching: Bool,
+    needle: String,
+    fileKind: [String]
+) -> some StandardPredicateExpression<Bool> {
+    clipOr(
+        clipConstant(!searching),
+        clipOr(
+            clipOr(
+                // File clips carry their searchable content in
+                // `fileURLStrings`, which SwiftData stores as one opaque
+                // blob; they are admitted here and sifted by `refine(_:)`.
+                clipOneOf(item, \.kindRaw, fileKind),
+                clipContains(item, \.text, needle)
+            ),
+            clipOr(
+                clipOr(
+                    clipContains(item, \.ocrText, needle),
+                    clipContains(item, \.colorHex, needle)
+                ),
+                clipContains(item, \.sourceAppName, needle)
+            )
+        )
+    )
 }
 
 private func clipAnd<L: StandardPredicateExpression<Bool>, R: StandardPredicateExpression<Bool>>(
@@ -640,7 +693,7 @@ extension ClipFilter {
     ///
     /// The same superset rule decides where each operator lives. Into SQL:
     /// `type:` (folded into the kind set the chips already feed), one `app:`
-    /// value as a CONTAINS that the anchored prefix rule widens from, the
+    /// value as a BEGINSWITH that the anchored prefix rule widens from, the
     /// `createdAt` bounds of `after:`/`before:`/`on:` and `-on:`'s inverse,
     /// and `isPinned` for either sign of `is:pinned` - all exact or strictly
     /// widening over stored columns. Left for `refine(_:)`: the second and
@@ -681,9 +734,10 @@ extension ClipFilter {
         let needle = query.narrowing
         let searching = !query.terms.isEmpty
         let constraints = query.constraints
-        // `app:`'s real rule is a prefix, which CoreData cannot compile; the
-        // predicate asks for a CONTAINS instead - strictly wider - and
-        // `refine(_:)` applies the anchored rule to the rows it got back.
+        // `app:`'s real rule is an anchored prefix, which is exactly what
+        // BEGINSWITH is in SQL - case-folding in the store's LIKE collation.
+        // `refine(_:)` re-asks it with the stricter localizedStandard anchor
+        // over the rows it got back.
         // Only the first value is pushed: a match satisfies them all, so
         // the fetch stays a superset, and each extra clause is one the
         // expression does not have room for.
@@ -704,11 +758,49 @@ extension ClipFilter {
             return Predicate<ClipItem> { _ in clipConstant(false) }
         }
 
+        // The common case - chips, the app menu and plain words, with no
+        // date or pin operator in play - keeps the shape the filter has
+        // always had rather than paying three constant-ORs per row for
+        // clauses that are never set.
+        if after == nil, before == nil, pinned == nil {
+            if !searching {
+                // Nothing typed, only the chip and the menu: the bare
+                // intersection, with no constant OR to pay per row.
+                if kinds.all, anyApp {
+                    return Predicate<ClipItem> { _ in clipConstant(true) }
+                }
+                if anyApp {
+                    return Predicate<ClipItem> { item in
+                        clipOr(clipConstant(kinds.all), clipOneOf(item, \.kindRaw, kinds.raws))
+                    }
+                }
+                if kinds.all {
+                    return Predicate<ClipItem> { item in
+                        clipStartsWith(item, \.sourceAppName, appNeedle)
+                    }
+                }
+                return Predicate<ClipItem> { item in
+                    clipAnd(
+                        clipOneOf(item, \.kindRaw, kinds.raws),
+                        clipStartsWith(item, \.sourceAppName, appNeedle)
+                    )
+                }
+            }
+            return Predicate<ClipItem> { item in
+                clipAnd(
+                    clipAnd(
+                        clipOr(clipConstant(kinds.all), clipOneOf(item, \.kindRaw, kinds.raws)),
+                        clipOr(clipConstant(anyApp), clipStartsWith(item, \.sourceAppName, appNeedle))
+                    ),
+                    clipSearch(item, searching: searching, needle: needle, fileKind: fileKind)
+                )
+            }
+        }
         return Predicate<ClipItem> { item in
             clipAnd(
                 clipAnd(
                     clipOr(clipConstant(kinds.all), clipOneOf(item, \.kindRaw, kinds.raws)),
-                    clipOr(clipConstant(anyApp), clipContains(item, \.sourceAppName, appNeedle))
+                    clipOr(clipConstant(anyApp), clipStartsWith(item, \.sourceAppName, appNeedle))
                 ),
                 clipAnd(
                     clipAnd(
@@ -726,27 +818,7 @@ extension ClipFilter {
                             clipConstant(pinned == nil),
                             clipFlag(item, \.isPinned, pinned ?? false)
                         ),
-                        clipOr(
-                            clipConstant(!searching),
-                            clipOr(
-                                clipOr(
-                                    // File clips carry their searchable
-                                    // content in `fileURLStrings`, which
-                                    // SwiftData stores as one opaque blob;
-                                    // they are admitted here and sifted by
-                                    // `refine(_:)`.
-                                    clipOneOf(item, \.kindRaw, fileKind),
-                                    clipContains(item, \.text, needle)
-                                ),
-                                clipOr(
-                                    clipOr(
-                                        clipContains(item, \.ocrText, needle),
-                                        clipContains(item, \.colorHex, needle)
-                                    ),
-                                    clipContains(item, \.sourceAppName, needle)
-                                )
-                            )
-                        )
+                        clipSearch(item, searching: searching, needle: needle, fileKind: fileKind)
                     )
                 )
             )
@@ -758,7 +830,7 @@ extension ClipFilter {
     ///
     /// What SQL waved through: the type, because Images admits file rows in
     /// order to reach the screenshots among them and the ones that are not
-    /// have to go; every `app:` detail beyond the first widened CONTAINS -
+    /// have to go; every `app:` detail beyond the first widened BEGINSWITH -
     /// the anchored prefix itself, extra prefixes, every `-app:` - plus the
     /// `is:` states that are nil-checks and `-on:`'s excluded days, all
     /// re-checked by `matchesConstraints`; the search over file clips, whose
