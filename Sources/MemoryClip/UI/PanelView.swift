@@ -397,6 +397,11 @@ struct ClipFilter: Equatable {
     var type: TypeFilter = .all
     /// The pinned subset the panel is scoped to (PRD 06).
     var board: PinboardScope = .all
+    /// The store's pinboards as `(name, uuid)` pairs: what `in:` resolves
+    /// board-name prefixes against. Fed by the panel's `pinboards` query;
+    /// empty in a context that never showed boards, where every `in:`
+    /// except `in:pinned` simply matches nothing.
+    var boardIndex: [(name: String, uuid: UUID)] = []
 
     /// The instant and calendar the query's `after:`/`before:`/`on:` values
     /// resolve against - what `ClipQuery.init` documents. Readable so the
@@ -436,6 +441,8 @@ struct ClipFilter: Equatable {
     static func == (lhs: ClipFilter, rhs: ClipFilter) -> Bool {
         lhs.search == rhs.search && lhs.type == rhs.type
             && lhs.board == rhs.board && lhs.query == rhs.query
+            && lhs.boardIndex.map(\.uuid) == rhs.boardIndex.map(\.uuid)
+            && lhs.boardIndex.map(\.name) == rhs.boardIndex.map(\.name)
     }
 
     /// The source-app constraint the footer menu binds to.
@@ -516,7 +523,7 @@ struct ClipFilter: Equatable {
 
     /// Whether the clip satisfies every `key:value` constraint.
     func matchesConstraints(_ item: some ClipDisplayable) -> Bool {
-        query.constraints.matches(item)
+        query.constraints.matches(item, boards: boardIndex)
     }
 
     /// Whether a clip carries every term of the query.
@@ -653,27 +660,6 @@ private func clipContains(
     )
 }
 
-/// Anchored form of `clipContains`, compiling to `BEGINSWITH` - a prefix
-/// compare instead of a substring scan, which is what the `app:` operator's
-/// anchored-prefix rule actually asks the store for.
-private func clipStartsWith(
-    _ item: ClipVariable,
-    _ keyPath: any KeyPath<ClipItem, String?> & Sendable,
-    _ needle: String
-) -> some StandardPredicateExpression<Bool> {
-    PredicateExpressions.build_Equal(
-        lhs: PredicateExpressions.build_flatMap(
-            PredicateExpressions.build_KeyPath(root: PredicateExpressions.build_Arg(item), keyPath: keyPath)
-        ) {
-            PredicateExpressions.build_starts(
-                PredicateExpressions.build_Arg($0),
-                with: PredicateExpressions.build_Arg(needle)
-            )
-        },
-        rhs: PredicateExpressions.build_Arg(true)
-    )
-}
-
 private func clipOr<L: StandardPredicateExpression<Bool>, R: StandardPredicateExpression<Bool>>(
     _ lhs: L,
     _ rhs: R
@@ -754,9 +740,10 @@ extension ClipFilter {
         )
         // A board scope fetches unbounded: the manual order is a `Double?`
         // of midpoints Swift-side, which no SortDescriptor can express, so
-        // `refine(_:)` gets every member to sort. A board is a curated set,
-        // small by definition.
-        descriptor.fetchLimit = board.isBoardScoped ? nil : limit
+        // `refine(_:)` gets every member to sort. `in:` widens for the same
+        // reason - a board is a curated set, small by definition, and a
+        // page of 200 could clip it.
+        descriptor.fetchLimit = (board.isBoardScoped || !query.constraints.boards.isEmpty) ? nil : limit
         return descriptor
     }
 
@@ -785,7 +772,7 @@ extension ClipFilter {
     ///
     /// The same superset rule decides where each operator lives. Into SQL:
     /// `type:` (folded into the kind set the chips already feed), one `app:`
-    /// value as a BEGINSWITH that the anchored prefix rule widens from, the
+    /// value as a CONTAINS that the anchored prefix rule narrows from, the
     /// `createdAt` bounds of `after:`/`before:`/`on:` and `-on:`'s inverse,
     /// and `isPinned` for either sign of `is:pinned` - all exact or strictly
     /// widening over stored columns. Left for `refine(_:)`: the second and
@@ -826,10 +813,11 @@ extension ClipFilter {
         let needle = query.narrowing
         let searching = !query.terms.isEmpty
         let constraints = query.constraints
-        // `app:`'s real rule is an anchored prefix, which is exactly what
-        // BEGINSWITH is in SQL - case-folding in the store's LIKE collation.
-        // `refine(_:)` re-asks it with the stricter localizedStandard anchor
-        // over the rows it got back.
+        // `app:`'s real rule is an anchored prefix. SQL has no case-folding
+        // anchored form (`starts(with:)` compares case-sensitively, which
+        // would drop `Safari` for `app:saf`), so the predicate widens to a
+        // case-folding CONTAINS and `refine(_:)` re-anchors it over the
+        // rows it got back.
         // Only the first value is pushed: a match satisfies them all, so
         // the fetch stays a superset, and each extra clause is one the
         // expression does not have room for.
@@ -840,6 +828,8 @@ extension ClipFilter {
         let before = constraints.before
         let pinned: Bool? = constraints.states.contains(.pinned) ? true
             : constraints.notStates.contains(.pinned) ? false : nil
+        let secret: Bool? = constraints.states.contains(.secret) ? true
+            : constraints.notStates.contains(.secret) ? false : nil
         let kinds = effectiveKindRaws
         let fileKind = [ClipKind.file.rawValue]
         // Both pinned scopes (Pinned proper and a board) are subsets of
@@ -859,7 +849,7 @@ extension ClipFilter {
         // date or pin operator in play - keeps the shape the filter has
         // always had rather than paying three constant-ORs per row for
         // clauses that are never set.
-        if after == nil, before == nil, pinned == nil {
+        if after == nil, before == nil, pinned == nil, secret == nil {
             if !searching {
                 // Nothing typed, only the chip, the menu and the scope:
                 // bare intersections, with no constant OR to pay per row.
@@ -874,13 +864,13 @@ extension ClipFilter {
                     }
                     if kinds.all {
                         return Predicate<ClipItem> { item in
-                            clipStartsWith(item, \.sourceAppName, appNeedle)
+                            clipContains(item, \.sourceAppName, appNeedle)
                         }
                     }
                     return Predicate<ClipItem> { item in
                         clipAnd(
                             clipOneOf(item, \.kindRaw, kinds.raws),
-                            clipStartsWith(item, \.sourceAppName, appNeedle)
+                            clipContains(item, \.sourceAppName, appNeedle)
                         )
                     }
                 }
@@ -889,7 +879,7 @@ extension ClipFilter {
                     clipAnd(
                         clipAnd(
                             clipOr(clipConstant(kinds.all), clipOneOf(item, \.kindRaw, kinds.raws)),
-                            clipOr(clipConstant(anyApp), clipStartsWith(item, \.sourceAppName, appNeedle))
+                            clipOr(clipConstant(anyApp), clipContains(item, \.sourceAppName, appNeedle))
                         ),
                         clipFlag(item, \.isPinned, true)
                     )
@@ -899,7 +889,7 @@ extension ClipFilter {
                 clipAnd(
                     clipAnd(
                         clipOr(clipConstant(kinds.all), clipOneOf(item, \.kindRaw, kinds.raws)),
-                        clipOr(clipConstant(anyApp), clipStartsWith(item, \.sourceAppName, appNeedle))
+                        clipOr(clipConstant(anyApp), clipContains(item, \.sourceAppName, appNeedle))
                     ),
                     clipAnd(
                         clipOr(clipConstant(anyScope), clipFlag(item, \.isPinned, true)),
@@ -913,7 +903,7 @@ extension ClipFilter {
                 clipAnd(
                     clipAnd(
                         clipOr(clipConstant(kinds.all), clipOneOf(item, \.kindRaw, kinds.raws)),
-                        clipOr(clipConstant(anyApp), clipStartsWith(item, \.sourceAppName, appNeedle))
+                        clipOr(clipConstant(anyApp), clipContains(item, \.sourceAppName, appNeedle))
                     ),
                     clipOr(clipConstant(anyScope), clipFlag(item, \.isPinned, true))
                 ),
@@ -929,9 +919,15 @@ extension ClipFilter {
                         )
                     ),
                     clipAnd(
-                        clipOr(
-                            clipConstant(pinned == nil),
-                            clipFlag(item, \.isPinned, pinned ?? false)
+                        clipAnd(
+                            clipOr(
+                                clipConstant(pinned == nil),
+                                clipFlag(item, \.isPinned, pinned ?? false)
+                            ),
+                            clipOr(
+                                clipConstant(secret == nil),
+                                clipFlag(item, \.isSecret, secret ?? false)
+                            )
                         ),
                         clipSearch(item, searching: searching, needle: needle, fileKind: fileKind)
                     )
@@ -945,7 +941,7 @@ extension ClipFilter {
     ///
     /// What SQL waved through: the type, because Images admits file rows in
     /// order to reach the screenshots among them and the ones that are not
-    /// have to go; every `app:` detail beyond the first widened BEGINSWITH -
+    /// have to go; every `app:` detail beyond the first widened CONTAINS -
     /// the anchored prefix itself, extra prefixes, every `-app:` - plus the
     /// `is:` states that are nil-checks and `-on:`'s excluded days, all
     /// re-checked by `matchesConstraints`; the search over file clips, whose
@@ -1649,6 +1645,7 @@ struct PanelContentView: View {
         return ClipQuery.suggestions(
             for: context,
             apps: appSuggestionRows,
+            boards: pinboards.map(\.name),
             now: filter.now,
             calendar: filter.calendar
         )
@@ -2021,6 +2018,11 @@ struct PanelContentView: View {
                !pinboards.contains(where: { $0.uuid == uuid }) {
                 filter.board = .pinned
             }
+        }
+        .onChange(of: pinboards.map(\.name), initial: true) {
+            // `in:` resolves board names against the store's boards; a
+            // rename or a new board rewrites the index the filter holds.
+            filter.boardIndex = pinboards.map { (name: $0.name, uuid: $0.uuid) }
         }
         .onChange(of: suggestionContext) {
             // A keystroke changed what is being completed - the highlight

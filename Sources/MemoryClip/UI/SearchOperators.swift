@@ -3,23 +3,24 @@ import Foundation
 /// The `key:` operators the search field understands.
 ///
 /// Keys match case-insensitively and name something the store can actually
-/// answer. `in:` is deliberately absent: pinboards land with PRD 06, and
-/// until then `in:foo` is just a word. The grammar slots it in exactly
-/// here - one case, one branch in `ClipConstraints.apply`, one suggestion
-/// source once boards exist.
+/// answer. `in:` names a pinboard by a prefix of its name (`in:pinned` is
+/// the Pinned board); a name nothing matches is an empty result, not a
+/// warning - the vocabulary is the user's own, like `app:`.
 enum ClipOperatorKey: String, CaseIterable, Sendable {
     case app
     case `is`
+    case `in`
     case type
     case after
     case before
     case on
 
     /// The values the suggestion list offers for keys with a fixed
-    /// vocabulary. Empty for `app:`, whose list comes from the store.
+    /// vocabulary. Empty for `app:` and `in:`, whose lists come from the
+    /// store's apps and boards.
     var fixedValues: [String] {
         switch self {
-        case .app:
+        case .app, .in:
             return []
         case .is:
             return ClipStateValue.allCases.map(\.rawValue)
@@ -30,11 +31,11 @@ enum ClipOperatorKey: String, CaseIterable, Sendable {
         }
     }
 
-    /// The grammar the unknown-value tooltip names. `app:` takes any text,
-    /// so it never needs a list (and never warns).
+    /// The grammar the unknown-value tooltip names. `app:` and `in:` take
+    /// any text, so they never need a list (and never warn).
     var knownValues: [String] {
         switch self {
-        case .app: return []
+        case .app, .in: return []
         case .is: return ClipStateValue.allCases.map(\.rawValue)
         case .type: return TypeFilter.typeableValues.map(\.rawValue)
         case .after, .before, .on: return ["today", "yesterday", "2026-09-01", "7d", "2w", "3m"]
@@ -43,16 +44,13 @@ enum ClipOperatorKey: String, CaseIterable, Sendable {
 }
 
 /// The states `is:` knows how to test.
-///
-/// A sixth state (`is:secret`) joins when the property it reads ships with
-/// PRD 02: the case, one line in `matches(_:)` and the vocabulary lists
-/// above update themselves via `allCases`.
 enum ClipStateValue: String, CaseIterable, Sendable {
-    case pinned, screenshot, noted, event, translated
+    case pinned, screenshot, noted, event, translated, secret
 
     /// Whether the clip is in this state. `noted`, `event` and `translated`
     /// are nil-checks on the fields those features write: a clip "has a
-    /// note" exactly when `notePath` was filled in.
+    /// note" exactly when `notePath` was filled in. `secret` reads the
+    /// sealed-row flag, the one part of a secret the store keeps readable.
     func matches(_ item: some ClipDisplayable) -> Bool {
         switch self {
         case .pinned: return item.isPinned
@@ -60,6 +58,7 @@ enum ClipStateValue: String, CaseIterable, Sendable {
         case .noted: return item.notePath != nil
         case .event: return item.calendarEventID != nil
         case .translated: return item.translatedText != nil || item.clipTranslationText != nil
+        case .secret: return item.isSecret
         }
     }
 
@@ -72,6 +71,7 @@ enum ClipStateValue: String, CaseIterable, Sendable {
         case .noted: return loc("with a note")
         case .event: return loc("in the calendar")
         case .translated: return loc("translated")
+        case .secret: return loc("secret")
         }
     }
 
@@ -83,6 +83,7 @@ enum ClipStateValue: String, CaseIterable, Sendable {
         case .noted: return loc("without a note")
         case .event: return loc("not in the calendar")
         case .translated: return loc("not translated")
+        case .secret: return loc("not secret")
         }
     }
 }
@@ -151,6 +152,11 @@ struct ClipConstraints: Equatable {
     /// `type:` filters every match must satisfy, and `-type:` ones none may.
     var types: Set<TypeFilter> = []
     var notTypes: Set<TypeFilter> = []
+    /// `in:` prefixes naming the boards a match must sit in, and `-in:`
+    /// ones it must not. Prefixes, not names: `in:pin` reaches "Pinned"
+    /// the pseudo-board and any board whose name starts that way.
+    var boards: [String] = []
+    var notBoards: [String] = []
     /// `createdAt >= after` - from `after:` or `-before:`, resolved against
     /// the `now` the query was parsed with.
     var after: Date?
@@ -165,7 +171,7 @@ struct ClipConstraints: Equatable {
     /// Whether any operator is narrowing the query.
     var isEmpty: Bool {
         apps.isEmpty && notApps.isEmpty && states.isEmpty && notStates.isEmpty
-            && types.isEmpty && notTypes.isEmpty
+            && types.isEmpty && notTypes.isEmpty && boards.isEmpty && notBoards.isEmpty
             && after == nil && before == nil && excludedDays.isEmpty
     }
 
@@ -185,15 +191,41 @@ struct ClipConstraints: Equatable {
         ) != nil
     }
 
+    /// `in:`'s rule over one prefix: the pseudo-board `pinned` covers a clip
+    /// that is pinned but filed nowhere, and any board whose name starts
+    /// with the prefix counts its members - the same anchored, folding
+    /// compare `app:` uses. A clip is never both: membership needs the pin,
+    /// and `pinboardUUID` decides which side it lands on.
+    static func matchesBoard(
+        _ item: some ClipDisplayable,
+        prefix: String,
+        boards: [(name: String, uuid: UUID)]
+    ) -> Bool {
+        if hasAppPrefix(ClipStateValue.pinned.rawValue, prefix),
+           item.isPinned, item.pinboardUUID == nil {
+            return true
+        }
+        guard let uuid = item.pinboardUUID else { return false }
+        return boards.contains { $0.uuid == uuid && hasAppPrefix($0.name, prefix) }
+    }
+
     /// Whether the clip satisfies every constraint - the Swift-side twin of
-    /// the clauses `ClipFilter.predicate` pushes into SQL.
-    func matches(_ item: some ClipDisplayable) -> Bool {
+    /// the clauses `ClipFilter.predicate` pushes into SQL. `boards` is the
+    /// store's pinboards as (name, uuid) pairs: `in:` resolves names to the
+    /// identifier `ClipItem` actually stores, and a name nothing claims
+    /// matches no clip.
+    func matches(
+        _ item: some ClipDisplayable,
+        boards: [(name: String, uuid: UUID)] = []
+    ) -> Bool {
         for prefix in apps where !Self.hasAppPrefix(item.sourceAppName, prefix) { return false }
         for prefix in notApps where Self.hasAppPrefix(item.sourceAppName, prefix) { return false }
         for state in states where !state.matches(item) { return false }
         for state in notStates where state.matches(item) { return false }
         for type in types where !type.matches(item.kind, isScreenshot: item.isScreenshot) { return false }
         for type in notTypes where type.matches(item.kind, isScreenshot: item.isScreenshot) { return false }
+        for prefix in self.boards where !Self.matchesBoard(item, prefix: prefix, boards: boards) { return false }
+        for prefix in notBoards where Self.matchesBoard(item, prefix: prefix, boards: boards) { return false }
         if let after, item.createdAt < after { return false }
         if let before, item.createdAt >= before { return false }
         for day in excludedDays where day.contains(item.createdAt) { return false }
@@ -236,6 +268,19 @@ struct ClipConstraints: Equatable {
                 if notTypes.insert(type).inserted { phrases.append(loc("not %@", type.phrase)) }
             } else if types.insert(type).inserted {
                 phrases.append(type.phrase)
+            }
+            return true
+        case .in:
+            // Any board name is a value: the list is the user's own, so a
+            // miss is an empty board rather than an unrecognised word.
+            if negated {
+                guard !notBoards.contains(value) else { return true }
+                notBoards.append(value)
+                phrases.append(loc("not in pinboard %@", value))
+            } else {
+                guard !boards.contains(value) else { return true }
+                boards.append(value)
+                phrases.append(loc("in pinboard %@", value))
             }
             return true
         case .after, .before, .on:
@@ -566,12 +611,15 @@ extension ClipQuery {
     }
 
     /// The rows to show for a `context`: `app:` from the store's names
-    /// ordered most-used first (the caller passes them pre-sorted),
-    /// `is:`/`type:`/dates from the fixed vocabularies, each filtered by
-    /// the typed prefix. Capped at eight, as the PRD asks.
+    /// ordered most-used first (the caller passes them pre-sorted), `in:`
+    /// from the store's board names (the Pinned pseudo-board first, since
+    /// `in:pinned` answers it), `is:`/`type:`/dates from the fixed
+    /// vocabularies, each filtered by the typed prefix. Capped at eight,
+    /// as the PRD asks.
     static func suggestions(
         for context: SuggestionContext,
         apps: [(name: String, count: Int)],
+        boards: [String] = [],
         now: Date,
         calendar: Calendar
     ) -> [SearchSuggestion] {
@@ -591,6 +639,16 @@ extension ClipQuery {
                         detail: loc("%d clips", $0.count)
                     )
                 })
+        case .in:
+            return ([ClipStateValue.pinned.rawValue] + boards)
+                .filter(matches)
+                .prefix(8)
+                .map {
+                    SearchSuggestion(
+                        token: "in:" + quoted($0), value: $0,
+                        detail: $0 == ClipStateValue.pinned.rawValue ? loc("Pinned") : ""
+                    )
+                }
         case .is:
             return context.key.fixedValues.filter(matches).prefix(8).map { value in
                 let state = ClipStateValue(rawValue: value)
@@ -635,7 +693,7 @@ extension ClipQuery {
             return unit.lastPhrase(count)
         case (.ago(_, let count, let unit), .before):
             return unit.agoPhrase(count)
-        case (_, .app), (_, .is), (_, .type):
+        case (_, .app), (_, .is), (_, .in), (_, .type):
             return ""
         }
     }
@@ -677,9 +735,7 @@ extension ClipQuery {
 }
 
 /// The cheat-sheet content a lone `?` in the search field shows: each
-/// operator with one example, then the two syntax notes. `in:` is not
-/// listed - it is not recognised yet, and the sheet documents only what
-/// the grammar accepts.
+/// operator with one example, then the two syntax notes.
 enum SearchCheatSheet {
     /// `(token example, what it matches)` pairs, in display order.
     static var rows: [(token: String, detail: String)] {
@@ -690,6 +746,7 @@ enum SearchCheatSheet {
             ("app:Safari", loc("clips from an app")),
             ("is:pinned", loc("a state: %@", states)),
             ("type:link", loc("a kind: %@", kinds)),
+            ("in:work", loc("a pinboard")),
             ("after:7d", loc("copied after a time: %@", times)),
             ("before:2026-09-01", loc("copied before a time")),
             ("on:yesterday", loc("copied on one day")),

@@ -636,6 +636,10 @@
 "more than %d days ago" = "more than %d days ago";
 "more than %d weeks ago" = "more than %d weeks ago";
 "more than %d months ago" = "more than %d months ago";
+"secret" = "secret";
+"not secret" = "not secret";
+"not in pinboard %@" = "not in pinboard %@";
+"a pinboard" = "a pinboard";
 /* App Intents (Shortcuts, Spotlight). */
 "Nothing copied yet" = "Nothing copied yet";
 "Latest clip has no text" = "Latest clip has no text";

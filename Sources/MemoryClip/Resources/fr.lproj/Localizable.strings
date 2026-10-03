@@ -636,6 +636,10 @@
 "more than %d days ago" = "il y a plus de %d jours";
 "more than %d weeks ago" = "il y a plus de %d semaines";
 "more than %d months ago" = "il y a plus de %d mois";
+"secret" = "secret";
+"not secret" = "pas un secret";
+"not in pinboard %@" = "pas dans le tableau %@";
+"a pinboard" = "un tableau";
 /* App Intents (Shortcuts, Spotlight). */
 "Nothing copied yet" = "Rien n’a encore été copié";
 "Latest clip has no text" = "Le dernier clip n’a pas de texte";

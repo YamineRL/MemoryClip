@@ -26,6 +26,9 @@ private struct OpClip: ClipDisplayable {
     var translatedText: String?
     var clipTranslationText: String?
     var isScreenshot: Bool = false
+    var isSecret: Bool = false
+    var pinboardUUID: UUID?
+    var pinboardOrder: Double?
 }
 
 /// The `key:value` search operators: the grammar itself, the date forms it
@@ -52,7 +55,7 @@ final class ClipOperatorTests: XCTestCase {
 
     override func setUpWithError() throws {
         container = try ModelContainer(
-            for: Schema([ClipItem.self]),
+            for: Schema([ClipItem.self, Pinboard.self]),
             configurations: [ModelConfiguration(isStoredInMemoryOnly: true)]
         )
         context = ModelContext(container)
@@ -144,9 +147,9 @@ final class ClipOperatorTests: XCTestCase {
 
     /// `key:value` is an operator; everything else stays a word.
     func testScanClassifiesEachToken() {
-        let text = "deploy is:pinned -app:Slack in:vault 14:30"
+        let text = "deploy is:pinned -app:Slack in:vault zone:x 14:30"
         let tokens = ClipQuery.scan(text)
-        XCTAssertEqual(tokens.count, 5)
+        XCTAssertEqual(tokens.count, 6)
         XCTAssertNil(tokens[0].key)
         XCTAssertEqual(tokens[1].key, .is)
         XCTAssertEqual(tokens[1].value, "pinned")
@@ -154,11 +157,13 @@ final class ClipOperatorTests: XCTestCase {
         XCTAssertEqual(tokens[2].key, .app)
         XCTAssertEqual(tokens[2].value, "Slack")
         XCTAssertTrue(tokens[2].negated)
-        // `in:` is not a key (pinboards are a later PRD): the whole token is
-        // a word and keeps searching as literal text.
-        XCTAssertNil(tokens[3].key)
-        XCTAssertEqual(String(text[tokens[3].range]), "in:vault")
-        XCTAssertNil(tokens[4].key, "a clock time is not an operator")
+        XCTAssertEqual(tokens[3].key, .in)
+        XCTAssertEqual(tokens[3].value, "vault")
+        // `zone:` is not a key: the whole token is a word and keeps
+        // searching as literal text.
+        XCTAssertNil(tokens[4].key)
+        XCTAssertEqual(String(text[tokens[4].range]), "zone:x")
+        XCTAssertNil(tokens[5].key, "a clock time is not an operator")
     }
 
     func testKeysAndValuesAreCaseInsensitive() {
@@ -471,9 +476,9 @@ final class ClipOperatorTests: XCTestCase {
     /// including the unknown-key words the grammar never claimed.
     func testClearingOperatorsKeepsTheWords() {
         XCTAssertEqual(
-            ClipQuery.clearingOperators(from: "invoice is:pinned -app:Safari is:bogus in:vault"),
-            "invoice in:vault",
-            "`in:` was never an operator, so it stays as the word it is"
+            ClipQuery.clearingOperators(from: "invoice is:pinned -app:Safari is:bogus in:vault zone:x"),
+            "invoice zone:x",
+            "`zone:` was never an operator, so it stays as the word it is"
         )
         XCTAssertEqual(ClipQuery.clearingOperators(from: "is:pinned"), "")
     }
@@ -509,7 +514,7 @@ final class ClipOperatorTests: XCTestCase {
         XCTAssertEqual(context("-is:pi")?.negated, true)
         XCTAssertEqual(context("word app:Saf")?.key, .app)
         XCTAssertEqual(context("app:\"Google Ch")?.prefix, "Google Ch")
-        XCTAssertNil(context("in:"), "an unknown key suggests nothing")
+        XCTAssertNil(context("zone:"), "an unknown key suggests nothing")
         XCTAssertNil(context("is:pi rest"), "only the token at the end completes")
     }
 
@@ -522,7 +527,7 @@ final class ClipOperatorTests: XCTestCase {
         let filtered = ClipQuery.suggestions(
             for: context("is:s")!, apps: [], now: now, calendar: calendar
         )
-        XCTAssertEqual(filtered.map(\.value), ["screenshot"])
+        XCTAssertEqual(filtered.map(\.value), ["screenshot", "secret"])
 
         let kinds = ClipQuery.suggestions(
             for: context("type:l")!, apps: [], now: now, calendar: calendar
@@ -566,7 +571,145 @@ final class ClipOperatorTests: XCTestCase {
             for: context("on:")!, apps: [], now: now, calendar: calendar
         )
         XCTAssertEqual(rows.map(\.value), ["today", "yesterday", "7d"])
+
         XCTAssertEqual(rows.first?.detail,
                        ClipConstraints.dayLabel(dayInterval(15), now: now, calendar: calendar))
+    }
+
+    // MARK: - `in:` and `is:secret` (features combined, PRD 07)
+
+    /// `in:` resolves a board-name prefix against the store's boards;
+    /// `in:pinned` is the Pinned board itself - pinned but unfiled.
+    func testInMatchesBoardsByPrefixAndPinnedPseudo() {
+        let work = UUID(), play = UUID()
+        var filed = OpClip(); filed.pinboardUUID = work; filed.isPinned = true
+        var pinnedOnly = OpClip(); pinnedOnly.isPinned = true
+        var loose = OpClip()
+        let boards = [(name: "Work", uuid: work), (name: "Playground", uuid: play)]
+
+        func hit(_ prefix: String, _ clip: OpClip) -> Bool {
+            ClipConstraints.matchesBoard(clip, prefix: prefix, boards: boards)
+        }
+        XCTAssertTrue(hit("work", filed), "prefix match on the board name")
+        XCTAssertTrue(hit("WOR", filed), "case-insensitive")
+        XCTAssertFalse(hit("play", OpClip()), "an unfilled clip is in no board")
+        XCTAssertFalse(hit("play", filed), "filed under Work, not Playground")
+        XCTAssertTrue(hit("pinned", pinnedOnly), "in:pinned is the Pinned board")
+        XCTAssertFalse(hit("pinned", filed), "a filed clip left the Pinned pseudo-board")
+        XCTAssertFalse(hit("pinned", loose), "loose clips are in no board")
+        XCTAssertFalse(hit("missing", filed), "a name no board claims matches nothing")
+    }
+
+    /// `in:` and `-in:` through the filter, with the boards fed the way
+    /// the panel feeds them.
+    func testInConstraintsThroughTheFilter() {
+        let work = UUID(), play = UUID()
+        var filedWork = OpClip(); filedWork.pinboardUUID = work; filedWork.isPinned = true
+        var filedPlay = OpClip(); filedPlay.pinboardUUID = play; filedPlay.isPinned = true
+        var pinnedOnly = OpClip(); pinnedOnly.isPinned = true
+        let loose = OpClip()
+        let all = [filedWork, filedPlay, pinnedOnly, loose]
+        let index = [(name: "Work", uuid: work), (name: "Playground", uuid: play)]
+
+        func visible(_ search: String) -> Set<UUID> {
+            var filter = ClipFilter(search: search, now: now, calendar: calendar)
+            filter.boardIndex = index
+            return Set(filter.apply(to: all).map(\.uuid))
+        }
+
+        XCTAssertEqual(visible("in:work"), [filedWork.uuid])
+        XCTAssertEqual(visible("in:p"), [filedPlay.uuid, pinnedOnly.uuid],
+                       "the prefix reaches Playground and the Pinned pseudo-board")
+        XCTAssertEqual(visible("-in:work"), [filedPlay.uuid, pinnedOnly.uuid, loose.uuid])
+        XCTAssertEqual(visible("in:missing"), [],
+                       "a name no board claims is an empty result, not a word")
+        XCTAssertEqual(visible("in:work -app:safari"), [filedWork.uuid],
+                       "in: ANDs with the rest of the query")
+    }
+
+    /// `is:secret` reads the sealed-row flag; `-is:secret` drops secret rows.
+    func testSecretStateThroughConstraints() {
+        var secret = OpClip(); secret.isSecret = true
+        let plain = OpClip()
+
+        XCTAssertTrue(ClipStateValue.secret.matches(secret))
+        XCTAssertFalse(ClipStateValue.secret.matches(plain))
+
+        var filter = ClipFilter(search: "is:secret", now: now, calendar: calendar)
+        XCTAssertEqual(filter.apply(to: [secret, plain]).map(\.uuid), [secret.uuid])
+        filter = ClipFilter(search: "-is:secret", now: now, calendar: calendar)
+        XCTAssertEqual(filter.apply(to: [secret, plain]).map(\.uuid), [plain.uuid])
+    }
+
+    /// The load-bearing agreement test, extended over the features' axes:
+    /// every combination of `in:` / `is:secret` with the existing operators
+    /// must see fetch+refine equal the Swift rule.
+    func testFetchAndRefineAgreeAcrossFeatures() throws {
+        let work = Pinboard.create(named: "Work", in: context)!
+        let play = Pinboard.create(named: "Playground", in: context)!
+        let filedWork = insert("w", kind: .text, text: "work doc", app: "Safari",
+                               createdAt: on(day: 14), isPinned: true)
+        filedWork.file(into: work)
+        let filedPlay = insert("p", kind: .text, text: "play doc", app: "Notes",
+                               createdAt: on(day: 13), isPinned: true)
+        filedPlay.file(into: play)
+        let secret = insert("s", kind: .text, app: "Terminal", createdAt: on(day: 12))
+        secret.isSecret = true
+        secret.secretLabel = "API token"
+        let filedSecret = insert("fs", kind: .text, app: "Safari", createdAt: on(day: 11), isPinned: true)
+        filedSecret.file(into: work)
+        filedSecret.isSecret = true
+        filedSecret.secretLabel = "Password"
+        let plain = populate()
+
+        let boards = [(name: work.name, uuid: work.uuid), (name: play.name, uuid: play.uuid)]
+        let all = plain + [filedWork, filedPlay, secret, filedSecret]
+        let queries = [
+            "is:secret", "-is:secret", "in:work", "in:play", "in:pinned", "in:missing",
+            "-in:work", "in:w", "in:work is:secret", "is:secret -in:work",
+            "app:saf in:work", "is:pinned -in:play", "in:work after:7d",
+            "work doc in:work", "is:secret app:terminal type:text",
+        ]
+        for text in queries {
+            var filter = ClipFilter(search: text, now: now, calendar: calendar)
+            filter.boardIndex = boards
+            let fetched = try context.fetch(filter.fetchDescriptor())
+            let expected = Set(filter.apply(to: all).map(\.uuid))
+            XCTAssertTrue(
+                expected.isSubset(of: Set(fetched.map(\.uuid))),
+                "\(text): the predicate dropped a row the rule keeps"
+            )
+            XCTAssertEqual(
+                Set(filter.refine(fetched).map(\.uuid)), expected,
+                "\(text): fetch+refine must equal the Swift rule"
+            )
+        }
+    }
+
+    /// `in:` joins the empty-state sentence and the suggestion list.
+    func testInOperatorInWordsAndSuggestions() {
+        let filter = ClipFilter(search: "invoice in:work -is:secret", now: now, calendar: calendar)
+        XCTAssertEqual(filter.constraintSummary,
+                       "matching \"invoice\", in pinboard work, not secret")
+
+        let rows = ClipQuery.suggestions(
+            for: context("in:")!, apps: [], boards: ["Work", "Playground"],
+            now: now, calendar: calendar
+        )
+        XCTAssertEqual(rows.map(\.value), ["pinned", "Work", "Playground"],
+                       "the pseudo-board first, then the store's boards")
+        XCTAssertEqual(rows.first?.detail, "Pinned")
+        XCTAssertEqual(
+            ClipQuery.suggestions(for: context("in:pl")!, apps: [],
+                                  boards: ["Work", "Playground"], now: now, calendar: calendar)
+                .map(\.value),
+            ["Playground"],
+            "suggestions filter by the typed prefix"
+        )
+    }
+
+    /// The cheat-sheet lists `in:` now that the grammar accepts it.
+    func testCheatSheetCoversIn() {
+        XCTAssertTrue(SearchCheatSheet.rows.contains { $0.token.hasPrefix("in:") })
     }
 }
