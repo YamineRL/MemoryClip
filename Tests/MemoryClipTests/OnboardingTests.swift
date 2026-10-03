@@ -141,6 +141,23 @@ final class OnboardingTests: XCTestCase {
         )
     }
 
+    /// ⇧⌘V is already taken in some apps, so the page that teaches the hotkey
+    /// has to say it can be replaced and where, and must not promise ⇧⌘V in a
+    /// title that a tour re-run after rebinding would still show.
+    func testPanelStepOffersToReplaceTheHotkey() throws {
+        let step = try XCTUnwrap(OnboardingFlow.steps.first { $0.setup == .autoPaste })
+        let text = step.bullets.joined(separator: " ")
+        XCTAssertTrue(
+            text.contains("Record your own shortcut below"),
+            "the page must point at the recorder it carries: \(text)"
+        )
+        XCTAssertTrue(
+            text.contains("Settings → Shortcuts"),
+            "the page must say where the shortcut lives afterwards: \(text)"
+        )
+        XCTAssertFalse(step.title.contains("⇧⌘V"), "the title must not hard-code the default hotkey")
+    }
+
     /// The calendar page is where the write-only grant is asked for, and the
     /// automatic path may not raise that prompt itself — so the page has to
     /// carry the switch, not merely mention that one exists.

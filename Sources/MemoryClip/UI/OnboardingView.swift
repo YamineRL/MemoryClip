@@ -1,3 +1,4 @@
+import KeyboardShortcuts
 import SwiftUI
 
 /// A setting the tour lets you change on the page that explains it.
@@ -88,13 +89,14 @@ enum OnboardingFlow {
         OnboardingStep(
             id: "panel",
             symbol: "command",
-            title: loc("Open the panel with ⇧⌘V"),
+            title: loc("Open the panel from any app"),
             subtitle: loc("The hotkey is the main way in; pasting back out is the one thing macOS can block."),
             bullets: [
-                loc("Press ⇧⌘V anywhere to toggle the panel — ↑/↓ move the selection, Return pastes, ⇧Return pastes as plain text, and ⌘1…⌘9 paste the first nine results. Esc closes."),
+                loc("Press ⇧⌘V anywhere to toggle the panel. ↑/↓ move the selection, Return pastes, ⇧Return pastes as plain text, and ⌘1…⌘9 paste the first nine results. Esc closes."),
+                loc("Another app already uses ⇧⌘V? Record your own shortcut below. You can change it again in Settings → Shortcuts."),
                 loc("Type to search across text, OCR text, colors, file names and the app you copied from; Space opens the preview, and again on a picture or a file opens Quick Look full size."),
                 loc("Picking a clip simulates ⌘V into the app you came from. If macOS blocks the synthetic key event the clip is still on the clipboard — granting MemoryClip Accessibility in System Settings → Privacy & Security makes it reliable everywhere."),
-                loc("The menu-bar glyph holds your last 5 clips, Pause Capture and Settings. The hotkey itself is rebindable in Settings → Shortcuts."),
+                loc("The menu-bar glyph holds your last 5 clips, Pause Capture and Settings."),
             ],
             setup: .autoPaste
         ),
@@ -294,7 +296,12 @@ struct OnboardingView: View {
                 // MemoryClip is a menu-bar app with no Dock icon.
                 LaunchAtLoginToggle(showsHint: false)
             case .autoPaste:
-                // Likewise: the Accessibility caveat is a bullet on this page.
+                // The page that teaches the hotkey also lets you replace it,
+                // for anyone whose apps already claim ⇧⌘V. The Accessibility
+                // caveat is a bullet on this page.
+                KeyboardShortcuts.Recorder(for: .togglePanel) {
+                    Text(loc("Toggle panel:"))
+                }
                 AutoPasteToggle(showsHint: false)
             case .noteDestination:
                 NoteDestinationSetup(showsDetail: false)
