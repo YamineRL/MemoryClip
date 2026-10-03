@@ -235,7 +235,8 @@ enum ClipDisplay {
         calcResult: String? = nil,
         isScreenshot: Bool = false,
         hasNote: Bool = false,
-        hasCalendarEvent: Bool = false
+        hasCalendarEvent: Bool = false,
+        pinboardName: String? = nil
     ) -> String {
         var parts: [String] = [kindLabel(kind, isScreenshot: isScreenshot)]
 
@@ -245,6 +246,9 @@ enum ClipDisplay {
         if let appName, !appName.isEmpty { parts.append(loc("from %@", appName)) }
         if !relativeTime.isEmpty { parts.append(relativeTime) }
         if isPinned { parts.append(loc("pinned")) }
+        if let pinboardName, !pinboardName.isEmpty {
+            parts.append(loc("in pinboard %@", pinboardName))
+        }
         if let queuePosition { parts.append(loc("queued position %d", queuePosition)) }
         if hasExtractedText { parts.append(loc("contains extracted text")) }
         if hasNote { parts.append(loc("saved as a note")) }

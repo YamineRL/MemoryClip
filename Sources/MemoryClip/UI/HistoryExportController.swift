@@ -141,7 +141,12 @@ final class HistoryExportController {
         let handle = try FileHandle(forWritingTo: url)
         defer { try? handle.close() }
 
-        var stream = ExportService.Stream(format: asCSV ? .csv : .json)
+        // Pinboards ride at the top of the JSON document, ahead of the clip
+        // stream: the boards exist even when the history under them is
+        // empty. CSV has no place for them: the board a clip was in lands in
+        // its `pinboard` column.
+        let boards = asCSV ? [] : store.pinboards().map(ExportService.export(from:))
+        var stream = ExportService.Stream(format: asCSV ? .csv : .json, pinboards: boards)
         try handle.write(contentsOf: Data(stream.header.utf8))
 
         var written = 0
@@ -250,9 +255,26 @@ final class HistoryExportController {
     /// nothing, and there is no half-restored history to explain.
     static func readImport(from url: URL, store: ClipStore) throws -> ImportOutcome {
         let text = try String(contentsOf: url, encoding: .utf8)
-        let items = try ExportService.items(from: ExportService.imports(fromJSON: text))
+        let document = try ExportService.imports(fromJSON: text)
+        let items = try ExportService.items(from: document.clips)
         let inserted = store.insertImported(items)
-        return ImportOutcome(inserted: inserted, skipped: items.count - inserted)
+        // Only the clips the store actually accepted are filed: a clip the
+        // history already holds is left exactly as it is, board included.
+        // A board a skipped record names is still created — the document
+        // says it exists, and an empty board is a real board.
+        let accepted = Set(inserted.map(\.uuid))
+        let pairs = zip(items, document.clips)
+        let boardsSkippedRecordsName = pairs
+            .filter { !accepted.contains($0.0.uuid) }
+            .compactMap { $0.1.pinboard }
+            .map { PinboardExport(name: $0, color: nil, order: nil) }
+        store.fileImported(
+            pairs
+                .filter { accepted.contains($0.0.uuid) }
+                .map { (item: $0.0, record: $0.1) },
+            pinboards: document.pinboards + boardsSkippedRecordsName
+        )
+        return ImportOutcome(inserted: inserted.count, skipped: items.count - inserted.count)
     }
 
     /// Say what an import will and will not touch before the panel opens.

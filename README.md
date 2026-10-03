@@ -116,6 +116,10 @@ irreversible one kept a separator away from the item people actually come to cli
 | `⌘S` | Save the selected clip as a note, if it carries any text |
 | `⌘E` | Add the selected clip to the calendar, if it names a date |
 | `⌘I` | Edit the selected clip in the preview pane |
+| `⌘P` | File the selected clip under a pinboard |
+| `⌥←` `⌥→` | Move between **All**, **Pinned** and the pinboards |
+| `⌃1`–`⌃9` | Jump to the pinboard at that strip position |
+| `⌥⇧←` `⌥⇧→` | Move the selected clip along its pinboard's order |
 | `Space` | Open the preview pane; press it again on a picture or a file for full-size **Quick Look** |
 | `Esc` | Leave the editor, then Quick Look, then the preview, then the panel |
 
@@ -160,6 +164,16 @@ order. Colours convert between hex, `rgb()` and `hsl()`; a Unix timestamp become
 and back; and a clip can be dragged straight out of the panel into any app, a screenshot
 travelling as the file it already is rather than as a copy of its bytes.
 
+**Pinboards** turn the one flat pin list into named sets: addresses, canned replies,
+commands, signatures. A strip under the search field holds **All**, **Pinned** and one
+chip per board, with `+` at the end to name a new one. Pinning keeps a clip in Pinned;
+filing it to a board is one press of `⌘P` (a type-to-filter picker that can also create
+the board on the spot), the **Pin to ▸** submenu on the card, or a drag onto the chip.
+Right-click a chip to rename, recolour, reorder or delete it; deleting a board sends its
+clips back to Pinned rather than deleting them. Inside a board, clips keep the order you
+put them in (`⌥⇧←` and `⌥⇧→` slide the selected clip along it), and searching filters the
+board you are looking at. Boards ride along in a JSON export and come back on import.
+
 **Translation** — off by default, **Settings → Translation → Clip preview**. Copy
 something in a language you do not read and the preview shows it in one you do, above the
 text as it was copied; a screenshot or an image is translated from the text recognised
@@ -179,6 +193,7 @@ in the search bar. In NORMAL:
 | `⌃d` `⌃u` | Half-page down / up |
 | `o` | Paste (`⇧O` pastes as plain text) |
 | `p` | Pin the clip |
+| `P` | File it under a pinboard |
 | `v` | Visual mode — `j` and `k` extend the selection, `Esc` leaves |
 | `dd` | Delete the clip, after a confirmation |
 | `q` `⇧Q` | Add to the queue / paste the whole queue |

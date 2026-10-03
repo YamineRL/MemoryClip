@@ -90,6 +90,29 @@ enum TypeFilter: String, CaseIterable, Identifiable {
     }
 }
 
+/// Which pinned subset the panel is scoped to (PRD 06).
+///
+/// `.all` is every clip; boards narrow nothing. `.pinned` is the board-less
+/// pins, the set the old flat "pinned" list was and the place a clip lands
+/// when it is filed to no board. `.board` is one pinboard's contents in its
+/// manual order.
+enum PinboardScope: Equatable {
+    case all
+    case pinned
+    case board(UUID)
+
+    /// Whether the scope is a single board. That case switches the list to
+    /// the board's manual order, which SQLite cannot express (the order is a
+    /// `Double?` midpoints renumber only when they collide), so the fetch
+    /// runs unbounded and `refine(_:)` sorts what it gets. A board is a
+    /// curated set, small by definition; the unbounded fetch is bounded by
+    /// design.
+    var isBoardScoped: Bool {
+        if case .board = self { return true }
+        return false
+    }
+}
+
 // MARK: - Filtering (pure, testable)
 
 /// The subset of a clip the panel needs to filter and describe it.
@@ -136,6 +159,12 @@ protocol ClipDisplayable {
     var secretMasked: String? { get }
     /// When a one-time code is deleted; nil for anything else.
     var expiresAt: Date? { get }
+    /// Whether the clip is pinned (PRD 06).
+    var isPinned: Bool { get }
+    /// The pinboard the clip is filed in, by identifier (PRD 06).
+    var pinboardUUID: UUID? { get }
+    /// The clip's spot in its board's manual order, when filed.
+    var pinboardOrder: Double? { get }
 }
 
 extension ClipItem: ClipDisplayable {}
@@ -156,6 +185,14 @@ extension ClipDisplayable {
     var secretLabel: String? { nil }
     var secretMasked: String? { nil }
     var expiresAt: Date? { nil }
+
+    // Board scope defaults (PRD 06): `ClipItem` witnesses the real values
+    // the stored `isPinned` and `pinboardOrder`, and `pinboardUUID` derived
+    // from the relationship, while a test double that never boards a clip
+    // reads as unpinned and unfiled.
+    var isPinned: Bool { false }
+    var pinboardUUID: UUID? { nil }
+    var pinboardOrder: Double? { nil }
 
     /// One-line description used for VoiceOver announcements.
     var announcementSummary: String {
@@ -294,6 +331,8 @@ struct ClipFilter: Equatable {
 
     var type: TypeFilter = .all
     var source: String?
+    /// The pinned subset the panel is scoped to (PRD 06).
+    var board: PinboardScope = .all
 
     /// `search`, parsed. Held rather than derived on demand: the panel
     /// rebuilds this filter on every keystroke and then matches it against a
@@ -301,15 +340,32 @@ struct ClipFilter: Equatable {
     /// of once per row.
     private(set) var query: ClipQuery
 
-    init(search: String = "", type: TypeFilter = .all, source: String? = nil) {
+    init(
+        search: String = "",
+        type: TypeFilter = .all,
+        source: String? = nil,
+        board: PinboardScope = .all
+    ) {
         self.search = search
         self.type = type
         self.source = source
+        self.board = board
         query = ClipQuery(search)
     }
 
     /// True when nothing is being narrowed down.
-    var isIdentity: Bool { search.isEmpty && type == .all && source == nil }
+    var isIdentity: Bool { search.isEmpty && type == .all && source == nil && board == .all }
+
+    /// Whether a clip survives the board scope alone. `nil` board membership
+    /// answers `.pinned`, the matching identifier answers `.board`; `.all`
+    /// asks nothing.
+    func matchesBoard(_ item: some ClipDisplayable) -> Bool {
+        switch board {
+        case .all: return true
+        case .pinned: return item.isPinned && item.pinboardUUID == nil
+        case .board(let uuid): return item.pinboardUUID == uuid
+        }
+    }
 
     /// Whether `refine(_:)` can still drop rows the predicate returned.
     ///
@@ -381,7 +437,7 @@ struct ClipFilter: Equatable {
     }
 
     func matches(_ item: some ClipDisplayable) -> Bool {
-        matchesType(item) && matchesSource(item) && matchesSearch(item)
+        matchesBoard(item) && matchesType(item) && matchesSource(item) && matchesSearch(item)
     }
 
     func apply<T: ClipDisplayable>(to items: [T]) -> [T] {
@@ -431,6 +487,19 @@ private func clipEquals(
     _ item: ClipVariable,
     _ keyPath: any KeyPath<ClipItem, String?> & Sendable,
     _ value: String?
+) -> some StandardPredicateExpression<Bool> {
+    PredicateExpressions.build_Equal(
+        lhs: PredicateExpressions.build_KeyPath(root: PredicateExpressions.build_Arg(item), keyPath: keyPath),
+        rhs: PredicateExpressions.build_Arg(value)
+    )
+}
+
+/// `item[keyPath:] == value` for a Bool: the pin test, which the pinboard
+/// scopes lean on to keep the SQL half of the filter honest.
+private func clipEquals(
+    _ item: ClipVariable,
+    _ keyPath: any KeyPath<ClipItem, Bool> & Sendable,
+    _ value: Bool
 ) -> some StandardPredicateExpression<Bool> {
     PredicateExpressions.build_Equal(
         lhs: PredicateExpressions.build_KeyPath(root: PredicateExpressions.build_Arg(item), keyPath: keyPath),
@@ -500,7 +569,11 @@ extension ClipFilter {
             predicate: predicate,
             sortBy: [SortDescriptor(\ClipItem.createdAt, order: .reverse)]
         )
-        descriptor.fetchLimit = limit
+        // A board scope fetches unbounded: the manual order is a `Double?`
+        // of midpoints Swift-side, which no SortDescriptor can express, so
+        // `refine(_:)` gets every member to sort. A board is a curated set,
+        // small by definition.
+        descriptor.fetchLimit = board.isBoardScoped ? nil : limit
         return descriptor
     }
 
@@ -534,6 +607,11 @@ extension ClipFilter {
         let kinds = type.kindRawValues
         let anyKind = kinds.isEmpty
         let fileKind = [ClipKind.file.rawValue]
+        // Both pinned scopes (Pinned proper and a board) are subsets of
+        // `isPinned`, which SQL CAN ask about. Which subset is the Swift-side
+        // `refine(_:)`'s question: `pinboard == nil` is a relationship test
+        // no predicate can express.
+        let anyScope = board == .all
 
         return Predicate<ClipItem> { item in
             clipAnd(
@@ -541,29 +619,32 @@ extension ClipFilter {
                     clipOr(clipConstant(anyKind), clipOneOf(item, \.kindRaw, kinds)),
                     clipOr(clipConstant(anySource), clipEquals(item, \.sourceAppName, source))
                 ),
-                clipOr(
-                    clipConstant(!searching),
+                clipAnd(
+                    clipOr(clipConstant(anyScope), clipEquals(item, \.isPinned, true)),
                     clipOr(
+                        clipConstant(!searching),
                         clipOr(
                             clipOr(
                                 // File clips carry their searchable content in
                                 // `fileURLStrings`, which SwiftData stores as one
                                 // opaque blob; they are admitted here and sifted
-                                // by `refine(_:)`.
-                                clipOneOf(item, \.kindRaw, fileKind),
-                                // Secret rows likewise: their searchable part is
-                                // the label/mask pair, which `refine` checks —
-                                // their `text` is nil by construction.
-                                clipIsTrue(item, \.isSecret)
+                                // by `refine(_:)`. Secret rows likewise: their
+                                // searchable part is the label/mask pair, which
+                                // `refine` checks — their `text` is nil by
+                                // construction.
+                                clipOr(
+                                    clipOneOf(item, \.kindRaw, fileKind),
+                                    clipIsTrue(item, \.isSecret)
+                                ),
+                                clipContains(item, \.text, needle)
                             ),
-                            clipContains(item, \.text, needle)
-                        ),
-                        clipOr(
                             clipOr(
-                                clipContains(item, \.ocrText, needle),
-                                clipContains(item, \.colorHex, needle)
-                            ),
-                            clipContains(item, \.sourceAppName, needle)
+                                clipOr(
+                                    clipContains(item, \.ocrText, needle),
+                                    clipContains(item, \.colorHex, needle)
+                                ),
+                                clipContains(item, \.sourceAppName, needle)
+                            )
                         )
                     )
                 )
@@ -585,13 +666,36 @@ extension ClipFilter {
     /// A row a single-term search returned is still taken on trust: SQL was
     /// asked the whole question, and the fields `matchesSearch` adds to it
     /// only ever admit more.
+    ///
+    /// And the pinboard scope, which the predicate never saw: the board a
+    /// clip sits in is a to-one relationship, and a `Double?` ordering
+    /// invariant is not a thing SQLite can be asked about either. A board
+    /// scope also re-orders by `pinboardOrder`, the manual arrangement the
+    /// fetch's `createdAt` sort cannot express.
     func refine<T: ClipDisplayable>(_ items: [T]) -> [T] {
-        items.filter { item in
+        let filtered = items.filter { item in
+            guard matchesBoard(item) else { return false }
             guard matchesType(item) else { return false }
             guard !search.isEmpty else { return true }
             guard query.terms.count > 1 || item.kind == .file || item.isSecret else { return true }
             return matchesSearch(item)
         }
+        guard case .board = board else { return filtered }
+        // Manual order: a lower `pinboardOrder` comes first, ties break on
+        // recency (the order the fetch already gave). A board member without
+        // an order is new and sorts to the end by creation, newest first.
+        return filtered.enumerated().sorted { lhs, rhs in
+            switch (lhs.element.pinboardOrder, rhs.element.pinboardOrder) {
+            case let (l?, r?):
+                return l != r ? l < r : lhs.offset < rhs.offset
+            case (nil, nil):
+                return lhs.offset < rhs.offset
+            case (nil, _?):
+                return false
+            case (_?, nil):
+                return true
+            }
+        }.map(\.element)
     }
 }
 
@@ -1038,6 +1142,15 @@ struct PanelContentView: View {
     /// large the store is.
     @Query private var items: [ClipItem]
 
+    /// The pinboards, in chip-strip order (PRD 06).
+    @Query(sort: \Pinboard.order) private var pinboards: [Pinboard]
+
+    /// Every pinned clip, for the Pinned chip's count. `pinboard == nil` is
+    /// a relationship test no predicate can ask, so the board-less share is
+    /// counted in Swift, the same division of labour `refine(_:)` uses.
+    @Query(filter: #Predicate<ClipItem> { $0.isPinned })
+    private var pinnedClips: [ClipItem]
+
     @Binding private var filter: ClipFilter
     @Binding private var pageLimit: Int
     @ObservedObject private var uiState: PanelUIState
@@ -1103,6 +1216,21 @@ struct PanelContentView: View {
     /// Re-triggers the toast's dismiss task whenever a new message arrives.
     @State private var statusToken = 0
     @FocusState private var searchFocused: Bool
+    /// The clip the pinboard picker (⌘P, vim `P`) is open for.
+    @State private var pinboardPickerItem: ClipItem?
+    /// Whether the strip's name field is showing. With `editingPinboard`
+    /// set it renames that board; otherwise it names a new one.
+    @State private var namingPinboard = false
+    @State private var editingPinboard: Pinboard?
+    @State private var pinboardName = ""
+    /// The scope chip an in-panel clip drag is hovering over, for the
+    /// drop highlight.
+    @State private var dropTargetScope: PinboardScope?
+    /// The board the delete confirmation is asking about.
+    @State private var pinboardPendingDelete: Pinboard?
+    /// Whether the Control key is held: the board chips badge their
+    /// ⌃1…⌃9 jump while it is.
+    @State private var controlHeld = false
 
     init(
         filter: Binding<ClipFilter>,
@@ -1134,9 +1262,10 @@ struct PanelContentView: View {
     }
 
     /// True when the fetch came back full, i.e. the store may hold further
-    /// matches beyond the current page.
+    /// matches beyond the current page. A board scope fetches unbounded,
+    /// there is no next page.
     private var hasMorePages: Bool {
-        items.count >= pageLimit
+        !filter.board.isBoardScoped && items.count >= pageLimit
     }
 
     /// Row index of the selection, re-derived from the current list on every
@@ -1276,6 +1405,10 @@ struct PanelContentView: View {
                 topBar
                     .frame(height: Design.Size.topBarHeight)
                     .padding(.top, Design.Size.panelTopPadding)
+                    .padding(.horizontal, Design.Space.loose)
+
+                pinboardStrip
+                    .frame(height: Design.Size.pinboardStripHeight)
                     .padding(.horizontal, Design.Space.loose)
 
                 cardStrip(visible)
@@ -1419,6 +1552,11 @@ struct PanelContentView: View {
             inputMode = .normal
             navHintDismissed = false
             quickLookHintDismissed = false
+            pinboardPickerItem = nil
+            namingPinboard = false
+            editingPinboard = nil
+            pinboardPendingDelete = nil
+            dropTargetScope = nil
             searchFocused = true
             refreshSourceAppNames()
         }
@@ -1431,6 +1569,15 @@ struct PanelContentView: View {
                 navHintDismissed = false
             }
             syncPreviewItem()
+        }
+        .onChange(of: pinboards.map(\.uuid)) {
+            // The scope outlives its board: a board deleted out from under
+            // the panel drops back to Pinned, which is where its members
+            // have just landed.
+            if case .board(let uuid) = filter.board,
+               !pinboards.contains(where: { $0.uuid == uuid }) {
+                filter.board = .pinned
+            }
         }
         .onChange(of: selection) {
             announceSelection()
@@ -1450,6 +1597,53 @@ struct PanelContentView: View {
         } message: {
             Text(loc("Deleting a clip cannot be undone."))
         }
+        .confirmationDialog(
+            loc("Delete \"%@\"?", pinboardPendingDelete?.name ?? ""),
+            isPresented: pinboardDeleteBinding,
+            titleVisibility: .visible
+        ) {
+            if let board = pinboardPendingDelete {
+                Button(loc("Delete Pinboard"), role: .destructive) {
+                    deletePinboard(board)
+                }
+            }
+            Button(loc("Cancel"), role: .cancel) { pinboardPendingDelete = nil }
+        } message: {
+            Text(loc("The clips stay pinned. They return to Pinned."))
+        }
+        .popover(
+            isPresented: pinboardPickerBinding,
+            arrowEdge: .bottom
+        ) {
+            if let item = pinboardPickerItem {
+                PinboardPickerView(
+                    boards: pinboards,
+                    selection: item.pinboard.map { Set([$0.uuid]) } ?? [],
+                    nameProposal: namingProposal(for: item)
+                ) { action in
+                    applyPinboardPick(action, for: item)
+                }
+            }
+        }
+        // The chips badge their ⌃N jump while Control is held; there is no
+        // other way for the gesture to be discovered before it is tried.
+        .onModifierKeysChanged(mask: .control, initial: false) { _, new in
+            controlHeld = new.contains(.control)
+        }
+    }
+
+    private var pinboardDeleteBinding: Binding<Bool> {
+        Binding(
+            get: { pinboardPendingDelete != nil },
+            set: { if !$0 { pinboardPendingDelete = nil } }
+        )
+    }
+
+    private var pinboardPickerBinding: Binding<Bool> {
+        Binding(
+            get: { pinboardPickerItem != nil },
+            set: { if !$0 { pinboardPickerItem = nil } }
+        )
     }
 
     /// `dd` is destructive and has no undo, so it routes through the same kind
@@ -1589,6 +1783,393 @@ struct PanelContentView: View {
         .accessibilityAddTraits(isOn ? [.isButton, .isSelected] : .isButton)
     }
 
+    // MARK: Pinboard strip
+
+    /// The boards row under the search field (PRD 06): All, Pinned, one chip
+    /// per board, then the new-board control (or, while it is up, the
+    /// inline name field. Every chip is also a drop target for a card being
+    /// dragged, which is how filing by mouse works.
+    private var pinboardStrip: some View {
+        ScrollView(.horizontal) {
+            HStack(spacing: Design.Space.snug) {
+                scopeChip(loc("All"), scope: .all)
+                scopeChip(
+                    loc("Pinned"),
+                    scope: .pinned,
+                    color: Design.Palette.pin,
+                    systemImage: "pin.fill",
+                    count: boardlessPinCount
+                )
+                ForEach(Array(pinboards.enumerated()), id: \.element.uuid) { index, board in
+                    boardChip(board, index: index)
+                }
+                if namingPinboard {
+                    pinboardNameField
+                } else {
+                    newPinboardButton
+                }
+            }
+            .padding(.vertical, 1)
+        }
+        .scrollIndicators(.hidden)
+        // `.contain`, like the type chips: the scopes stay individually
+        // reachable and keep their own selected traits.
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(loc("Pinboards"))
+    }
+
+    /// The pins that sit in no board: what the Pinned chip scopes to.
+    private var boardlessPinCount: Int {
+        pinnedClips.reduce(0) { $0 + ($1.pinboard == nil ? 1 : 0) }
+    }
+
+    /// The field that names a new board or renames `editingPinboard`.
+    private var pinboardNameField: some View {
+        TextField(
+            editingPinboard == nil ? loc("Name pinboard") : loc("Rename pinboard"),
+            text: $pinboardName
+        )
+        .textFieldStyle(.plain)
+        .font(Design.Typography.chip)
+        .frame(width: 120)
+        .padding(.horizontal, Design.Space.roomy)
+        .padding(.vertical, Design.Space.snug)
+        .background(
+            Capsule(style: .continuous)
+                .fill(Design.Palette.chipFill(isOn: true, increasedContrast: contrast == .increased))
+        )
+        .overlay(
+            Capsule(style: .continuous).strokeBorder(
+                Design.Palette.chipSelectedBorder(increasedContrast: contrast == .increased),
+                lineWidth: Design.Stroke.selection
+            )
+        )
+        .onSubmit(commitPinboardName)
+        .onExitCommand(perform: cancelPinboardName)
+    }
+
+    /// The `+` at the end of the strip.
+    private var newPinboardButton: some View {
+        Button {
+            editingPinboard = nil
+            pinboardName = ""
+            namingPinboard = true
+        } label: {
+            Image(systemName: "plus")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(Color(nsColor: .secondaryLabelColor))
+                .padding(.horizontal, Design.Space.roomy)
+                .padding(.vertical, Design.Space.snug)
+                .background(
+                    Capsule(style: .continuous)
+                        .fill(Design.Palette.chipFill(isOn: false, increasedContrast: contrast == .increased))
+                )
+                .overlay(
+                    Capsule(style: .continuous)
+                        .strokeBorder(Design.Palette.hairline, lineWidth: Design.Stroke.hairline)
+                )
+                .contentShape(Capsule(style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .help(loc("New Pinboard"))
+        .accessibilityLabel(loc("New Pinboard"))
+    }
+
+    /// One scope chip: All, Pinned, or a board. All three share a shape,
+    /// capsule, optional dot, optional count, optional ⌃N badge, so the row
+    /// reads as one control repeated, not three kinds of button.
+    private func scopeChip(
+        _ title: String,
+        scope: PinboardScope,
+        color: Color? = nil,
+        systemImage: String? = nil,
+        count: Int? = nil,
+        shortcutDigit: Int? = nil
+    ) -> some View {
+        let isOn = filter.board == scope
+        let isTargeted = dropTargetScope == scope
+        return Button {
+            activateBoard(scope)
+        } label: {
+            HStack(spacing: Design.Space.snug) {
+                if let systemImage {
+                    Image(systemName: systemImage)
+                        .font(.system(size: 9, weight: .semibold))
+                        .foregroundStyle(color ?? Color(nsColor: .secondaryLabelColor))
+                        .accessibilityHidden(true)
+                } else if let color {
+                    Circle()
+                        .fill(color)
+                        .frame(width: Design.Size.chipDot, height: Design.Size.chipDot)
+                        .accessibilityHidden(true)
+                }
+                Text(title)
+                    .font(Design.Typography.chip)
+                    .lineLimit(1)
+                if let count {
+                    Text("\(count)")
+                        .font(Design.Typography.chip)
+                        .monospacedDigit()
+                        .foregroundStyle(Color(nsColor: .secondaryLabelColor))
+                }
+                if let shortcutDigit {
+                    Text("⌃\(shortcutDigit)")
+                        .font(Design.Typography.keycap)
+                        .foregroundStyle(Color(nsColor: .secondaryLabelColor))
+                        .accessibilityHidden(true)
+                }
+            }
+            .foregroundStyle(Design.Palette.chipText(isOn: isOn))
+            .padding(.horizontal, Design.Space.roomy)
+            .padding(.vertical, Design.Space.snug)
+            .background(
+                Capsule(style: .continuous)
+                    .fill(Design.Palette.chipFill(isOn: isOn, increasedContrast: contrast == .increased))
+            )
+            .overlay(
+                Capsule(style: .continuous).strokeBorder(
+                    isTargeted ? Design.Palette.accent
+                        : isOn ? Design.Palette.chipSelectedBorder(increasedContrast: contrast == .increased)
+                            : Design.Palette.hairline,
+                    lineWidth: isOn || isTargeted ? Design.Stroke.selection : Design.Stroke.hairline
+                )
+            )
+            .contentShape(Capsule(style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(title)
+        .accessibilityHint(loc("Show this set of clips"))
+        .accessibilityAddTraits(isOn ? [.isButton, .isSelected] : .isButton)
+        // A card dropped here is filed under this scope. Only the internal
+        // clip type is accepted: the panel's own drags carry it, drops from
+        // other apps do not, so this never intercepts a paste-style drag.
+        .onDrop(of: [ClipDragProvider.clipUTType], isTargeted: dropTargetBinding(for: scope)) {
+            fileDroppedClip($0, to: scope)
+        }
+    }
+
+    /// A board's chip, plus the context menu the strip manages for it:
+    /// rename, colour, reorder, delete.
+    private func boardChip(_ board: Pinboard, index: Int) -> some View {
+        scopeChip(
+            board.name,
+            scope: .board(board.uuid),
+            color: board.color,
+            count: board.clips.count,
+            shortcutDigit: controlHeld && index < 9 ? index + 1 : nil
+        )
+        .help(index < 9 ? loc("%@ · ⌃%d", board.name, index + 1) : board.name)
+        .contextMenu {
+            Button(loc("Rename Pinboard…")) {
+                editingPinboard = board
+                pinboardName = board.name
+                namingPinboard = true
+            }
+            Menu(loc("Board Colour")) {
+                ForEach(PinboardColor.allCases, id: \.rawValue) { color in
+                    Button {
+                        board.colorName = color.rawValue
+                        try? modelContext.save()
+                    } label: {
+                        if board.colorName == color.rawValue {
+                            Label(color.label, systemImage: "checkmark.circle.fill")
+                        } else {
+                            Label(color.label, systemImage: "circle.fill")
+                        }
+                    }
+                }
+            }
+            Divider()
+            Button(loc("Move Earlier")) {
+                board.move(by: -1, in: modelContext)
+                try? modelContext.save()
+            }
+            .disabled(index == 0)
+            Button(loc("Move Later")) {
+                board.move(by: 1, in: modelContext)
+                try? modelContext.save()
+            }
+            .disabled(index == pinboards.count - 1)
+            Divider()
+            Button(loc("Delete Pinboard…")) {
+                pinboardPendingDelete = board
+            }
+        }
+    }
+
+    /// Per-scope `isTargeted` storage for the drop highlight.
+    private func dropTargetBinding(for scope: PinboardScope) -> Binding<Bool> {
+        Binding(
+            get: { dropTargetScope == scope },
+            set: { dropTargetScope = $0 ? scope : nil }
+        )
+    }
+
+    /// Switch the list to a pinboard scope and say where it went.
+    private func activateBoard(_ scope: PinboardScope) {
+        guard filter.board != scope else { return }
+        filter.board = scope
+        switch scope {
+        case .all:
+            announce(loc("All clips"))
+        case .pinned:
+            announce(loc("%@, %d clips", loc("Pinned"), boardlessPinCount))
+        case .board(let uuid):
+            if let board = pinboards.first(where: { $0.uuid == uuid }) {
+                announce(loc("%@, %d clips", board.name, board.clips.count))
+            }
+        }
+    }
+
+    /// ⌥← / ⌥→ step through the scopes in strip order: All, Pinned, then the
+    /// boards left to right, wrapping at both ends.
+    private func cycleBoard(_ delta: Int) {
+        let scopes: [PinboardScope] = [.all, .pinned] + pinboards.map { .board($0.uuid) }
+        guard let index = scopes.firstIndex(of: filter.board) else {
+            activateBoard(.all)
+            return
+        }
+        let next = (index + delta + scopes.count) % scopes.count
+        activateBoard(scopes[next])
+    }
+
+    /// ⌃1…⌃9 jumps straight to a board by strip position.
+    private func pinboardJump(_ digit: Int) {
+        guard digit >= 1, digit <= pinboards.count else { return }
+        activateBoard(.board(pinboards[digit - 1].uuid))
+    }
+
+    /// File the selected clip, or open the picker that asks where.
+    private func openPinboardPicker() {
+        guard let item = selectedItem else { return }
+        pinboardPickerItem = item
+    }
+
+    /// A name for a board the picker is asked to create for this clip: the
+    /// clip's first line, trimmed to the board-name limit.
+    private func namingProposal(for item: ClipItem) -> String {
+        let raw = (item.refinedTitle ?? item.text ?? "")
+            .components(separatedBy: .newlines)
+            .first ?? ""
+        return String(raw.trimmingCharacters(in: .whitespaces).prefix(Pinboard.maximumNameLength))
+    }
+
+    /// What the picker's outcome does to the clip it was opened for.
+    private func applyPinboardPick(_ action: PinboardPickerAction, for item: ClipItem) {
+        switch action {
+        case .dismiss(let picked):
+            // One clip belongs to at most one board, so only the first pick
+            // can apply; a second is the picker being generous. No pick is
+            // an answer too: it unpins nothing, it files nowhere.
+            if let boardUUID = picked.first,
+               let board = pinboards.first(where: { $0.uuid == boardUUID }) {
+                item.file(into: board)
+                announce(loc("Filed in %@", board.name))
+            } else {
+                item.removeFromBoard()
+                item.isPinned = true
+                announce(loc("Pinned"))
+            }
+        case .create(let name):
+            guard let board = Pinboard.create(named: name, in: modelContext) else {
+                return
+            }
+            item.file(into: board)
+            announce(loc("Pinboard created, %@ filed", board.name))
+        case .cancel:
+            break
+        }
+        try? modelContext.save()
+        pinboardPickerItem = nil
+    }
+
+    /// A clip dropped on a scope chip: the drag carries the clip's uuid as
+    /// in-process data (see `ClipDragProvider`), the drop resolves it back
+    /// to the row.
+    private func fileDroppedClip(_ providers: [NSItemProvider], to scope: PinboardScope) -> Bool {
+        guard let provider = providers.first else { return false }
+        provider.loadDataRepresentation(forTypeIdentifier: ClipDragProvider.clipTypeIdentifier) { data, _ in
+            guard let data,
+                  let uuid = UUID(uuidString: String(decoding: data, as: UTF8.self))
+            else { return }
+            Task { @MainActor in
+                fileClip(uuid, to: scope)
+            }
+        }
+        return true
+    }
+
+    /// File one clip under a scope: a board gets the clip, Pinned keeps the
+    /// pin and drops the board, All asks nothing.
+    private func fileClip(_ uuid: UUID, to scope: PinboardScope) {
+        var descriptor = FetchDescriptor<ClipItem>(predicate: #Predicate { $0.uuid == uuid })
+        descriptor.fetchLimit = 1
+        guard let item = try? modelContext.fetch(descriptor).first else { return }
+        file(item, to: scope)
+    }
+
+    /// The same, with the clip already in hand (the card's `Pin to ▸`
+    /// menu, which does not need the uuid lookup a drop does).
+    private func file(_ item: ClipItem, to scope: PinboardScope) {
+        switch scope {
+        case .all:
+            return
+        case .pinned:
+            item.pinToPinned()
+            announce(loc("Pinned"))
+        case .board(let boardUUID):
+            guard let board = pinboards.first(where: { $0.uuid == boardUUID }) else { return }
+            item.file(into: board)
+            announce(loc("Filed in %@", board.name))
+        }
+        try? modelContext.save()
+    }
+
+    /// Commit or abandon the strip's name field.
+    private func commitPinboardName() {
+        defer {
+            namingPinboard = false
+            editingPinboard = nil
+            pinboardName = ""
+        }
+        if let board = editingPinboard {
+            if board.rename(to: pinboardName, in: modelContext) {
+                try? modelContext.save()
+            }
+        } else if let board = Pinboard.create(named: pinboardName, in: modelContext) {
+            try? modelContext.save()
+            announce(loc("Pinboard created, %@", board.name))
+            // A new board is filed into immediately: the person who named it
+            // is looking at it.
+            filter.board = .board(board.uuid)
+        }
+    }
+
+    private func cancelPinboardName() {
+        namingPinboard = false
+        editingPinboard = nil
+        pinboardName = ""
+    }
+
+    /// Confirmed deletion: the clips return to Pinned, the survivors'
+    /// `order`s renumber, and the scope falls back if it was on this board.
+    private func deletePinboard(_ board: Pinboard) {
+        pinboardPendingDelete = nil
+        let name = board.name
+        let members = board.clips.count
+        board.delete(in: modelContext)
+        if filter.board == .board(board.uuid) { filter.board = .pinned }
+        try? modelContext.save()
+        announce(loc("%@ deleted, %d clips returned to Pinned", name, members))
+    }
+
+    /// True while a text field other than the search field owns the keys:
+    /// the board-name field and the picker's filter field. The panel's bare
+    /// key handlers stand down so typing reaches the field.
+    private var auxiliaryFieldActive: Bool {
+        namingPinboard || pinboardPickerItem != nil
+    }
+
     // MARK: Key handling
 
     /// The panel-level key handlers.
@@ -1615,8 +2196,9 @@ struct PanelContentView: View {
             // what ⇧ with a movement key does in every list on the system.
             .onKeyPress(keys: [.upArrow, .downArrow], phases: [.down, .repeat]) { press in
                 // While the editor is open every arrow belongs to the
-                // draft's caret, not the strip.
-                guard editing == nil else { return .ignored }
+                // draft's caret, not the strip; a board-name field owns
+                // them too.
+                guard editing == nil, !auxiliaryFieldActive else { return .ignored }
                 moveSelection(
                     press.key == .downArrow ? 1 : -1,
                     extending: press.modifiers.contains(.shift),
@@ -1625,12 +2207,33 @@ struct PanelContentView: View {
                 return .handled
             }
             .onKeyPress(keys: [.leftArrow, .rightArrow], phases: [.down, .repeat]) { press in
-                guard editing == nil else { return .ignored }
+                guard editing == nil, !auxiliaryFieldActive else { return .ignored }
                 // While there is a query to edit, the arrows belong to the
                 // caret — swallowing them would make the search field
                 // impossible to correct. With an empty field (the state the
                 // panel opens in) they move the selection.
                 guard readsVimKeys || filter.search.isEmpty else { return .ignored }
+                // ⌥← and ⌥→ hop between pinboard scopes (PRD 06) rather than
+                // moving the selection. Presses only: a held key that hopped
+                // boards on every repeat would be impossible to steer.
+                if press.modifiers.contains(.option) {
+                    guard press.phase == .down else { return .handled }
+                    // ⌥⇧← / ⌥⇧→, while scoped to a board, drag the selected
+                    // clip along its manual order: the reorder the scope
+                    // exists to hold.
+                    if press.modifiers.contains(.shift),
+                       case .board(let uuid) = filter.board,
+                       let board = pinboards.first(where: { $0.uuid == uuid }),
+                       let item = selectedItem {
+                        let earlier = press.key == .leftArrow
+                        item.move(within: board, by: earlier ? -1 : 1)
+                        try? modelContext.save()
+                        announce(earlier ? loc("Moved earlier") : loc("Moved later"))
+                        return .handled
+                    }
+                    cycleBoard(press.key == .rightArrow ? 1 : -1)
+                    return .handled
+                }
                 moveSelection(
                     press.key == .rightArrow ? 1 : -1,
                     extending: press.modifiers.contains(.shift),
@@ -1639,6 +2242,7 @@ struct PanelContentView: View {
                 return .handled
             }
             .onKeyPress(keys: [.return], phases: .down) { press in
+                guard !auxiliaryFieldActive else { return .ignored }
                 // While editing, ⌘Return is Save and Paste and every other
                 // Return is the draft's own newline: the editor must see it.
                 if editing != nil {
@@ -1651,7 +2255,7 @@ struct PanelContentView: View {
             }
             .onKeyPress(.space, phases: .down) { _ in
                 // Space in a draft types a space.
-                guard editing == nil else { return .ignored }
+                guard editing == nil, !auxiliaryFieldActive else { return .ignored }
                 if readsVimKeys {
                     escalatePreview()
                     return .handled
@@ -1668,6 +2272,20 @@ struct PanelContentView: View {
             // be held like the arrows; `handleVimKey` drops every other key's
             // repeats rather than running its command again.
             .onKeyPress(phases: [.down, .repeat]) { press in
+                // ⌃1…⌃9 jumps to the board at that strip position (PRD 06).
+                // Ahead of the vim state machine: digits are unbound there,
+                // but in normal mode an unbound key is still consumed.
+                if press.modifiers.contains(.control),
+                   !press.modifiers.contains(.command),
+                   !press.phase.contains(.repeat),
+                   // `press.key.character`, not `press.characters`: the
+                   // latter factors the modifier in, and Control turns a
+                   // digit into an unprintable control character.
+                   let digit = press.key.character.wholeNumberValue,
+                   (1...9).contains(digit) {
+                    pinboardJump(digit)
+                    return .handled
+                }
                 // The ⌘ shortcuts act on the press alone: a held ⌘1 should
                 // paste one clip, not one per repeat event.
                 if press.modifiers.contains(.command), !press.phase.contains(.repeat) {
@@ -1732,6 +2350,13 @@ struct PanelContentView: View {
                         editSelected()
                         return .handled
                     }
+                    // ⌘P opens the pinboard picker on the cursor clip (PRD
+                    // 06). P for Pinboard; the app has no Print menu item,
+                    // so the shortcut is free.
+                    if press.characters.lowercased() == "p" {
+                        openPinboardPicker()
+                        return .handled
+                    }
                     // ⌘Z is the session undo the edit toast advertises. The
                     // Edit menu's own Undo takes it first whenever a field
                     // has undos to give; this runs only once it does not,
@@ -1757,13 +2382,17 @@ struct PanelContentView: View {
             }
     }
 
-    /// Esc unwinds one layer at a time: editor → pending vim sequence →
-    /// visual mode → search mode → preview → panel.
+    /// Esc unwinds one layer at a time: editor → board-name field → pending
+    /// vim sequence → visual mode → search mode → preview → panel.
     private func handleEscape() {
         // The open editor is the innermost layer: leaving it (or answering
         // its discard confirm) never touches what is underneath.
         if editing != nil {
             editEscape()
+            return
+        }
+        if namingPinboard {
+            cancelPinboardName()
             return
         }
         if vim.hasPending {
@@ -1826,6 +2455,18 @@ struct PanelContentView: View {
                 }
                 .frame(maxWidth: .infinity)
                 .frame(height: Design.Size.cardStripHeight)
+            } else if filter.board != .all, filter.search.isEmpty,
+                      filter.type == .all, filter.source == nil {
+                // An empty board scope is not a failed search: nothing has
+                // been filed here yet, and the way to fix that is a pin or
+                // a drop, not a different query.
+                ContentUnavailableView {
+                    Label(boardScopeEmptyLabel, systemImage: "pin")
+                } description: {
+                    Text(loc("Pin a clip, or drag one onto the chip above."))
+                }
+                .frame(maxWidth: .infinity)
+                .frame(height: Design.Size.cardStripHeight)
             } else {
                 ContentUnavailableView {
                     Label(loc("No Matches"), systemImage: "magnifyingglass")
@@ -1852,6 +2493,7 @@ struct PanelContentView: View {
                                 index: index,
                                 isSelected: selected.contains(item.uuid),
                                 queuePosition: queue.position(of: item),
+                                pinboards: pinboards,
                                 isSavingNote: uiState.notesInFlight.contains(item.uuid),
                                 onPaste: { plain in actions.paste(item, plain) },
                                 onCopyOnly: { actions.copyOnly(item) },
@@ -1868,7 +2510,9 @@ struct PanelContentView: View {
                                 onRevealInFinder: { actions.revealInFinder(item) },
                                 onRevealSecret: { revealSecret(item) },
                                 onDemoteSecret: { demoteSecret(item) },
-                                onMarkSecret: { actions.promoteSecret(item) }
+                                onMarkSecret: { actions.promoteSecret(item) },
+                                onFile: { file(item, to: $0) },
+                                onOpenPinboardPicker: { pinboardPickerItem = item }
                             )
                             .id(item.uuid)
                             .contentShape(Rectangle())
@@ -1934,6 +2578,17 @@ struct PanelContentView: View {
                     }
                 }
             }
+        }
+    }
+
+    /// The empty-state title for a pinned scope that holds nothing.
+    private var boardScopeEmptyLabel: String {
+        switch filter.board {
+        case .all: return loc("No Clips Yet")
+        case .pinned: return loc("Nothing in Pinned yet")
+        case .board(let uuid):
+            let name = pinboards.first { $0.uuid == uuid }?.name ?? loc("Pinboard")
+            return loc("Nothing in %@ yet", name)
         }
     }
 
@@ -2034,6 +2689,17 @@ struct PanelContentView: View {
                 // A batch delete, not a loop over `items` — the query only
                 // holds the current page, and deleting that would leave the
                 // rest of the history behind.
+                //
+                // Board memberships are relationships, which the batch
+                // delete does not follow, so detach them first, same as
+                // `ClipStore.nukeAll`, or the boards keep orders pointing
+                // at dead rows. The boards themselves survive, empty.
+                for board in pinboards {
+                    for clip in board.clips {
+                        clip.pinboard = nil
+                        clip.pinboardOrder = nil
+                    }
+                }
                 try? modelContext.delete(model: ClipItem.self)
                 try? modelContext.save()
                 sourceAppNames = []
@@ -2346,7 +3012,7 @@ struct PanelContentView: View {
         // An open editor suspends vim wholesale: every key belongs to the
         // draft, bound or not.
         guard editing == nil else { return .ignored }
-        guard readsVimKeys else { return .ignored }
+        guard readsVimKeys, !auxiliaryFieldActive else { return .ignored }
         // Keys with dedicated handlers above must never be swallowed here.
         guard !Self.reservedCharacters.contains(press.key.character) else { return .ignored }
         guard let key = press.characters.first else { return .ignored }
@@ -2432,8 +3098,16 @@ struct PanelContentView: View {
         case .pin:
             let chosen = selectedItems
             guard !chosen.isEmpty else { return }
-            for item in chosen { item.togglePinned() }
+            for item in chosen {
+                // `unpin()` rather than a toggle: a clip that leaves the
+                // pinned set also leaves its board: membership needs the
+                // pin (PRD 06). Pinning goes through `togglePinned` so an
+                // expiring secret drops its timer.
+                if item.isPinned { item.unpin() } else { item.togglePinned() }
+            }
             try? modelContext.save()
+        case .pinboard:
+            openPinboardPicker()
         case .delete:
             let chosen = selectedItems
             guard !chosen.isEmpty else { return }

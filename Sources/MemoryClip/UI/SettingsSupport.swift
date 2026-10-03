@@ -294,6 +294,10 @@ enum ShortcutReference {
             ShortcutEntry(keys: "Return", detail: loc("Paste the selected clip")),
             ShortcutEntry(keys: "⇧Return", detail: loc("Paste as plain text")),
             ShortcutEntry(keys: "⌘1…⌘9", detail: loc("Paste the first nine results")),
+            ShortcutEntry(keys: "⌘P", detail: loc("File the selected clip under a pinboard")),
+            ShortcutEntry(keys: "⌥← ⌥→", detail: loc("Move between All, Pinned and the pinboards")),
+            ShortcutEntry(keys: "⌃1…⌃9", detail: loc("Jump to the pinboard at that position")),
+            ShortcutEntry(keys: "⌥⇧← ⌥⇧→", detail: loc("Move the selected clip along its pinboard")),
             ShortcutEntry(keys: "⌘C", detail: loc("Copy the selected clip without pasting")),
             ShortcutEntry(
                 keys: "⇧↑ ⇧↓",
@@ -327,6 +331,7 @@ enum ShortcutReference {
             ShortcutEntry(keys: "⌃d / ⌃u", detail: loc("Half-page down / up")),
             ShortcutEntry(keys: "o / ⇧O", detail: loc("Paste / paste as plain text")),
             ShortcutEntry(keys: "p", detail: loc("Pin or unpin the selected clip")),
+            ShortcutEntry(keys: "P", detail: loc("File the selected clip under a pinboard")),
             ShortcutEntry(keys: "n", detail: loc("Save the selected clip as a note")),
             ShortcutEntry(keys: "c", detail: loc("Add the selected clip to the calendar")),
             ShortcutEntry(keys: "e", detail: loc("Edit the selected clip in the preview pane")),

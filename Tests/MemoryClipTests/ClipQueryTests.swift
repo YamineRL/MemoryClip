@@ -16,7 +16,7 @@ final class ClipQueryTests: XCTestCase {
 
     override func setUpWithError() throws {
         container = try ModelContainer(
-            for: Schema([ClipItem.self]),
+            for: Schema([ClipItem.self, Pinboard.self]),
             configurations: [ModelConfiguration(isStoredInMemoryOnly: true)]
         )
         context = ModelContext(container)
@@ -308,6 +308,91 @@ final class ClipQueryTests: XCTestCase {
         let fetched = try context.fetch(filter.fetchDescriptor())
         XCTAssertTrue(fetched.contains { $0.uuid == shot.uuid }, "SQL dropped the screenshot")
         XCTAssertEqual(filter.refine(fetched).map(\.uuid), [shot.uuid])
+    }
+
+    // MARK: Pinboard scope (PRD 06)
+
+    @discardableResult
+    private func board(named name: String) -> Pinboard {
+        let board = Pinboard(name: name, colorName: "blue", order: 0)
+        context.insert(board)
+        return board
+    }
+
+    /// "Pinned" is the board-less set: a pinned clip filed on a board must
+    /// not appear there, or the chip would count it twice.
+    func testPinnedScopeExcludesBoardedClips() throws {
+        let loose = insert(kind: .text, text: "loose pin")
+        loose.isPinned = true
+        let filed = insert(kind: .text, text: "filed pin")
+        filed.file(into: board(named: "Addresses"))
+        insert(kind: .text, text: "unpinned")
+        try context.save()
+
+        XCTAssertEqual(texts(try visible(ClipFilter(board: .pinned))), ["loose pin"])
+    }
+
+    /// A board scope lists its members in MANUAL order, not the fetch's
+    /// recency order: the manual arrangement is the whole point of a board.
+    func testBoardScopeListsMembersInManualOrder() throws {
+        let board = board(named: "Commands")
+        let newest = insert(kind: .text, text: "newest")
+        let oldest = insert(kind: .text, text: "oldest")
+        let middle = insert(kind: .text, text: "middle")
+        insert(kind: .text, text: "not a member")
+        newest.file(into: board, order: 2)
+        oldest.file(into: board, order: 0)
+        middle.file(into: board, order: 1)
+        try context.save()
+
+        XCTAssertEqual(
+            texts(try visible(ClipFilter(board: .board(board.uuid)))),
+            ["oldest", "middle", "newest"]
+        )
+    }
+
+    /// The board fetch is deliberately unbounded: every member must list,
+    /// past the page cap the flat scopes obey.
+    func testBoardScopeFetchesBeyondThePageLimit() throws {
+        let board = board(named: "Big")
+        for i in 0..<(ClipFilter.pageSize + 10) {
+            let item = insert(kind: .text, text: "member \(i)")
+            item.file(into: board)
+        }
+        try context.save()
+
+        XCTAssertEqual(
+            try visible(ClipFilter(board: .board(board.uuid)), limit: 10).count,
+            ClipFilter.pageSize + 10,
+            "a board shows every member, not one page of them"
+        )
+    }
+
+    /// A search inside a board narrows it, and a member that matches the
+    /// search on ANOTHER board stays out.
+    func testSearchNarrowsWithinABoard() throws {
+        let addresses = board(named: "Addresses")
+        let commands = board(named: "Commands")
+        let home = insert(kind: .text, text: "home address")
+        let work = insert(kind: .text, text: "work address")
+        let decoy = insert(kind: .text, text: "address of the command board")
+        home.file(into: addresses)
+        work.file(into: addresses)
+        decoy.file(into: commands)
+        try context.save()
+
+        XCTAssertEqual(
+            Set(texts(try visible(ClipFilter(search: "address", board: .board(addresses.uuid))))),
+            ["home address", "work address"]
+        )
+    }
+
+    /// A scope pointing at a board that no longer exists lists nothing:
+    /// the stale chip must not fall open onto the whole history.
+    func testABoardScopeWithNoSuchBoardIsEmpty() throws {
+        insert(kind: .text, text: "hello").isPinned = true
+        try context.save()
+        XCTAssertTrue(try visible(ClipFilter(board: .board(UUID()))).isEmpty)
     }
 
     func testKindRawValuesMirrorTheTypeFilter() {

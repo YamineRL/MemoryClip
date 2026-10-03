@@ -22,7 +22,7 @@ final class ClipStore {
     /// `secrets` defaults to the vault beside the store; nil is only ever
     /// handed in by an in-memory store whose test wants no vault at all.
     init(inMemory: Bool = false, secrets: SecretVault? = nil) throws {
-        let schema = Schema([ClipItem.self])
+        let schema = Schema([ClipItem.self, Pinboard.self])
         self.secrets = secrets ?? (inMemory ? nil : SecretVault(directory: Self.storeDirectory))
         if inMemory {
             container = try ModelContainer(
@@ -298,10 +298,12 @@ final class ClipStore {
     ///
     /// - Parameter items: clips built by `ExportService.item(from:)`, each
     ///   already carrying its derived hash.
-    /// - Returns: how many were new.
+    /// - Returns: the clips that were actually inserted, so the caller can
+    ///   file exactly those into pinboards (a clip the store already held is
+    ///   left untouched, boards and all).
     @discardableResult
-    func insertImported(_ items: [ClipItem]) -> Int {
-        var inserted = 0
+    func insertImported(_ items: [ClipItem]) -> [ClipItem] {
+        var inserted: [ClipItem] = []
         // A file can hold the same clip twice, and a pending insert is not
         // reliably visible to the fetch below, so identity is tracked here as
         // well as in the store.
@@ -310,14 +312,111 @@ final class ClipStore {
             guard seen.insert(item.contentHash).inserted else { continue }
             guard fetchByHash(item.contentHash).isEmpty else { continue }
             context.insert(item)
-            inserted += 1
+            inserted.append(item)
         }
-        guard inserted > 0 else { return 0 }
+        guard !inserted.isEmpty else { return [] }
         save()
         if items.contains(where: { $0.kind == .image }) {
             scheduleThumbnailBackfill()
         }
         return inserted
+    }
+
+    // MARK: - Pinboards (PRD 06)
+
+    /// Every pinboard, in chip order.
+    func pinboards() -> [Pinboard] {
+        Pinboard.all(in: context)
+    }
+
+    /// One board row for an import: the normalized name, the colour the file
+    /// claimed when it names a real one, `order` as given.
+    private func createImportBoard(
+        named raw: String,
+        colorHint: String?,
+        order: Int,
+        boards: [Pinboard]
+    ) -> Pinboard? {
+        guard let name = Pinboard.normalizedName(raw) else { return nil }
+        let color = PinboardColor(named: colorHint) ?? PinboardColor.nextUnused(in: boards)
+        let board = Pinboard(name: name, colorName: color.rawValue, order: order)
+        context.insert(board)
+        return board
+    }
+
+    /// Recreate the pinboards an export lists, appending any that do not
+    /// exist yet in the file's order. Names merge case-insensitively: an
+    /// existing board keeps its own colour and position, and only the
+    /// missing ones are created.
+    ///
+    /// - Returns: the live boards keyed by lowercased name, for the caller's
+    ///   clip-filing pass.
+    @discardableResult
+    func importPinboards(_ records: [PinboardExport]) -> [String: Pinboard] {
+        var boards: [String: Pinboard] = [:]
+        var nextOrder = -1
+        for board in Pinboard.all(in: context) {
+            boards[board.name.lowercased()] = board
+            nextOrder = max(nextOrder, board.order)
+        }
+        var changed = false
+        for record in records {
+            let key = record.name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            guard boards[key] == nil,
+                  let board = createImportBoard(
+                      named: record.name,
+                      colorHint: record.color,
+                      order: nextOrder + 1,
+                      boards: Array(boards.values)
+                  )
+            else { continue }
+            nextOrder = board.order
+            boards[key] = board
+            changed = true
+        }
+        if changed { save() }
+        return boards
+    }
+
+    /// File freshly imported clips into the boards their records name.
+    ///
+    /// `pairs` must be narrowed to the clips `insertImported` actually
+    /// accepted: the import leaves a clip the store already holds untouched,
+    /// boards included. A `pinboard` name no top-level record describes is
+    /// created on the spot, taking its colour from the clip's
+    /// `pinboardColor` hint (or the next unused one). Boards the export
+    /// describes but no clip references are still created: a board with no
+    /// members is a real board.
+    func fileImported(
+        _ pairs: [(item: ClipItem, record: ClipExport)],
+        pinboards records: [PinboardExport]
+    ) {
+        var boards = importPinboards(records)
+        var nextOrder = (boards.values.map(\.order).max() ?? -1) + 1
+        var filed = false
+        for (item, record) in pairs {
+            guard let raw = record.pinboard,
+                  let name = Pinboard.normalizedName(raw) else { continue }
+            let key = name.lowercased()
+            if boards[key] == nil,
+               let board = createImportBoard(
+                   named: name,
+                   colorHint: record.pinboardColor,
+                   order: nextOrder,
+                   boards: Array(boards.values)
+               ) {
+                nextOrder += 1
+                boards[key] = board
+            }
+            guard let board = boards[key] else { continue }
+            // The order the file carried is written back verbatim: into a
+            // fresh board it restores the export's manual order; into an
+            // existing one it may tie a member's, which `comesBefore`
+            // absorbs by createdAt.
+            item.file(into: board, order: record.pinboardOrder)
+            filed = true
+        }
+        if filed { save() }
     }
 
     /// Record a screenshot that landed in the screenshot folder.
@@ -544,9 +643,11 @@ final class ClipStore {
     }
 
     func togglePinned(_ item: ClipItem) {
-        // The model's own toggle so pinning an expiring secret clears its
-        // expiry whoever called.
-        item.togglePinned()
+        // Both rules at once: pinning an expiring secret clears its expiry
+        // (`togglePinned`), and a board member that loses its pin leaves the
+        // board with it (`unpin`) - "Unpin" must never strand a clip in a
+        // board it is no longer in.
+        if item.isPinned { item.unpin() } else { item.togglePinned() }
         save()
     }
 
@@ -555,13 +656,23 @@ final class ClipStore {
         save()
     }
 
-    /// Delete the entire history (pinned items included).
+    /// Delete the entire history (pinned items included). Pinboards survive:
+    /// they are groupings, not history, so a wipe leaves them standing empty.
     ///
     /// A batch delete: fetching every row and deleting it object-by-object
     /// froze the UI for 7.4 s at 50k clips (3.1 s in-memory), all of it on
-    /// the main actor.
+    /// the main actor. A batch delete bypasses relationship rules, so the
+    /// board memberships are detached first; otherwise every board's `clips`
+    /// would keep pointing at rows that no longer exist.
     func nukeAll() {
         do {
+            for board in Pinboard.all(in: context) {
+                for clip in board.clips {
+                    clip.pinboard = nil
+                    clip.pinboardOrder = nil
+                }
+            }
+            save()
             try context.delete(model: ClipItem.self)
             save()
             log.notice("nukeAll: deleted all clips")

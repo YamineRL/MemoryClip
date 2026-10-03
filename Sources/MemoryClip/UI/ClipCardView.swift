@@ -39,6 +39,8 @@ struct ClipCardView: View {
     let isSelected: Bool
     /// 1-based place in the paste queue, or nil when not queued.
     let queuePosition: Int?
+    /// Every pinboard, for the `Pin to ▸` menu (PRD 06).
+    let pinboards: [Pinboard]
     /// True while this clip's note is being written.
     let isSavingNote: Bool
     let onPaste: (Bool) -> Void
@@ -59,6 +61,11 @@ struct ClipCardView: View {
     let onDemoteSecret: () -> Void
     /// Ordinary text clip's "Mark as Secret".
     let onMarkSecret: () -> Void
+    /// File the clip under a pinboard scope (PRD 06).
+    let onFile: (PinboardScope) -> Void
+    /// Open the board picker for this clip: the menu's `Pinboard…` item,
+    /// for when the list of boards is longer than a submenu should carry.
+    let onOpenPinboardPicker: () -> Void
 
     @State private var isHovering = false
     /// Cached instant-calc result. Computed once per content change off the
@@ -70,6 +77,7 @@ struct ClipCardView: View {
         index: Int,
         isSelected: Bool,
         queuePosition: Int? = nil,
+        pinboards: [Pinboard] = [],
         isSavingNote: Bool = false,
         onPaste: @escaping (Bool) -> Void,
         onCopyOnly: @escaping () -> Void,
@@ -84,12 +92,15 @@ struct ClipCardView: View {
         onRevealInFinder: @escaping () -> Void = {},
         onRevealSecret: @escaping () -> Void = {},
         onDemoteSecret: @escaping () -> Void = {},
-        onMarkSecret: @escaping () -> Void = {}
+        onMarkSecret: @escaping () -> Void = {},
+        onFile: @escaping (PinboardScope) -> Void = { _ in },
+        onOpenPinboardPicker: @escaping () -> Void = {}
     ) {
         self.item = item
         self.index = index
         self.isSelected = isSelected
         self.queuePosition = queuePosition
+        self.pinboards = pinboards
         self.isSavingNote = isSavingNote
         self.onPaste = onPaste
         self.onCopyOnly = onCopyOnly
@@ -105,6 +116,8 @@ struct ClipCardView: View {
         self.onRevealSecret = onRevealSecret
         self.onDemoteSecret = onDemoteSecret
         self.onMarkSecret = onMarkSecret
+        self.onFile = onFile
+        self.onOpenPinboardPicker = onOpenPinboardPicker
     }
 
     var body: some View {
@@ -197,6 +210,34 @@ struct ClipCardView: View {
                 Divider()
                 Button(queuePosition == nil ? loc("Add to Queue") : loc("Remove from Queue")) { onToggleQueue() }
                 Button(item.isPinned ? loc("Unpin") : loc("Pin")) { togglePinned() }
+                // `Pin to ▸` files the clip under a board: the pinned sets are
+                // listed flat (Pinned for no board at all, then every board)
+                // with the clip's current filing checked. Picked from the clip
+                // a selection cannot speak for, this is the one-clip menu.
+                Menu(loc("Pin to")) {
+                    Button {
+                        onFile(.pinned)
+                    } label: {
+                        if item.isPinned, item.pinboard == nil {
+                            Label(loc("Pinned"), systemImage: "checkmark")
+                        } else {
+                            Label(loc("Pinned"), systemImage: "pin")
+                        }
+                    }
+                    ForEach(pinboards, id: \.uuid) { board in
+                        Button {
+                            onFile(.board(board.uuid))
+                        } label: {
+                            if item.pinboard?.uuid == board.uuid {
+                                Label(board.name, systemImage: "checkmark")
+                            } else {
+                                Label(board.name, systemImage: "pin")
+                            }
+                        }
+                    }
+                    Divider()
+                    Button(loc("Pinboard…")) { onOpenPinboardPicker() }
+                }
                 Button(loc("Delete"), role: .destructive) { deleteItem() }
             }
         }
@@ -316,7 +357,16 @@ struct ClipCardView: View {
                         .background(Circle().fill(Design.Palette.accent))
                         .help(loc("Queued at position %d", queuePosition))
                 }
-                if item.isPinned {
+                if let board = item.pinboard {
+                    // The pin takes the board's colour: at a glance the card
+                    // says not just "pinned" but "pinned where". The board's
+                    // name is in the card's accessibility label; a colour
+                    // alone is not a label.
+                    Image(systemName: "pin.fill")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundStyle(board.color)
+                        .accessibilityHidden(true)
+                } else if item.isPinned {
                     Image(systemName: "pin.fill")
                         .font(.system(size: 10, weight: .semibold))
                         // The system orange, which macOS retunes per
@@ -732,7 +782,8 @@ struct ClipCardView: View {
             calcResult: calcSuffix,
             isScreenshot: item.isScreenshot,
             hasNote: item.notePath != nil,
-            hasCalendarEvent: item.calendarEventID != nil
+            hasCalendarEvent: item.calendarEventID != nil,
+            pinboardName: item.pinboard?.name
         )
     }
 
@@ -768,7 +819,14 @@ struct ClipCardView: View {
     // MARK: Mutations
 
     private func togglePinned() {
-        item.togglePinned()
+        // `unpin()` rather than a toggle: a clip that leaves the pinned set
+        // also leaves its board: membership needs the pin (PRD 06). Pinning
+        // goes through `togglePinned` so an expiring secret drops its timer.
+        if item.isPinned {
+            item.unpin()
+        } else {
+            item.togglePinned()
+        }
         try? modelContext.save()
     }
 

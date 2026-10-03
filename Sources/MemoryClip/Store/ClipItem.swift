@@ -151,6 +151,22 @@ final class ClipItem {
     /// lightweight migration adds a nullable column to rows that predate it,
     /// which a mandatory attribute without a default cannot.
     var calendarEventID: String?
+    /// The pinboard this clip is filed in (PRD 06), or nil. nil is what the
+    /// panel's "Pinned" chip shows: `isPinned` and no board.
+    ///
+    /// Optional and nullable, so an existing store migrates in place:
+    /// SwiftData's lightweight migration adds the nullable relationship
+    /// column without rewriting pinned rows.
+    var pinboard: Pinboard?
+    /// Position inside the pinboard's manual order, maintained by
+    /// `PinboardOrder`. nil means unordered: a clip that was never filed.
+    /// Optional, so an existing store migrates in place.
+    var pinboardOrder: Double? = nil
+
+    /// `ClipDisplayable`'s view of `pinboard`: the board's identifier,
+    /// comparable without touching the relationship.
+    var pinboardUUID: UUID? { pinboard?.uuid }
+
     /// The URL as it was copied, when `text` holds a cleaned version of it.
     /// nil on every clip that was not cleaned, which is what the badge and
     /// the preview's restore row read.
