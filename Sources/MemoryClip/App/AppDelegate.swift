@@ -79,6 +79,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     static let maintenanceStartDelay: Duration = .seconds(2)
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // Probe for the secrets work: `--secrets-selftest` exercises the
+        // Secure Enclave key (create or reload, seal, open with user
+        // presence, survival across a rebuilt binary) and exits, instead of
+        // the normal launch.
+        if SecretsSelfTest.isRequested {
+            SecretsSelfTest.runAndExit()
+        }
+
         SettingsKeys.registerDefaults()
 
         // Phase-2 defaults: sensitive-content filter (on), the user's own
@@ -86,6 +94,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         SensitiveFilter.registerDefaults()
         ExcludedApps.registerDefaults()
         AppLockService.registerDefaults()
+
+        // Secrets defaults: keep recognised secrets sealed under the Secure
+        // Enclave (on, for new and existing users), with its three switches
+        // on (generic tokens, code expiry, clipboard clearing).
+        SecretSettings.registerDefaults()
 
         // The apps a paste is always stripped to plain text for, seeded with
         // the terminals and editors (`PlainPasteApps.defaultBundleIDs`).
@@ -136,18 +149,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         screenshotWatcher = ScreenshotWatcher(store: store)
         noteCoordinator = NoteCoordinator(store: store)
         calendarCoordinator = CalendarCoordinator(store: store)
+        let secretsService = SecretsService(store: store, pasteService: pasteService)
         panelController = PanelController(
             store: store,
             pasteService: pasteService,
             watcher: watcher,
             noteCoordinator: noteCoordinator,
-            calendarCoordinator: calendarCoordinator
+            calendarCoordinator: calendarCoordinator,
+            secretsService: secretsService
         )
         statusController = StatusController(
             store: store,
             watcher: watcher,
             pasteService: pasteService,
-            panelController: panelController
+            panelController: panelController,
+            secretsService: secretsService
         )
 
         watcher.sourceAppProvider = { [weak self] in

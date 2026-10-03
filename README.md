@@ -387,6 +387,33 @@ which sends nothing about you and installs nothing on its own).
 - **Optional Touch ID lock** gates the panel, redacts the dropdown to clip kinds, and
   always re-authenticates for Export and Clear All History.
 
+### Secrets
+
+Copy an API key, a private key, a token, a connection string or a one-time code and
+MemoryClip recognises it — the whole clip has to match a pattern, so a password inside a
+paragraph is left alone — and, by default, **keeps it encrypted**: the row in your
+history holds only ciphertext, sealed with a P-256 key that lives in this Mac's Secure
+Enclave and can never leave it (ephemeral key agreement, HKDF-SHA256, AES-GCM). The card
+shows a lock, a label and a mask like `AKIA••••••••••••7Q2X` — which is also all that
+search can match — and the value behind it asks for Touch ID or your password before it
+is shown or pasted. One authentication covers 60 seconds of reveals, so a queue of
+secrets pastes behind a single prompt. Two alternatives live in **Settings → Privacy →
+Secrets**: **Don't keep it** drops the clip entirely, and **Keep it like any other clip**
+turns the feature off. Right-click → **Not a Secret** unseals a false positive once, and
+**Mark as Secret** seals an ordinary clip you already have.
+
+A reveal lasts 30 seconds and relocks on Esc or on changing clips; a concealed paste is
+wiped from the clipboard 90 seconds later (both switchable). One-time codes — recognised
+only in Messages and Mail — delete themselves after ten minutes unless pinned. Exported
+histories omit secret rows entirely and the export dialog says how many were left out.
+
+**What this protects against:** a copied store directory, a Time Machine backup, another
+process reading the SwiftData file — everywhere the ciphertext goes, the key stays in the
+enclave. **What it does not:** malware running as you while a secret is revealed, the
+clipboard for the 90 seconds a pasted secret lives there, secrets copied while plaintext
+mode was selected, and a move to another Mac — the enclave key cannot leave this one, so
+sealed history does not follow you.
+
 VoiceOver is supported throughout: rows carry labels for kind, content and state, mode and
 selection changes are announced, and every row action is reachable from the keyboard.
 

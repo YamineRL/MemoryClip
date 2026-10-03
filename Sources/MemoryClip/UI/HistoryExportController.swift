@@ -83,7 +83,7 @@ final class HistoryExportController {
             log.error("Export skipped: no store")
             return
         }
-        guard confirmExport(asCSV: asCSV) else { return }
+        guard confirmExport(asCSV: asCSV, secretCount: store.secretCount()) else { return }
 
         let savePanel = NSSavePanel()
         savePanel.canCreateDirectories = true
@@ -146,7 +146,13 @@ final class HistoryExportController {
 
         var written = 0
         while true {
+            // Secret rows never reach the file: an export is a bulk
+            // disclosure in plaintext, and a sealed clip's only lawful
+            // export form (its ciphertext) is useless anywhere else. The
+            // predicate, not a skip in the loop, so `written` still counts
+            // real pages and paging never stalls on a page of secrets.
             var descriptor = FetchDescriptor<ClipItem>(
+                predicate: #Predicate { !$0.isSecret },
                 sortBy: [SortDescriptor(\ClipItem.createdAt, order: .reverse)]
             )
             descriptor.fetchOffset = written
@@ -281,18 +287,25 @@ final class HistoryExportController {
         alert.runModal()
     }
 
-    /// Spell out exactly what the exported file contains before writing it.
-    private func confirmExport(asCSV: Bool) -> Bool {
+    /// Spell out exactly what the exported file contains — and what it does
+    /// not — before writing it. `secretCount` names the omission rather than
+    /// leaving it implied: "0 clips exported" next to a visible secret would
+    /// otherwise read as a bug.
+    private func confirmExport(asCSV: Bool, secretCount: Int) -> Bool {
         let alert = NSAlert()
         alert.alertStyle = .warning
         alert.messageText = loc("Export your entire clipboard history?")
         let payload = asCSV
             ? loc("every clip's text, source app and timestamps")
             : loc("every clip's text, source app, timestamps and Base64 copies of image and rich-text clips")
-        alert.informativeText = loc(
-            "The file is UNENCRYPTED plain text containing %@ — including any passwords, tokens or other secrets you have copied.\n\nMemoryClip writes it readable by your user account only, but anyone who can open the file can read your whole history. Store it somewhere you trust, or delete it when done.",
+        var informative = loc(
+            "The file is UNENCRYPTED plain text containing %@ — including any secrets you kept as ordinary clips.\n\nMemoryClip writes it readable by your user account only, but anyone who can open the file can read your whole history. Store it somewhere you trust, or delete it when done.",
             payload
         )
+        if secretCount > 0 {
+            informative += "\n\n" + loc("%d secrets are not exported.", secretCount)
+        }
+        alert.informativeText = informative
         alert.addButton(withTitle: loc("Export…"))
         alert.addButton(withTitle: loc("Cancel"))
         return alert.runModal() == .alertFirstButtonReturn

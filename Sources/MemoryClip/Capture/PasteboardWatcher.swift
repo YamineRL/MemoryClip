@@ -116,6 +116,31 @@ final class PasteboardWatcher {
             return false
         }
 
+        // The secrets check runs after the card check and before the clip
+        // becomes a row, so the two "this does not go into the store" rules
+        // share one boundary. `.ordinary` is almost every capture; the other
+        // dispositions own the clip entirely.
+        switch store.secretDisposition(for: clip, sourceBundleID: sourceBundleID) {
+        case .ordinary:
+            break
+        case .drop(let kind):
+            // "Don't keep it" stores nothing: the plaintext stays only on
+            // the pasteboard the user copied it to.
+            log.notice("Dropped secret clip (\(kind.label, privacy: .public)): mode")
+            return false
+        case .protect(let kind, let plaintext):
+            if store.insertSecret(
+                kind: kind,
+                plaintext: plaintext,
+                sourceBundleID: sourceBundleID,
+                sourceAppName: sourceAppName
+            ) != nil {
+                log.notice("Captured secret clip (\(kind.label, privacy: .public))")
+                SecretNotice.postOnceIfNeeded()
+            }
+            return true
+        }
+
         rewriteCleanedLink(clip, on: pasteboard)
 
         store.insert(

@@ -252,4 +252,25 @@ enum ClipDisplay {
 
         return parts.joined(separator: ", ")
     }
+
+    /// The spoken label for a secret row: "Secret, AWS access key, from
+    /// Terminal, 2 minutes ago, locked". The mask is not spoken — its
+    /// bullets read as noise, and its last-four characters are not a
+    /// sentence. A one-time code that will delete itself says so.
+    static func secretRowLabel(
+        label: String?,
+        appName: String?,
+        relativeTime: String,
+        expiresAt: Date? = nil
+    ) -> String {
+        var parts: [String] = [loc("Secret")]
+        if let label, !label.isEmpty { parts.append(label) }
+        if let appName, !appName.isEmpty { parts.append(loc("from %@", appName)) }
+        if !relativeTime.isEmpty { parts.append(relativeTime) }
+        if let expiresAt {
+            parts.append(loc("forgets in %d min", max(1, Int(expiresAt.timeIntervalSinceNow / 60))))
+        }
+        parts.append(loc("Locked"))
+        return parts.joined(separator: ", ")
+    }
 }
