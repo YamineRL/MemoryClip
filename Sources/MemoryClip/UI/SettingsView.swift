@@ -320,24 +320,59 @@ private struct GeneralSettingsPane: View {
 // MARK: - History
 
 private struct HistorySettingsPane: View {
-    @AppStorage(SettingsKeys.historyCap) private var historyCap = 200
-    @AppStorage(SettingsKeys.retentionDays) private var retentionDays = 30
+    @AppStorage(SettingsKeys.historyCap) private var historyCap = SettingsKeys.defaultHistoryCap
+    @AppStorage(SettingsKeys.retentionDays) private var retentionDays = SettingsKeys.defaultRetentionDays
+
+    /// A picked limit that would delete clips, parked while its confirmation
+    /// sheet is up. `doomed` is the sheet's number, counted by the same
+    /// `ClipStore.deletionCount(under:)` the enforce pass consults, so the
+    /// figure the user confirms is the figure that goes.
+    @State private var pendingLimit: PendingLimit?
+
+    /// The Storage row's total, nil until the background count lands; the
+    /// row says "Counting…" until then.
+    @State private var storageReadout: StorageReadout?
+
+    /// The caps the Keep-up-to menu offers, smallest first. 0 is the
+    /// store's "no cap" value and renders as Unlimited.
+    private static let capChoices = [200, 1_000, 5_000, 10_000, 0]
+
+    /// Digit grouping in the catalog language, so a French UI reads "5 000"
+    /// in the picker exactly as the confirmation sheet does.
+    private static let capFormat = IntegerFormatStyle<Int>.number.locale(L10n.locale)
 
     var body: some View {
         Form {
             Section(loc("Limits")) {
-                Stepper(value: $historyCap, in: 10...10_000, step: 50) {
+                Picker(selection: capSelection) {
+                    // A stored cap the stepper wrote but the menu does not
+                    // offer (350, 1,750…) rides along as its own top item,
+                    // so the current setting stays visible and is never
+                    // rewritten under the user. Picking a listed cap drops
+                    // it for good.
+                    if !Self.capChoices.contains(historyCap) {
+                        Text(historyCap, format: Self.capFormat).tag(historyCap)
+                    }
+                    ForEach(Self.capChoices, id: \.self) { choice in
+                        if choice == 0 {
+                            Text(loc("Unlimited")).tag(choice)
+                        } else {
+                            Text(choice, format: Self.capFormat).tag(choice)
+                        }
+                    }
+                } label: {
                     Label {
-                        Text(loc("Keep up to %d clips", historyCap))
+                        Text(loc("Keep up to"))
                     } icon: {
                         SettingsIcon(symbol: "tray.full.fill", tint: Color(nsColor: .systemTeal))
                     }
                 }
-                Picker(selection: $retentionDays) {
-                    Text(loc("Forever")).tag(0)
+                Picker(selection: retentionSelection) {
                     Text(loc("7 days")).tag(7)
                     Text(loc("30 days")).tag(30)
                     Text(loc("90 days")).tag(90)
+                    Text(loc("1 year")).tag(365)
+                    Text(loc("Forever")).tag(0)
                 } label: {
                     Label {
                         Text(loc("Delete clips older than"))
@@ -349,6 +384,16 @@ private struct HistorySettingsPane: View {
             }
 
             Section(loc("Storage")) {
+                LabeledContent {
+                    Text(storageText)
+                } label: {
+                    Label {
+                        Text(loc("On this Mac"))
+                    } icon: {
+                        SettingsIcon(symbol: "internaldrive.fill", tint: Color(nsColor: .systemGray))
+                    }
+                }
+                SettingsHint(loc("Screenshots stay where macOS saved them and are not counted."))
                 SettingsHint(loc("History lives in a local SwiftData file on this Mac. Clear it any time from the menu-bar menu (\"Clear All History…\") or the panel's nuke button."))
             }
 
@@ -403,6 +448,135 @@ private struct HistorySettingsPane: View {
             }
         }
         .formStyle(.grouped)
+        .task { await refreshStorage() }
+        .confirmationDialog(
+            confirmationTitle,
+            isPresented: limitConfirmationBinding,
+            titleVisibility: .visible
+        ) {
+            Button(loc("Delete"), role: .destructive) { confirmPendingLimit() }
+            Button(loc("Cancel"), role: .cancel) { pendingLimit = nil }
+                .keyboardShortcut(.defaultAction)
+        } message: {
+            Text(loc("Pinned clips are kept. This cannot be undone."))
+        }
+    }
+
+    /// Route a picked limit through the confirmation sheet when it would
+    /// delete clips, or write it straight through when it would not. A
+    /// raise, a return to Unlimited or Forever, and any limit the store is
+    /// already inside never ask.
+    private func propose(_ limit: ClipStore.HistoryLimit) {
+        let stored: Int
+        switch limit {
+        case .cap: stored = historyCap
+        case .retentionDays: stored = retentionDays
+        }
+        // Re-picking the current value is a no-op, not a deletion the store
+        // happens to be behind on.
+        guard limit.value != stored else { return }
+        let doomed = HistoryLimitsController.shared.deletionCount(under: limit)
+        if doomed > 0 {
+            pendingLimit = PendingLimit(limit: limit, doomed: doomed)
+        } else {
+            apply(limit)
+        }
+    }
+
+    /// Write the limit and enforce it now: leaving the counted rows for the
+    /// next maintenance pass would make a confirmed delete look like it did
+    /// not happen.
+    private func apply(_ limit: ClipStore.HistoryLimit) {
+        switch limit {
+        case .cap(let cap): historyCap = cap
+        case .retentionDays(let days): retentionDays = days
+        }
+        HistoryLimitsController.shared.enforce(limit)
+    }
+
+    private func confirmPendingLimit() {
+        guard let pendingLimit else { return }
+        self.pendingLimit = nil
+        apply(pendingLimit.limit)
+    }
+
+    /// The sheet is up exactly while a pick awaits confirmation; dismissing
+    /// it by any route (Esc, clicking out) drops the pick.
+    private var limitConfirmationBinding: Binding<Bool> {
+        Binding(
+            get: { pendingLimit != nil },
+            set: { if !$0 { pendingLimit = nil } }
+        )
+    }
+
+    /// "Delete 5,800 older clips?", singularized for a doomed count of one.
+    private var confirmationTitle: String {
+        guard let pendingLimit else { return "" }
+        if pendingLimit.doomed == 1 {
+            return loc("Delete 1 older clip?")
+        }
+        return loc(
+            "Delete %@ older clips?",
+            pendingLimit.doomed.formatted(.number.locale(L10n.locale))
+        )
+    }
+
+    /// The picker's selection, routed through `propose` so a limit that
+    /// would delete clips has to survive the sheet first.
+    private var capSelection: Binding<Int> {
+        Binding(
+            get: { historyCap },
+            set: { propose(.cap($0)) }
+        )
+    }
+
+    /// Same routing as `capSelection`, for the retention window.
+    private var retentionSelection: Binding<Int> {
+        Binding(
+            get: { retentionDays },
+            set: { propose(.retentionDays($0)) }
+        )
+    }
+
+    /// "1,203 clips · 84 MB", or "Counting…" while the background pass runs.
+    private var storageText: String {
+        guard let storageReadout else { return loc("Counting…") }
+        return loc(
+            "%@ clips · %@",
+            storageReadout.clips.formatted(.number.locale(L10n.locale)),
+            ByteCountFormatter.string(fromByteCount: storageReadout.bytes, countStyle: .file)
+        )
+    }
+
+    /// Walk the store directory for the Storage readout. The walk is off the
+    /// main actor (`ClipStore.historyDiskUsage` is `nonisolated` for exactly
+    /// this) and the clip count is a `fetchCount` on it; the whole thing runs
+    /// on appear, so re-showing the pane recomputes and nothing watches live.
+    private func refreshStorage() async {
+        storageReadout = nil
+        let clips = HistoryLimitsController.shared.clipCount()
+        // prepareStoreLocation is idempotent by now: the directory exists and
+        // any legacy store already migrated at launch.
+        let storeAt = (try? ClipStore.prepareStoreLocation()) ?? ClipStore.storeURL
+        let bytes = await Task.detached(priority: .utility) {
+            ClipStore.historyDiskUsage(storeAt: storeAt)
+        }.value
+        guard !Task.isCancelled else { return }
+        storageReadout = StorageReadout(clips: clips, bytes: bytes)
+    }
+
+    /// A picked limit that would delete clips, parked while its sheet is up.
+    private struct PendingLimit {
+        let limit: ClipStore.HistoryLimit
+        /// The sheet's "Delete N", counted by the same
+        /// `ClipStore.deletionCount(under:)` enforcement consults.
+        let doomed: Int
+    }
+
+    /// The Storage row's two halves once the background pass lands.
+    private struct StorageReadout {
+        let clips: Int
+        let bytes: Int64
     }
 }
 

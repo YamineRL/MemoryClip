@@ -34,19 +34,23 @@ final class ClipStore {
     // MARK: - On-disk location, permissions and legacy migration
 
     /// `~/Library/Application Support`.
-    static var applicationSupportDirectory: URL {
+    ///
+    /// `nonisolated` (like the accessors below it) because it is pure path
+    /// arithmetic: the disk-usage readout walks it from a detached task,
+    /// which a main-actor path helper would make impossible.
+    nonisolated static var applicationSupportDirectory: URL {
         FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
             ?? URL(fileURLWithPath: NSHomeDirectory())
                 .appendingPathComponent("Library/Application Support")
     }
 
     /// Directory holding MemoryClip's store, namespaced by bundle identifier.
-    static var storeDirectory: URL {
+    nonisolated static var storeDirectory: URL {
         applicationSupportDirectory.appendingPathComponent("app.memoryclip", isDirectory: true)
     }
 
     /// The store MemoryClip uses from now on.
-    static var storeURL: URL {
+    nonisolated static var storeURL: URL {
         storeDirectory.appendingPathComponent("MemoryClip.store")
     }
 
@@ -149,7 +153,7 @@ final class ClipStore {
     /// directory beside the store, which it creates world-readable (0755/0644).
     /// Those files are clip contents like any other, so they get the same
     /// owner-only treatment as the store itself.
-    static func externalStorageDirectory(forStoreAt url: URL) -> URL {
+    nonisolated static func externalStorageDirectory(forStoreAt url: URL) -> URL {
         let name = url.deletingPathExtension().lastPathComponent
         return url.deletingLastPathComponent()
             .appendingPathComponent(".\(name)_SUPPORT", isDirectory: true)
@@ -172,6 +176,41 @@ final class ClipStore {
                 ofItemAtPath: entry.path
             )
         }
+    }
+
+    /// The history's footprint on this Mac: the store's directory walked
+    /// recursively, which covers the store file, its -wal/-shm sidecars and
+    /// the `.NAME_SUPPORT` folder `externalStorageDirectory` names. The
+    /// folder sits inside that directory, so one walk sums all of it
+    /// exactly once.
+    ///
+    /// `storeURL` is the default, the same URL `prepareStoreLocation` hands
+    /// the container.
+    nonisolated static func historyDiskUsage(storeAt url: URL = storeURL) -> Int64 {
+        diskUsage(under: url.deletingLastPathComponent())
+    }
+
+    /// Every regular file under `directory`, summed. Hidden entries count
+    /// (the external-storage folder is dot-prefixed) while a symlink
+    /// contributes nothing: a screenshot clip is a link to wherever macOS
+    /// saved the file, and this bill must never reach it. (The enumerator
+    /// does not descend into a symlinked directory either.)
+    nonisolated static func diskUsage(under directory: URL) -> Int64 {
+        let keys: Set<URLResourceKey> = [.isRegularFileKey, .isSymbolicLinkKey, .fileSizeKey]
+        guard let enumerator = FileManager.default.enumerator(
+            at: directory,
+            includingPropertiesForKeys: Array(keys)
+        ) else { return 0 }
+        var total: Int64 = 0
+        for case let url as URL in enumerator {
+            guard let values = try? url.resourceValues(forKeys: keys),
+                  values.isSymbolicLink != true,
+                  values.isRegularFile == true,
+                  let size = values.fileSize
+            else { continue }
+            total += Int64(size)
+        }
+        return total
     }
 
     /// Move a broken store out of the way (keeping it for forensics/recovery)
@@ -340,6 +379,17 @@ final class ClipStore {
         )
         descriptor.fetchLimit = limit
         return fetch(descriptor)
+    }
+
+    /// Every clip in the store, pinned or not: the "1,203 clips" half of the
+    /// Storage readout in Settings. A `fetchCount`, so no row materializes.
+    func clipCount() -> Int {
+        do {
+            return try context.fetchCount(FetchDescriptor<ClipItem>())
+        } catch {
+            log.error("ClipStore clipCount failed: \(error.localizedDescription)")
+            return 0
+        }
     }
 
     /// Clips carrying pixels that still need OCR, newest first.
@@ -667,6 +717,64 @@ final class ClipStore {
         scheduleThumbnailBackfill()
     }
 
+    /// A history limit the History pane can change, in one shape for the
+    /// two pickers because the confirmation sheet and the enforcement below
+    /// must agree on what "lowering this" deletes.
+    enum HistoryLimit {
+        /// Keep at most this many unpinned clips. 0 is the stored value for
+        /// Unlimited, which is already what `enforceCap` reads it as.
+        case cap(Int)
+        /// Sweep unpinned clips older than this many days. 0 is Forever.
+        case retentionDays(Int)
+
+        /// The number written into the setting.
+        var value: Int {
+            switch self {
+            case .cap(let cap): return cap
+            case .retentionDays(let days): return days
+            }
+        }
+    }
+
+    /// How many unpinned clips applying `limit` would delete right now.
+    ///
+    /// The History pane's confirmation sheet counts with this and
+    /// `enforceCap`/`enforceRetention` count with it too. One function is
+    /// what makes the sheet's "Delete N older clips?" a promise rather than
+    /// an estimate: a confirmation can never lie about its own number.
+    func deletionCount(under limit: HistoryLimit) -> Int {
+        switch limit {
+        case .cap(let cap):
+            guard cap > 0 else { return 0 }
+            return max(0, unpinnedCount() - cap)
+        case .retentionDays(let days):
+            guard let cutoff = Self.retentionCutoff(days: days) else { return 0 }
+            do {
+                return try context.fetchCount(
+                    FetchDescriptor<ClipItem>(predicate: expiredPredicate(olderThan: cutoff))
+                )
+            } catch {
+                log.error("ClipStore deletion count failed: \(error.localizedDescription)")
+                return 0
+            }
+        }
+    }
+
+    /// The instant before which a `days` retention window expires clips, or
+    /// nil when `days` is 0 or less (the stored meaning of Forever). The
+    /// preview count and the delete both draw the line here.
+    static func retentionCutoff(days: Int, now: Date = .now) -> Date? {
+        guard days > 0 else { return nil }
+        return Calendar.current.date(byAdding: .day, value: -days, to: now)
+    }
+
+    /// What retention deletes: unpinned clips created before `cutoff`.
+    /// Written once, as a value, so `deletionCount` and `enforceRetention`
+    /// run the very same predicate rather than two kept equal by hand.
+    private func expiredPredicate(olderThan cutoff: Date) -> Predicate<ClipItem> {
+        #Predicate { !$0.isPinned && $0.createdAt < cutoff }
+    }
+
     /// Trim history down to the configured cap (UserDefaults historyCap).
     /// Pinned clips are exempt; a cap of 0 (or less) means unlimited.
     ///
@@ -677,7 +785,6 @@ final class ClipStore {
     /// needs trimming at all, and only the doomed rows are materialized.
     func enforceCap() {
         let cap = UserDefaults.standard.integer(forKey: SettingsKeys.historyCap)
-        guard cap > 0 else { return }
 
         // A capture is one row over the cap, so the common case is the exact
         // path below. A user lowering the cap in Settings (or a first launch
@@ -685,7 +792,10 @@ final class ClipStore {
         // deleting those one object at a time took 6.6 s on the main actor —
         // hence the batch pass first.
         while true {
-            let overflow = unpinnedCount() - cap
+            // `deletionCount` is the arithmetic the Settings confirmation
+            // previews, so the number the user agreed to delete is the
+            // number deleted here.
+            let overflow = deletionCount(under: .cap(cap))
             guard overflow > 0 else { return }
             if overflow <= Self.exactTrimLimit {
                 trimOldestUnpinned(count: overflow)
@@ -759,17 +869,20 @@ final class ClipStore {
     /// A retentionDays value of 0 (or less) means keep forever.
     func enforceRetention() {
         let days = UserDefaults.standard.integer(forKey: SettingsKeys.retentionDays)
-        guard days > 0 else { return }
-        guard let cutoff = Calendar.current.date(byAdding: .day, value: -days, to: .now) else {
-            return
-        }
+        // `deletionCount` is the arithmetic the Settings confirmation
+        // previews, as it is for the cap: the number the user agreed to
+        // delete is the number deleted here.
+        guard deletionCount(under: .retentionDays(days)) > 0,
+              let cutoff = Self.retentionCutoff(days: days) else { return }
 
         // Batch delete: the expired rows never have to be materialized
-        // (2.9 s object-by-object at 50k clips).
+        // (2.9 s object-by-object at 50k clips). The predicate is the same
+        // value `deletionCount` counts, so a confirmed sheet always deletes
+        // exactly what it showed.
         do {
             try context.delete(
                 model: ClipItem.self,
-                where: #Predicate { !$0.isPinned && $0.createdAt < cutoff }
+                where: expiredPredicate(olderThan: cutoff)
             )
             save()
         } catch {

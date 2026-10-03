@@ -185,12 +185,15 @@ in the search bar. In NORMAL:
 | `c` | Add the clip to the calendar (`⌘E` does the same in either mode) |
 | `/` `i` | Fresh search / edit the existing query → INSERT |
 
-**Housekeeping.** The newest 200 clips are kept and anything older than 30 days is swept,
-both adjustable in **Settings → History**, both exempting pins. Re-copying bumps a clip to
-the top instead of duplicating it. Pause capture from the menu bar, clear everything from
-the dropdown or the panel, and export to JSON or CSV from **Settings → History**.
-**Import…** in the same place reads a JSON export back, keeping the times clips were first
-copied and skipping any already here, so moving to a new Mac keeps the history.
+**Housekeeping.** The newest 5,000 clips are kept and anything older than 90 days is
+swept, both adjustable in **Settings → History**, both exempting pins. The cap goes up
+to **Unlimited**, the retention window up to a year, and the pane shows how much disk
+the history takes on this Mac. Lowering either limit asks first, with the exact count
+of clips it would delete. Re-copying bumps a clip to the top instead of duplicating it.
+Pause capture from the menu bar, clear everything from the dropdown or the panel, and
+export to JSON or CSV from **Settings → History**. **Import…** in the same place reads
+a JSON export back, keeping the times clips were first copied and skipping any already
+here, so moving to a new Mac keeps the history.
 
 ## Screenshots into notes
 
@@ -409,7 +412,7 @@ where you left it.
 | --- | --- | --- |
 | General | **General** | Launch at login, theme, auto-paste, the daily update check |
 | General | **Shortcuts** | The global hotkey recorder (⇧⌘V is only the default), plus a key reference |
-| Clipboard | **History** | History cap, retention window, export |
+| Clipboard | **History** | History cap (to Unlimited), retention window, disk use on this Mac, export |
 | Clipboard | **Screenshots** | Screenshot capture, the folder to watch |
 | Clipboard | **Panel** | Image OCR, vim navigation |
 | Clipboard | **Privacy** | Touch ID lock, sensitive-content filtering, permission notes |
