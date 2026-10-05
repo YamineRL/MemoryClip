@@ -1898,12 +1898,15 @@ struct PanelContentView: View {
                             textTabToggle: previewTextTabToggle
                         )
                         .frame(height: resolvedPreviewHeight)
-                        .overlay(alignment: .bottom) {
+                        // Over the pane's header row rather than its bottom
+                        // edge, where it covered the last lines of text.
+                        .overlay(alignment: .top) {
                             hintBubble(
                                 PanelHint.overPreview(
                                     canQuickLook: QuickLook.canPreview(item),
                                     dismissed: quickLookHintDismissed
-                                )
+                                ),
+                                edge: .top
                             )
                         }
                     }
@@ -3013,15 +3016,15 @@ struct PanelContentView: View {
         actions.close()
     }
 
-    /// A hint in its place at the bottom edge of whatever it floats over,
-    /// or nothing at all. One helper for both bubbles so they sit the same
+    /// A hint in its place at the given edge of whatever it floats over, or
+    /// nothing at all. One helper for both bubbles so they sit the same
     /// distance off the edge and fade in and out the same way.
     @ViewBuilder
-    private func hintBubble(_ text: String?) -> some View {
+    private func hintBubble(_ text: String?, edge: VerticalEdge = .bottom) -> some View {
         ZStack {
             if let text {
                 HintBubble(text: text)
-                    .padding(.bottom, Design.Space.normal)
+                    .padding(edge == .top ? .top : .bottom, Design.Space.normal)
             }
         }
         .animation(Design.Motion.standard, value: text)
