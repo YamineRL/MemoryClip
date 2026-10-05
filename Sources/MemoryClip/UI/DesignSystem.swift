@@ -108,31 +108,30 @@ enum Design {
         static let previewResizeHandleHeight: CGFloat = 10
         /// The grip drawn on that strip.
         static let previewResizeGripWidth: CGFloat = 36
-        /// Ceiling on an image clip's extracted-text block, so a screenshot
-        /// full of text cannot crowd the image out of the same pane.
-        static let previewExtractedTextHeight: CGFloat = 110
-        /// Ceiling on the translation shown over a text clip. Lower than the
-        /// extracted-text block above, which shares its pane with a picture:
-        /// this one sits on top of the clip's own text, and the clip is what
-        /// the pane is for — a translation that pushed it under the fold would
-        /// have replaced the preview rather than added to it.
-        static let previewTranslationHeight: CGFloat = 84
-        /// The share of a resized pane's extra height the translation may
-        /// take. The ceiling above is the height at `previewPaneHeight`; past
-        /// that, the room the drag added is split with the clip below.
-        static let previewTranslationGrowthShare: CGFloat = 0.5
+        /// The preview's text panel under an image clip's picture, at the
+        /// pane's default height. Fixed when the clip is shown rather than
+        /// fitted to the text, so a translation streaming in cannot resize
+        /// it; see `PreviewTextPanelModel.panelHeight(paneHeight:)`.
+        static let previewTextPanelHeight: CGFloat = 110
+        /// The share of a resized pane's extra height the text panel takes.
+        /// The height above is the panel at `previewPaneHeight`; past that,
+        /// the room the drag added is split with the picture.
+        static let previewTextPanelGrowthShare: CGFloat = 0.5
         /// How far past a scroll view's edge content must reach before the
         /// scroll hint appears.
         static let scrollHintSlack: CGFloat = 4
         /// The height of the fade the hint sits in.
         static let scrollHintFade: CGFloat = 28
         /// Floor under an image clip's picture, so it cannot be squeezed into
-        /// a band by the text blocks sharing the pane with it.
+        /// a band by the text panel sharing the pane with it.
         ///
-        /// 60 is not a taste decision, it is what is left: pane padding and a
-        /// translation at its full ceiling account for the other 190 points,
-        /// and a floor above that would push the picture through the bottom
-        /// edge of the pane instead of shortening anything.
+        /// At the default 250-point pane, the preview's padding (24), the
+        /// header row and its gap (about 28), the content pane's padding (24)
+        /// and the divider with its two gaps (25) take about 100 points,
+        /// leaving 150 for the picture and the text panel. A 110-point panel
+        /// would leave the picture 40, so this floor wins and the panel's
+        /// scroll view, the flexible part, gives up the other 20. Raising the
+        /// floor takes those points from the panel, not from the pane.
         static let previewImageMinHeight: CGFloat = 60
 
         /// A clip card is a SQUARE. This is both its width and its height.

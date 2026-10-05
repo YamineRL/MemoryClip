@@ -189,9 +189,12 @@
 "Equals %@" = "Égale %@";
 "Format JSON" = "Formater le JSON";
 "Minify JSON" = "Minifier le JSON";
-"Translating…" = "Traduction en cours…";
-"Translating this clip" = "Traduction de ce clip en cours";
 "Extracted Text" = "Texte extrait";
+"Original" = "Original";
+"Original or translation" = "Original ou traduction";
+"Show original text" = "Afficher le texte original";
+"Show translation into %@" = "Afficher la traduction en %@";
+"Switch between the original and the translation (⌘T)" = "Basculer entre l’original et la traduction (⌘T)";
 "RGB %@" = "RVB %@";
 "Nothing to preview" = "Rien à afficher";
 "Email" = "E-mail";
