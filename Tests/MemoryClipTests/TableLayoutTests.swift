@@ -174,7 +174,50 @@ final class TableLayoutTests: XCTestCase {
         )
     }
 
+    /// A two-column key/value list with short cells, some of them lowercase
+    /// values, is still a table: none of its cells runs on into the next row.
+    func testRecoversAShortCellTwoColumnTable() throws {
+        let page = page(
+            """
+            Setting      Value
+            Theme        dark
+            Font size    large
+            Startup      open at login
+            """
+        )
+
+        let text = try XCTUnwrap(
+            TableLayout.textWithTables(lines: page.lines, fragments: page.fragments)
+        )
+        XCTAssertEqual(
+            text,
+            """
+            | Setting | Value |
+            | --- | --- |
+            | Theme | dark |
+            | Font size | large |
+            | Startup | open at login |
+            """
+        )
+    }
+
     // MARK: - Rejection
+
+    /// An article beside a sidebar: two independent text flows with a clear
+    /// channel between them. Each side's lines run on mid-sentence into the
+    /// next, so reading them as table rows would interleave the two texts.
+    func testAnArticleBesideASidebarIsNotATable() {
+        let page = page(
+            """
+            Luminescent solar concentrators for                                                   Newsletter
+            agrivoltaics, greenhouses                                                             By subscribing to our newsletter you'll be eligible for a 10% discount on
+            Moroccan researchers have proposed the use of luminescent solar concentrators for     magazine subscriptions! Sign up today to get the latest news
+            greenhouses and agrivoltaic farms, where the panels must let crop-friendly            delivered straight to your inbox every week.
+            """
+        )
+
+        XCTAssertNil(TableLayout.textWithTables(lines: page.lines, fragments: page.fragments))
+    }
 
     /// Joining wrapped cells cannot buy the row count: four bands that are
     /// really two rows are two rows, and two rows is not a table.
