@@ -1478,6 +1478,9 @@ struct PanelContentView: View {
     /// What is selected with the mouse in the open preview pane, so ⌘C can
     /// copy it instead of the whole clip. Nil when nothing is selected.
     @State private var previewSelection: String?
+    /// Bumped by ⌘T; the preview's text panel flips between the original and
+    /// the translation each time it changes.
+    @State private var previewTextTabToggle = 0
     /// The reveal in flight: which clip's plaintext is in the pane and until
     /// when. One slot — the pane shows one clip at a time, so a second
     /// secret's reveal replaces the first rather than stacking on it. Nil
@@ -1891,7 +1894,8 @@ struct PanelContentView: View {
                             onCopySecret: { text in
                                 actions.copyConcealed(item, text)
                                 announce(loc("Copied"))
-                            }
+                            },
+                            textTabToggle: previewTextTabToggle
                         )
                         .frame(height: resolvedPreviewHeight)
                         .overlay(alignment: .bottom) {
@@ -2952,6 +2956,13 @@ struct PanelContentView: View {
                     // same way Space does, so both keys are one habit.
                     if press.characters.lowercased() == "y" {
                         escalatePreview()
+                        return .handled
+                    }
+                    // ⌘T flips the preview's text between the original and
+                    // its translation. Free like ⌘S and ⌘E: the app's menus
+                    // claim no ⌘T. T for Translation.
+                    if press.characters.lowercased() == "t", previewVisible {
+                        previewTextTabToggle += 1
                         return .handled
                     }
                 }

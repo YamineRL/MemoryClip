@@ -13,8 +13,8 @@ struct PreviewView: View {
     /// Copy callback (wired by PanelView to `actions.copyText`). Falls back to
     /// a plain pasteboard write when absent.
     var onCopy: ((String) -> Void)? = nil
-    /// The height the pane was given, so the translation block can grow with
-    /// it. Nil holds the block at its default ceiling.
+    /// The height the pane was given, so an image clip's text panel can grow
+    /// with it. Nil holds the panel at its default height.
     var paneHeight: CGFloat? = nil
     /// Edit callback, wired by PanelView for clips `ClipDisplay.canEdit`
     /// accepts. Nil hides the header's Edit button rather than disabling it.
@@ -43,6 +43,9 @@ struct PreviewView: View {
     var onDemoteSecret: (() -> Void)? = nil
     /// Concealed-write the plaintext (whole or selected) to the pasteboard.
     var onCopySecret: ((String) -> Void)? = nil
+    /// Bumped by the panel's ⌘T to flip the text panel between the original
+    /// and the translation.
+    var textTabToggle: Int = 0
 
     /// Detection/calc results are cached per content change rather than
     /// recomputed on every body pass — scanning a multi-megabyte clip on the
@@ -62,9 +65,6 @@ struct PreviewView: View {
     /// What is selected in the pane right now, so the right-click menu can
     /// offer it. Written by every `SelectableText` in the pane.
     @State private var selection: String?
-    /// How tall the translated text actually is, so the block can shrink to
-    /// it — see `translationBodyHeight`. Zero means "not measured yet".
-    @State private var translationTextHeight: CGFloat = 0
 
     /// Read here rather than through `ClipTranslation` so that changing either
     /// in Settings re-runs the work for the clip on screen, instead of taking
@@ -117,11 +117,6 @@ struct PreviewView: View {
                     .help(loc("Edit this clip (⌘I)"))
                 }
             }
-
-            // Above the clip, because a clip in a language you do not read is
-            // one you look away from: the translation is what makes the pane
-            // worth looking at, and the original is right underneath it.
-            translationBlock
 
             // The payload sits on its own pane, so the preview reads as a
             // surface holding content rather than text loose in a box.
@@ -300,82 +295,6 @@ struct PreviewView: View {
         "\(contentKey)-\(item.ocrText?.count ?? 0)-\(item.refinedText?.count ?? 0)-\(translateEnabled)-\(translationTarget)"
     }
 
-    /// How tall the translated text may be: `previewTranslationHeight` at the
-    /// pane's default height, plus a share of whatever the drag handle added
-    /// past it.
-    private var translationCeiling: CGFloat {
-        let base = Design.Size.previewTranslationHeight
-        guard let paneHeight else { return base }
-        let extra = max(0, paneHeight - Design.Size.previewPaneHeight)
-        return base + extra * Design.Size.previewTranslationGrowthShare
-    }
-
-    /// How tall the translated text is allowed to be: its own height, or the
-    /// ceiling, whichever is smaller.
-    ///
-    /// The ceiling stands in until the first measurement arrives, so the
-    /// block settles down to the text rather than growing into it.
-    private var translationBodyHeight: CGFloat {
-        guard translationTextHeight > 0 else { return translationCeiling }
-        return min(translationTextHeight.rounded(.up), translationCeiling)
-    }
-
-    /// The translation, over the clip and inside its own pane.
-    ///
-    /// Nothing at all for the ordinary case — a clip in the language the user
-    /// reads — so the pane is unchanged for everyone who has not asked for
-    /// this. When there is something, it is bounded: the clip below is what
-    /// the preview is for.
-    @ViewBuilder
-    private var translationBlock: some View {
-        if presenter.isTranslating || presenter.translation != nil {
-            VStack(alignment: .leading, spacing: Design.Space.snug) {
-                HStack(spacing: Design.Space.snug) {
-                    Text(presenter.translation?.languagePair ?? loc("Translating…"))
-                        .font(Design.Typography.meta)
-                        .foregroundStyle(Color(nsColor: .secondaryLabelColor))
-                    if presenter.isTranslating {
-                        // Small and unlabelled: the pane already says what is
-                        // happening, and the clip below is readable meanwhile.
-                        ProgressView()
-                            .progressViewStyle(.circular)
-                            .controlSize(.small)
-                            .accessibilityHidden(true)
-                    }
-                }
-
-                if let translation = presenter.translation {
-                    ScrollView {
-                        SelectableText(text: translation.text, size: bodyFontSize, onSelectionChange: report)
-                            // Measured from INSIDE the scroll view, which
-                            // proposes no height to its content, so this is
-                            // the text's own height rather than the one it
-                            // was given.
-                            .onGeometryChange(for: CGFloat.self) { proxy in
-                                proxy.size.height
-                            } action: { height in
-                                translationTextHeight = height
-                            }
-                    }
-                    .scrollMoreHint()
-                    // An exact height, not a maximum: a scroll view takes
-                    // every point it is offered up to its cap, so a
-                    // two-line translation in a `maxHeight` frame sat in
-                    // 84 points of empty pane.
-                    .frame(height: translationBodyHeight)
-                }
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(Design.Space.roomy)
-            .designPane(radius: Design.Radius.pane, fill: Design.Palette.chrome)
-            // `.contain` rather than `.combine`: the translated text stays its
-            // own element, so it can be read, navigated and selected, and the
-            // group carries the label that says what it is.
-            .accessibilityElement(children: .contain)
-            .accessibilityLabel(presenter.translation?.accessibilityDescription ?? loc("Translating this clip"))
-        }
-    }
-
     /// Show the clip's translation, or start one.
     ///
     /// Thin on purpose: the state and the work are the presenter's and the
@@ -386,8 +305,6 @@ struct PreviewView: View {
         // never reach a model — the presenter's input is `item.text`, which
         // is nil, but the guard says so rather than relying on it.
         guard !item.isSecret else { return }
-        // The previous clip's measurement says nothing about this one's.
-        translationTextHeight = 0
         await presenter.refresh(
             item: item,
             context: modelContext,
@@ -523,28 +440,19 @@ struct PreviewView: View {
         return app.isEmpty ? time : loc("from %@ · %@", app, time)
     }
 
-    /// Selectable, scrollable full text (covers .text, .richText and .link —
-    /// all of them carry their plain text in `item.text`).
+    /// Selectable, scrollable full text, and its translation when there is
+    /// one (covers .text, .richText and .link, all of which carry their plain
+    /// text in `item.text`).
     private var textContent: some View {
         let body = ClipDisplay.previewBody(item.text ?? "")
-        return ScrollView {
-            VStack(alignment: .leading, spacing: Design.Space.normal) {
-                SelectableText(text: body.text, size: bodyFontSize, onSelectionChange: report)
-                if let notice = body.notice {
-                    Text(notice)
-                        .font(Design.Typography.meta)
-                        .foregroundStyle(Color(nsColor: .secondaryLabelColor))
-                }
-            }
-        }
-        .scrollMoreHint()
+        return textPanel(.text, original: body.text, notice: body.notice)
     }
 
     @ViewBuilder
     private var imageContent: some View {
         // The image keeps the pane, but when OCR found something the text is
-        // the reason most people opened the preview — so it gets its own
-        // selectable, scrollable half rather than being hidden behind search.
+        // the reason most people opened the preview, so it gets a selectable,
+        // scrollable panel of its own rather than being hidden behind search.
         VStack(alignment: .leading, spacing: Design.Space.roomy) {
             if let nsImage = fullImage ?? item.thumbnailData.flatMap(NSImage.init(data:)) {
                 Image(nsImage: nsImage)
@@ -552,8 +460,8 @@ struct PreviewView: View {
                     .scaledToFit()
                     // A floor as well as a ceiling: the picture is the reason
                     // this pane exists, and sharing 250 points with the text
-                    // blocks under it had shrunk it to a band nothing could
-                    // be read in.
+                    // panel under it had shrunk it to a band nothing could be
+                    // read in.
                     .frame(
                         maxWidth: .infinity,
                         minHeight: Design.Size.previewImageMinHeight,
@@ -564,87 +472,38 @@ struct PreviewView: View {
                 emptyPlaceholder
             }
 
-            // Hidden while a translation is on screen. Three blocks do not
-            // fit in this pane, and this is the one that earns its place
-            // least of the three: the translation above already carries this
-            // same recognised text in a language the reader can read, and the
-            // picture carries it as it actually appeared. Raw recognition in
-            // a script they do not read, wedged under a squeezed thumbnail,
-            // is the third copy. With translation off, or for a clip that had
-            // none to make, the block is exactly what it always was.
-            if let extracted = extractedText, presenter.translation == nil {
+            // The text the translation is made from, so both tabs show the
+            // same text with the same line breaks and tables.
+            let source = item.clipTranslationSourceText
+            if source != nil || presenter.translation != nil {
                 Divider()
-                VStack(alignment: .leading, spacing: Design.Space.snug) {
-                    Text(loc("Extracted Text"))
-                        .font(Design.Typography.meta)
-                        .foregroundStyle(Color(nsColor: .secondaryLabelColor))
-                    ScrollView {
-                        extractedBody(extracted)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                    }
-                    .scrollMoreHint()
-                }
-                // Bounded so a text-heavy screenshot cannot squeeze the image
-                // out of the pane entirely.
-                .frame(maxHeight: Design.Size.previewExtractedTextHeight)
+                textPanel(.image, original: source ?? "", notice: nil)
+                    // As tall as the pane's height says and never as tall as
+                    // the text: the scroll view inside takes the height it is
+                    // given, so a streaming translation cannot move the
+                    // picture. The priority hands the panel its height first;
+                    // when the pane is too short for both, the picture keeps
+                    // its floor and the panel gives up the difference.
+                    .frame(maxHeight: PreviewTextPanelModel.panelHeight(paneHeight: paneHeight))
+                    .layoutPriority(1)
             }
         }
     }
 
-    /// Extracted text, with any table in it drawn as a table.
-    ///
-    /// Recognition stores tables as Markdown (see `TableLayout`), which is the
-    /// right thing to store and the wrong thing to show: a column of pipes in
-    /// a proportional font is harder to read than the screenshot it came from.
-    /// So the pane parses them back out and lays them on a grid, and leaves
-    /// everything else as the plain, selectable text it already was.
-    @ViewBuilder
-    private func extractedBody(_ text: String) -> some View {
-        VStack(alignment: .leading, spacing: Design.Space.roomy) {
-            ForEach(Array(MarkdownTable.blocks(in: text).enumerated()), id: \.offset) { _, block in
-                switch block {
-                case .text(let value):
-                    let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
-                    if !trimmed.isEmpty {
-                        SelectableText(text: trimmed, size: bodyFontSize, onSelectionChange: report)
-                    }
-                case .table(let table):
-                    tableGrid(table)
-                }
-            }
-        }
-    }
-
-    /// One recognized table. Monospaced digits so a column of numbers lines
-    /// up under its header the way it did on screen, and a rule under the
-    /// header row because that is the only thing separating it from the data
-    /// once the pipes are gone.
-    private func tableGrid(_ table: MarkdownTable) -> some View {
-        Grid(alignment: .leading, horizontalSpacing: Design.Space.loose, verticalSpacing: Design.Space.snug) {
-            GridRow {
-                ForEach(Array(table.header.enumerated()), id: \.offset) { _, cell in
-                    Text(cell)
-                        .font(.system(size: bodyFontSize, weight: .semibold))
-                        .textSelection(.enabled)
-                }
-            }
-            Divider().gridCellColumns(table.columnCount)
-            ForEach(Array(table.rows.enumerated()), id: \.offset) { _, row in
-                GridRow {
-                    ForEach(Array(row.enumerated()), id: \.offset) { _, cell in
-                        Text(cell)
-                            .font(.system(size: bodyFontSize).monospacedDigit())
-                            .textSelection(.enabled)
-                    }
-                }
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-    }
-
-    /// The image clip's OCR text, or nil when Vision found nothing usable.
-    private var extractedText: String? {
-        ClipDisplay.extractedText(for: item)
+    /// The clip's text panel, fresh for each clip so its tab choice and its
+    /// one automatic switch belong to the clip they were made on.
+    private func textPanel(_ context: PreviewTextPanel.Context, original: String, notice: String?) -> some View {
+        PreviewTextPanel(
+            context: context,
+            original: original,
+            notice: notice,
+            translation: presenter.translation,
+            isTranslating: presenter.isTranslating,
+            targetLanguage: translationTarget,
+            toggleRequest: textTabToggle,
+            onSelectionChange: report
+        )
+        .id(item.uuid)
     }
 
     @ViewBuilder
