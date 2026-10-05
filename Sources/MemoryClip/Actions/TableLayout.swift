@@ -88,6 +88,19 @@ enum TableLayout {
     static let maximumRows = 200
     static let maximumFragments = 4000
 
+    /// How many words a cell needs before it can be the first half of a
+    /// sentence that runs on into the cell below. Table cells this long
+    /// exist, but a two-word label followed by a lowercase value ("Theme",
+    /// "dark") is a key and its value, not a wrapped line.
+    static let minimumRunOnWords = 3
+
+    /// The most columns that may run on mid-sentence before the run is read
+    /// as side-by-side text flows rather than a table. An article beside a
+    /// sidebar puts a wrapped flow on each side of the channel, so it shows
+    /// two; a genuine table whose cells wrap has them joined by `logicalRows`
+    /// before this is judged, so it shows none.
+    static let maximumRunOnColumns = 1
+
     // MARK: - Entry point
 
     /// `lines` with any tables among them replaced by Markdown tables.
@@ -322,7 +335,31 @@ enum TableLayout {
             let present = grid.count(where: { !$0[column].isEmpty })
             guard Double(present) >= minimumColumnCoverage * Double(grid.count) else { return false }
         }
+        // Two or more text flows side by side, such as an article beside a
+        // sidebar, leave a channel between them and fill every cell, so they
+        // clear every rule above. What gives them away is that each flow's
+        // sentences run on from one row into the next, which the rows of a
+        // table never do: each row of a table stands on its own.
+        let runOnColumns = (0..<columns).count { column in
+            grid.indices.dropLast().contains { runsOn(grid[$0][column], into: grid[$0 + 1][column]) }
+        }
+        guard runOnColumns <= maximumRunOnColumns else { return false }
         return true
+    }
+
+    /// Whether `cell` reads as a line of prose broken mid-sentence, with
+    /// `next` as its continuation: `cell` has at least `minimumRunOnWords`
+    /// words and no closing punctuation, and `next` opens on a lowercase
+    /// letter.
+    ///
+    /// Trailing quotes and brackets are skipped before the punctuation check,
+    /// so `said "yes."` counts as a finished sentence.
+    static func runsOn(_ cell: String, into next: String) -> Bool {
+        guard let opening = next.first, opening.isLetter, opening.isLowercase else { return false }
+        guard cell.split(separator: " ").count >= minimumRunOnWords else { return false }
+        let closers: Set<Character> = ["\"", "'", ")", "]", "”", "’", "»"]
+        guard let last = cell.last(where: { !closers.contains($0) }) else { return false }
+        return !".!?:;".contains(last)
     }
 
     /// Bullets a list item can begin with, the plain hyphen among them.
