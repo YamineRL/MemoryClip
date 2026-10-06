@@ -1518,7 +1518,15 @@ struct PanelContentView: View {
     /// page.
     @State private var matchCount: Int?
     @State private var navHintDismissed = false
+    /// Whether the strip bubble has timed out on its own. Separate from
+    /// `navHintDismissed` — that one means the user answered the hint by
+    /// using the keys it names, this one just means it has been up long
+    /// enough. A fresh hint text clears it and restarts the clock.
+    @State private var stripHintExpired = false
     /// The same, for the preview pane's Quick Look bubble.
+    @State private var previewHintExpired = false
+    /// The dismissal half of the same pair, for the Quick Look bubble —
+    /// set when Space actually opens it.
     @State private var quickLookHintDismissed = false
     /// The open in-place edit, or nil. While one is live the preview pane
     /// shows the editor instead of the preview, and the panel's keys are
@@ -1607,15 +1615,31 @@ struct PanelContentView: View {
     }
 
     /// The bubble over the deck, if the keyboard is doing something the
-    /// cards do not name. `isExtended` is asked first because resolving the
-    /// whole selection is a pass over the page and a lone cursor never
-    /// needs one.
+    /// cards do not name — gated on its seven seconds not being up.
     private var stripHint: String? {
+        stripHintExpired ? nil : stripHintText
+    }
+
+    /// The strip bubble's text before the timeout gates it. The expiry
+    /// task keys on this, so a fresh hint — a new query, a new selection
+    /// — restarts the clock even when the last one timed out.
+    /// `isExtended` is asked first because resolving the whole selection
+    /// is a pass over the page and a lone cursor never needs one.
+    private var stripHintText: String? {
         PanelHint.overStrip(
             selectedCount: selection.isExtended ? selectedItems.count : 1,
             vimInsertMode: vimModeEnabled && inputMode == .insert,
             hasQuery: !filter.search.isEmpty,
             dismissed: navHintDismissed
+        )
+    }
+
+    /// The Quick Look bubble's text for `item`, before its timeout gates
+    /// it — same raw-vs-expired split as the strip hint.
+    private func previewHintText(for item: ClipItem) -> String? {
+        PanelHint.overPreview(
+            canQuickLook: QuickLook.canPreview(item),
+            dismissed: quickLookHintDismissed
         )
     }
 
@@ -1817,6 +1841,8 @@ struct PanelContentView: View {
 
     /// How long the typing has to stop before the count is redone.
     private static let countSettleDelay: TimeInterval = 0.15
+    /// How long a hint bubble stays up before it times itself out.
+    private static let hintVisibleFor: TimeInterval = 7
 
     /// What the count is keyed on: the question asked, and the fact that the
     /// store answered differently — a capture or a delete while the panel is
@@ -1898,16 +1924,18 @@ struct PanelContentView: View {
                             textTabToggle: previewTextTabToggle
                         )
                         .frame(height: resolvedPreviewHeight)
-                        // Over the pane's header row rather than its bottom
-                        // edge, where it covered the last lines of text.
-                        .overlay(alignment: .top) {
-                            hintBubble(
-                                PanelHint.overPreview(
-                                    canQuickLook: QuickLook.canPreview(item),
-                                    dismissed: quickLookHintDismissed
-                                ),
-                                edge: .top
-                            )
+                        .overlay(alignment: .topTrailing) {
+                            hintBubble(previewHintExpired ? nil : previewHintText(for: item))
+                        }
+                        // A nudge, not chrome: seven seconds up, then gone.
+                        // The task id is the raw text so a new hint — the
+                        // next previewable clip — restarts the clock.
+                        .task(id: previewHintText(for: item)) {
+                            previewHintExpired = false
+                            guard previewHintText(for: item) != nil else { return }
+                            try? await Task.sleep(for: .seconds(Self.hintVisibleFor))
+                            guard !Task.isCancelled else { return }
+                            previewHintExpired = true
                         }
                     }
                 }
@@ -3016,15 +3044,16 @@ struct PanelContentView: View {
         actions.close()
     }
 
-    /// A hint in its place at the given edge of whatever it floats over, or
-    /// nothing at all. One helper for both bubbles so they sit the same
-    /// distance off the edge and fade in and out the same way.
+    /// A hint in its place at the top trailing corner of whatever it floats
+    /// over, or nothing at all. One helper for both bubbles so they sit the
+    /// same distance off the edge and fade in and out the same way.
     @ViewBuilder
-    private func hintBubble(_ text: String?, edge: VerticalEdge = .bottom) -> some View {
+    private func hintBubble(_ text: String?) -> some View {
         ZStack {
             if let text {
                 HintBubble(text: text)
-                    .padding(edge == .top ? .top : .bottom, Design.Space.normal)
+                    .padding(.top, Design.Space.normal)
+                    .padding(.trailing, Design.Space.loose)
             }
         }
         .animation(Design.Motion.standard, value: text)
@@ -3177,7 +3206,19 @@ struct PanelContentView: View {
                 // that there are more clips to the right.
                 .scrollMoreHint(.horizontal)
                 .frame(height: Design.Size.cardStripHeight)
-                .overlay(alignment: .bottom) { hintBubble(stripHint) }
+                // Top trailing rather than centred on the strip's bottom
+                // edge: the resize handle lives there, and the bubble must
+                // not stand on the control it shares the pane with.
+                .overlay(alignment: .topTrailing) { hintBubble(stripHint) }
+                // A nudge, not chrome: seven seconds up, then gone. The task
+                // id is the raw text so a fresh hint restarts the clock.
+                .task(id: stripHintText) {
+                    stripHintExpired = false
+                    guard stripHintText != nil else { return }
+                    try? await Task.sleep(for: .seconds(Self.hintVisibleFor))
+                    guard !Task.isCancelled else { return }
+                    stripHintExpired = true
+                }
                 .onChange(of: selection) {
                     // Re-resolved rather than reusing `selected`: the action
                     // must see the selection it is reacting to.
