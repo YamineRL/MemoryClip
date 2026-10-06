@@ -50,7 +50,7 @@ final class ClipStoreOCRTests: XCTestCase {
         store.insert(imageClip("a"), sourceBundleID: nil, sourceAppName: nil)
         let uuid = try XCTUnwrap(store.pendingOCR().first?.uuid)
 
-        store.applyOCR("invoice total 42", toClipWith: uuid)
+        store.applyOCR("invoice total 42", toClipWith: uuid, revision: 0)
 
         XCTAssertTrue(store.pendingOCR().isEmpty)
         let item = try XCTUnwrap(store.items(withUUIDs: [uuid]).first)
@@ -63,7 +63,7 @@ final class ClipStoreOCRTests: XCTestCase {
         store.insert(imageClip("a"), sourceBundleID: nil, sourceAppName: nil)
         let uuid = try XCTUnwrap(store.pendingOCR().first?.uuid)
 
-        store.applyOCR(nil, toClipWith: uuid)
+        store.applyOCR(nil, toClipWith: uuid, revision: 0)
 
         XCTAssertTrue(store.pendingOCR().isEmpty, "A fruitless run must not be retried forever")
         let item = try XCTUnwrap(store.items(withUUIDs: [uuid]).first)
@@ -74,7 +74,7 @@ final class ClipStoreOCRTests: XCTestCase {
     func testApplyOCRToUnknownUUIDIsANoOp() throws {
         let store = try makeStore()
         store.insert(imageClip("a"), sourceBundleID: nil, sourceAppName: nil)
-        store.applyOCR("ghost", toClipWith: UUID())
+        store.applyOCR("ghost", toClipWith: UUID(), revision: 0)
         XCTAssertEqual(store.pendingOCR().count, 1)
     }
 
@@ -109,7 +109,7 @@ final class ClipStoreOCRTests: XCTestCase {
         store.insert(imageClip("card"), sourceBundleID: nil, sourceAppName: nil)
         let uuid = try XCTUnwrap(store.pendingOCR().first?.uuid)
 
-        store.applyOCR("VISA 4242 4242 4242 4242 03/29", toClipWith: uuid)
+        store.applyOCR("VISA 4242 4242 4242 4242 03/29", toClipWith: uuid, revision: 0)
 
         let item = try XCTUnwrap(store.items(withUUIDs: [uuid]).first)
         XCTAssertNil(item.ocrText, "A screenshotted card must not become searchable plaintext")
@@ -124,7 +124,7 @@ final class ClipStoreOCRTests: XCTestCase {
         store.insert(imageClip("receipt"), sourceBundleID: nil, sourceAppName: nil)
         let uuid = try XCTUnwrap(store.pendingOCR().first?.uuid)
 
-        store.applyOCR("Total 12.40 EUR", toClipWith: uuid)
+        store.applyOCR("Total 12.40 EUR", toClipWith: uuid, revision: 0)
 
         XCTAssertEqual(try XCTUnwrap(store.items(withUUIDs: [uuid]).first).ocrText, "Total 12.40 EUR")
     }
@@ -137,7 +137,7 @@ final class ClipStoreOCRTests: XCTestCase {
         store.insert(imageClip("card"), sourceBundleID: nil, sourceAppName: nil)
         let uuid = try XCTUnwrap(store.pendingOCR().first?.uuid)
 
-        store.applyOCR("4242 4242 4242 4242", toClipWith: uuid)
+        store.applyOCR("4242 4242 4242 4242", toClipWith: uuid, revision: 0)
 
         XCTAssertEqual(
             try XCTUnwrap(store.items(withUUIDs: [uuid]).first).ocrText,

@@ -197,6 +197,30 @@ final class ClipItem {
     /// expire, including a code the user pinned (pinning clears it).
     var expiresAt: Date?
 
+    /// Version of the clip's payload and everything derived from it.
+    ///
+    /// Bumped whenever the row's content changes in a way that invalidates
+    /// work captured earlier — an edit, a secret conversion either way, an
+    /// edit undo. A background job (OCR, refinement, thumbnailing, note
+    /// export) snapshots the revision it was launched against; the
+    /// write-back commits only when the row still carries that revision,
+    /// which is what keeps a result computed from the OLD text from being
+    /// stamped onto the new.
+    ///
+    /// Defaulted to 0, so a pre-existing store migrates in place like every
+    /// field above.
+    var contentRevision: Int = 0
+
+    /// Signature of the screenshot file at capture time (size + modification
+    /// date), used to notice the file at `fileURLStrings` having been
+    /// overwritten in place: a screenshot rewritten on disk must have its
+    /// OCR text and thumbnail rebuilt rather than served stale.
+    /// nil for rows captured before this field existed and for non-screenshot
+    /// clips — both are simply re-signed the next time the file is seen.
+    ///
+    /// Optional, so a pre-existing store migrates in place.
+    var screenshotSignature: String?
+
     var kind: ClipKind {
         get { ClipKind(rawValue: kindRaw) ?? .text }
         set { kindRaw = newValue.rawValue }
@@ -239,7 +263,9 @@ final class ClipItem {
         secretCipher: Data? = nil,
         secretLabel: String? = nil,
         secretMasked: String? = nil,
-        expiresAt: Date? = nil
+        expiresAt: Date? = nil,
+        contentRevision: Int = 0,
+        screenshotSignature: String? = nil
     ) {
         self.uuid = uuid
         self.kindRaw = kind.rawValue
@@ -278,6 +304,8 @@ final class ClipItem {
         self.secretLabel = secretLabel
         self.secretMasked = secretMasked
         self.expiresAt = expiresAt
+        self.contentRevision = contentRevision
+        self.screenshotSignature = screenshotSignature
     }
 
     /// Pin or unpin the clip. Pinning a secret that expires clears its

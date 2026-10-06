@@ -58,20 +58,30 @@ final class AppNotificationDelegate: NSObject, UNUserNotificationCenterDelegate 
 
     /// Act on a tapped button.
     ///
-    /// Only the action identifier crosses to the main actor: `UNNotificationResponse`
-    /// is a reference type that is not `Sendable`, and the identifier is all
-    /// this needs.
+    /// Only value types cross to the main actor: `UNNotificationResponse`
+    /// is a reference type that is not `Sendable`, so the action identifier
+    /// and the creation's operation uuid are read off here and passed over.
     nonisolated func userNotificationCenter(
         _ center: UNUserNotificationCenter,
         didReceive response: UNNotificationResponse
     ) async {
-        await handle(response.actionIdentifier)
+        let operation = (response.notification.request.content.userInfo["operationID"] as? String)
+            .flatMap(UUID.init(uuidString:))
+        await handle(response.actionIdentifier, operation: operation)
     }
 
-    private func handle(_ action: String) async {
+    private func handle(_ action: String, operation: UUID?) async {
         switch action {
         case EventNotifier.undoActionIdentifier:
-            _ = await calendarCoordinator.undoLastEvent()
+            // The banner names the creation it announced; undo retracts THAT
+            // one, not whatever was saved most recently. A banner from an
+            // older run carries no operation the coordinator still knows —
+            // the answer is `.undoUnavailable`, not silence.
+            if let operation {
+                _ = await calendarCoordinator.undoEvent(operation)
+            } else {
+                _ = await calendarCoordinator.undoLastEvent()
+            }
         case EventNotifier.openActionIdentifier:
             Self.openCalendar()
         case UpdateNotifier.downloadActionIdentifier:

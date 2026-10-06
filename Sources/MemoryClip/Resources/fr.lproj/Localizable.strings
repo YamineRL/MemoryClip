@@ -429,6 +429,10 @@
 "There is no calendar to add the event to. Open Calendar and choose a default calendar for new events." = "Aucun calendrier ne peut recevoir l’événement. Ouvrez Calendrier et choisissez un calendrier par défaut pour les nouveaux événements.";
 "The event could not be saved: %@" = "L’événement n’a pas pu être enregistré : %@";
 "The event could not be removed: %@" = "L’événement n’a pas pu être supprimé : %@";
+"This clip already has an event in your calendar." = "Ce clip a déjà un événement dans votre calendrier.";
+"This clip is already being added to your calendar." = "Ce clip est déjà en cours d’ajout à votre calendrier.";
+"That event can no longer be undone — it was created before MemoryClip last started, or was already undone." = "Cet événement ne peut plus être annulé — il a été créé avant le dernier démarrage de MemoryClip, ou a déjà été annulé.";
+"The clip changed while its event was being created, so the event was removed again." = "Le clip a changé pendant la création de son événement ; l’événement a donc été supprimé.";
 "Join: %@" = "Rejoindre : %@";
 "Add to Calendar" = "Ajouter au calendrier";
 "Add to Calendar Again" = "Ajouter à nouveau au calendrier";

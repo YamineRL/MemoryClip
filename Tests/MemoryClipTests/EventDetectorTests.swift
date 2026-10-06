@@ -69,6 +69,68 @@ final class EventDetectorTests: XCTestCase {
         XCTAssertEqual(event?.isAllDay, true)
     }
 
+    // MARK: - Corroboration must be near
+
+    /// A meeting link counts only when it sits next to the date it belongs
+    /// to. The clip still produces an event — the manual button stays a
+    /// judgement call for the user — but the automatic path's "strong
+    /// signal" must not be assembled out of parts that were never together.
+    func testADistantMeetingLinkDoesNotCorroborate() {
+        let padding = String(repeating: "forwarded chatter. ", count: 30)
+        let event = detect("""
+        Team call August 20, 2026 at 3:00 PM
+        \(padding)
+        https://us02web.zoom.us/j/89123456789
+        """)
+        XCTAssertNotNil(event)
+        XCTAssertNil(event?.meetingURL, "a link paragraphs away is not this appointment's")
+        XCTAssertEqual(event?.isStrongSignal, false)
+    }
+
+    func testADistantAddressIsNotAttached() {
+        let padding = String(repeating: "unrelated quoted text. ", count: 30)
+        let event = detect("""
+        Team call August 20, 2026 at 3:00 PM
+        \(padding)
+        1 Infinite Loop, Cupertino, CA 95014
+        """)
+        XCTAssertNotNil(event)
+        XCTAssertNil(event?.location)
+        XCTAssertEqual(event?.isStrongSignal, false)
+    }
+
+    /// The audit's acceptance case: a long email thread carrying a date in
+    /// one quoted message, an address in a signature and a meeting link from
+    /// an unrelated earlier mail must not combine into an appointment that
+    /// exists nowhere.
+    func testALongThreadDoesNotFabricateAnAppointment() {
+        let event = detect("""
+        On Monday, someone wrote:
+        Let's revisit this on August 20, 2026.
+        \(String(repeating: "older quoted text. ", count: 40))
+        Join the all-hands here: https://us02web.zoom.us/j/89123456789
+        \(String(repeating: "signature and footer boilerplate. ", count: 30))
+        Sent from my phone — 1 Infinite Loop, Cupertino, CA 95014
+        """)
+        XCTAssertEqual(event?.isStrongSignal, false,
+                       "scattered details must not assemble into an automatic event")
+        XCTAssertNil(event?.meetingURL)
+        XCTAssertNil(event?.location)
+    }
+
+    /// The window is wide enough for a label-and-value block — an
+    /// invitation that keeps its details together still counts.
+    func testCorroborationInsideTheBlockStillCounts() {
+        let event = detect("""
+        Design review
+        August 20, 2026 at 3:00 PM – 4:00 PM
+        Room 4, second floor
+        Join: https://us02web.zoom.us/j/89123456789
+        """)
+        XCTAssertEqual(event?.meetingURL?.absoluteString, "https://us02web.zoom.us/j/89123456789")
+        XCTAssertEqual(event?.isStrongSignal, true)
+    }
+
     // MARK: - All-day
 
     func testUntitledDateBecomesAWholeDay() {

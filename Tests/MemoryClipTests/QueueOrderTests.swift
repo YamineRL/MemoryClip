@@ -88,6 +88,16 @@ final class QueueServiceRunTests: XCTestCase {
             pasteboard: pasteboard
         )
         queue = QueueService(store: store, pasteService: pasteService)
+        // The run loop needs two things a test process does not have: a
+        // target it can believe in (Accessibility trust, a frontmost app)
+        // and a ⌘V that lands. The seams stand in for both, with the same
+        // contract `pasteAndWait` keeps — the row is marked used, the
+        // outcome says what happened.
+        queue.canDeliverPastes = { _ in true }
+        queue.pasteStep = { item, _ in
+            self.store.markUsed(item)
+            return .pasted
+        }
     }
 
     override func tearDown() async throws {
@@ -199,7 +209,7 @@ final class QueueServiceRunTests: XCTestCase {
         var opened: [UUID] = []
         queue.secretPaste = { item, _ in
             opened.append(item.uuid)
-            return .copiedOnly
+            return .pasted
         }
         queue.toggle(secret)
         queue.toggle(ordinary)
@@ -213,7 +223,9 @@ final class QueueServiceRunTests: XCTestCase {
     }
 
     /// With no seam wired a secret is skipped outright — its mask must never
-    /// be what lands on the pasteboard.
+    /// be what lands on the pasteboard. The entry is RETAINED, not dropped:
+    /// a clip that failed is the user's to retry or clear, never the run's
+    /// to lose silently.
     func testSecretClipWithoutASeamIsSkipped() async throws {
         let secret = ClipItem(kind: .text, text: nil, contentHash: "secret:\(UUID().uuidString)")
         secret.isSecret = true
@@ -225,6 +237,60 @@ final class QueueServiceRunTests: XCTestCase {
         await waitUntilIdle()
 
         XCTAssertNil(secret.lastUsedAt)
+        XCTAssertTrue(queue.isQueued(secret), "a failed entry stays queued for a retry")
+    }
+
+    /// Half a run failing must not take the succeeded half with it, and a
+    /// retry must not re-paste what already pasted.
+    func testAFailedClipStaysQueuedWhileTheRestAreRetired() async throws {
+        let items = insertClips(3)
+        for item in items { queue.toggle(item) }
+
+        let failing = items[1]
+        queue.pasteStep = { item, _ in
+            if item.uuid == failing.uuid { return .failed }
+            self.store.markUsed(item)
+            return .pasted
+        }
+
+        queue.pasteAll(target: nil)
+        await waitUntilIdle()
+
+        XCTAssertEqual(queue.count, 1)
+        XCTAssertTrue(queue.isQueued(failing))
+        XCTAssertEqual(queue.lastStopReason, .finished(pasted: 2))
+
+        // The retry runs ONLY the survivor — completed entries are gone.
+        var attempts: [UUID] = []
+        queue.pasteStep = { item, _ in
+            attempts.append(item.uuid)
+            return .pasted
+        }
+        queue.pasteAll(target: nil)
+        await waitUntilIdle()
+
+        XCTAssertEqual(attempts, [failing.uuid])
         XCTAssertTrue(queue.isEmpty)
+    }
+
+    /// Cancellation retires what already ran and keeps what did not — a
+    /// retry pastes the remainder, never repeats the first half.
+    func testCancellationKeepsOnlyTheUnfinishedEntries() async throws {
+        let items = insertClips(4)
+        for item in items { queue.toggle(item) }
+
+        // Paste the first entry, then cancel during the settle before the
+        // second: exactly one clip may be retired.
+        queue.pasteStep = { [queue] item, _ in
+            if item.uuid == items[1].uuid { queue?.cancel() }
+            return .pasted
+        }
+
+        queue.pasteAll(target: nil)
+        await waitUntilIdle()
+
+        XCTAssertEqual(queue.count, 3)
+        XCTAssertFalse(queue.isQueued(items[0]))
+        XCTAssertEqual(queue.lastStopReason, .cancelled)
     }
 }

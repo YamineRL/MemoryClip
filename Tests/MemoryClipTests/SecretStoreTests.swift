@@ -249,6 +249,86 @@ final class SecretStoreTests: XCTestCase {
         XCTAssertFalse(item.isSecret)
     }
 
+    /// The imported/inconsistent shape from the audit: a row that carries a
+    /// text payload AND file references (or screenshot state, or pixels)
+    /// cannot be half-sealed — the cipher covers only the text. Refused, not
+    /// silently stripped.
+    func testMarkAsSecretRefusesAMixedPayloadRow() throws {
+        let clip = CapturedClip(
+            kind: .text,
+            text: "ordinary note, not a credential",
+            richTextData: nil,
+            imageData: nil,
+            fileURLStrings: [],
+            colorHex: nil,
+            hash: ContentParser.hashText("text:ordinary note, not a credential")
+        )
+        store.insert(clip, sourceBundleID: nil, sourceAppName: nil)
+        let item = try XCTUnwrap(store.recent(limit: 1).first)
+        // An inconsistent/imported row: text AND a file reference.
+        item.fileURLStrings = ["file:///tmp/attachment.png"]
+        store.save()
+
+        XCTAssertFalse(store.markAsSecret(item))
+        XCTAssertFalse(item.isSecret)
+        XCTAssertEqual(item.text, "ordinary note, not a credential",
+                       "a refused conversion leaves the row exactly as it was")
+    }
+
+    /// A manually converted one-time code lives under the same expiry policy
+    /// as a captured one: the classifier sees it the same way, so the clock
+    /// starts at sealing.
+    func testMarkAsSecretAppliesTheOneTimeCodeExpiry() throws {
+        let clip = CapturedClip(
+            kind: .text,
+            text: otpCode,
+            richTextData: nil,
+            imageData: nil,
+            fileURLStrings: [],
+            colorHex: nil,
+            hash: ContentParser.hashText("text:\(otpCode)")
+        )
+        store.insert(
+            clip,
+            sourceBundleID: "com.apple.MobileSMS",
+            sourceAppName: "Messages"
+        )
+        let item = try XCTUnwrap(store.recent(limit: 1).first)
+
+        XCTAssertTrue(store.markAsSecret(item))
+        XCTAssertNotNil(
+            item.expiresAt,
+            "a manually sealed OTP must forget itself on the same clock as a captured one"
+        )
+    }
+
+    /// The pinned escape hatch applies to manual conversion too: a code the
+    /// user pinned BEFORE sealing must never get an expiry — the capture
+    /// path produces exactly that state (pinning clears `expiresAt`, and
+    /// unpinning does not re-stamp it).
+    func testMarkAsSecretOnAPinnedCodeStampsNoExpiry() throws {
+        let clip = CapturedClip(
+            kind: .text,
+            text: otpCode,
+            richTextData: nil,
+            imageData: nil,
+            fileURLStrings: [],
+            colorHex: nil,
+            hash: ContentParser.hashText("text:\(otpCode)")
+        )
+        store.insert(
+            clip,
+            sourceBundleID: "com.apple.MobileSMS",
+            sourceAppName: "Messages"
+        )
+        let item = try XCTUnwrap(store.recent(limit: 1).first)
+        item.isPinned = true
+        store.save()
+
+        XCTAssertTrue(store.markAsSecret(item))
+        XCTAssertNil(item.expiresAt, "a pinned code must not be scheduled for deletion")
+    }
+
     func testMarkNotSecretRestoresAndAllowlists() throws {
         let item = try XCTUnwrap(store.insertSecret(kind: .genericToken, plaintext: "X9k2Vb7mPqRt4wYz8nJc5Hd6Fs3Ga0Lm1CvBxW", sourceBundleID: nil, sourceAppName: nil))
         store.markNotSecret(item, plaintext: "X9k2Vb7mPqRt4wYz8nJc5Hd6Fs3Ga0Lm1CvBxW")

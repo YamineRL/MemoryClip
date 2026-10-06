@@ -45,6 +45,13 @@ final class OCRCoordinator {
     /// How long a bounded-out drain waits before picking the backlog back up.
     static let resumeDelay: Duration = .seconds(20)
 
+    /// Recognition attempts one clip gets before the drain gives up on it.
+    /// A Vision failure is retryable — the next drain would pick the clip
+    /// straight back up — but a clip that keeps failing forever must not
+    /// occupy the head of every batch for the life of the process. The
+    /// budget lives in memory, so the next launch retries once more.
+    static let maxAttempts = 3
+
     static func registerDefaults() {
         UserDefaults.standard.register(defaults: [enabledKey: true])
     }
@@ -80,6 +87,10 @@ final class OCRCoordinator {
 
     private let store: ClipStore
     private var task: Task<Void, Never>?
+    /// Per-clip recognition failures this run, enforcing `maxAttempts`.
+    /// Keyed by uuid and process-local on purpose: a restart is exactly the
+    /// reset a transiently-failing service deserves.
+    private var attempts: [UUID: Int] = [:]
     /// Identifies the drain that owns `task`. A run whose token no longer
     /// matches must not clear the handle: cancellation is cooperative and
     /// Vision does not check it, so a stopped run can still be unwinding
@@ -172,41 +183,71 @@ final class OCRCoordinator {
     /// Returns true when it stopped because `maxImagesPerDrain` was reached
     /// and clips are still waiting, false when the queue drained, OCR was
     /// switched off, or the run was cancelled.
+    ///
+    /// `seen` remembers every clip this drain has already picked once.
+    /// Retryable failures stay `!ocrAttempted` — so a re-fetch would hand
+    /// the same clip straight back and a drain could spin on its head
+    /// forever. Excluding them lets the drain move PAST a failing batch to
+    /// valid clips further down the backlog, while a later drain (or the
+    /// `scheduleResume` re-arm) still retries them.
     private func drain() async -> Bool {
         var processed = 0
+        var seen = Set<UUID>()
         while !Task.isCancelled {
             // Re-read every batch: the user can turn OCR off mid-run.
             guard Self.isEnabled else { return false }
             guard processed < Self.maxImagesPerDrain else {
                 // Only report a backlog if something is actually left.
-                return !store.pendingOCR(limit: 1).isEmpty
+                return store.pendingOCR(limit: 1)
+                    .contains { !seen.contains($0.uuid) }
             }
 
-            let pending: [(uuid: UUID, payload: ImagePayload)] = store
+            let pending: [(uuid: UUID, revision: Int, payload: ImagePayload)] = store
                 .pendingOCR(limit: Self.batchSize)
                 .compactMap { item in
+                    guard !seen.contains(item.uuid) else { return nil }
                     guard let payload = item.imagePayload else {
                         // Nothing to read — an empty blob, or a screenshot
                         // whose file has been moved or deleted since it was
                         // captured. Mark it done so it stops coming back
                         // around; the clip keeps whatever thumbnail it has.
                         item.ocrAttempted = true
+                        seen.insert(item.uuid)
                         return nil
                     }
-                    return (item.uuid, payload)
+                    return (item.uuid, item.contentRevision, payload)
                 }
             store.save()
             guard !pending.isEmpty else { return false }
+            seen.formUnion(pending.map(\.uuid))
 
             let results = await Self.recognizeAll(pending, concurrency: Self.concurrency)
             var recognized: [UUID] = []
-            for (uuid, text) in results {
-                // ocrAttempted is set here even when text is nil, so a clip
-                // Vision could make nothing of is never re-queued forever.
-                store.applyOCR(text, toClipWith: uuid)
-                if let text {
+            for (uuid, revision, outcome) in results {
+                switch outcome {
+                case .text(let text):
+                    store.applyOCR(text, toClipWith: uuid, revision: revision)
                     recognized.append(uuid)
+                    attempts[uuid] = nil
                     log.notice("OCR extracted \(text.count) characters from an image clip")
+                case .noText, .unavailableSource:
+                    // A defined negative: there is nothing to read or nothing
+                    // legible in it. Done — this image does not change.
+                    store.applyOCR(nil, toClipWith: uuid, revision: revision)
+                    attempts[uuid] = nil
+                case .failure:
+                    let spent = (attempts[uuid] ?? 0) + 1
+                    if spent >= Self.maxAttempts {
+                        // Out of retries: mark done rather than occupy the
+                        // head of every future batch forever.
+                        store.applyOCR(nil, toClipWith: uuid, revision: revision)
+                        log.error("OCR gave up on a clip after \(spent) attempts")
+                    } else {
+                        // Stays unattempted: the next drain (or the resume
+                        // re-arm) picks it up. `seen` keeps this one moving.
+                        attempts[uuid] = spent
+                        log.error("OCR attempt \(spent) failed; the clip stays queued")
+                    }
                 }
             }
             processed += results.count
@@ -215,14 +256,23 @@ final class OCRCoordinator {
             // query for an empty queue.
             if !recognized.isEmpty { onRecognition?(recognized) }
 
-            // Anything skipped (OCR switched off, or cancelled, mid-batch)
-            // is left pending on purpose: it is picked up when OCR is
-            // switched back on.
+            // A partial batch means the run was cancelled or OCR switched
+            // off mid-flight — those clips were never attempted and are left
+            // pending on purpose, picked up when OCR comes back.
             if results.count < pending.count { return false }
 
             try? await Task.sleep(for: Self.batchPause)
         }
         return false
+    }
+
+    /// Reset a clip's OCR bookkeeping so the next drain re-reads it — the
+    /// "try again" entry point for an image whose first attempt failed.
+    func requeue(_ item: ClipItem) {
+        item.ocrAttempted = false
+        attempts[item.uuid] = nil
+        store.save()
+        processPending()
     }
 
     /// Recognize a batch off the main actor, at most `concurrency` at a time.
@@ -231,14 +281,16 @@ final class OCRCoordinator {
     /// because OCR was switched off (or the run was cancelled) is omitted
     /// rather than reported as "no text", so it stays queued.
     nonisolated static func recognizeAll(
-        _ pending: [(uuid: UUID, payload: ImagePayload)],
+        _ pending: [(uuid: UUID, revision: Int, payload: ImagePayload)],
         concurrency: Int
-    ) async -> [(uuid: UUID, text: String?)] {
+    ) async -> [(uuid: UUID, revision: Int, outcome: OCRService.Outcome)] {
         guard !pending.isEmpty else { return [] }
         let width = max(1, min(concurrency, pending.count))
 
-        return await withTaskGroup(of: (uuid: UUID, text: String?)?.self) { group in
-            var results: [(uuid: UUID, text: String?)] = []
+        return await withTaskGroup(
+            of: (uuid: UUID, revision: Int, outcome: OCRService.Outcome)?.self
+        ) { group in
+            var results: [(uuid: UUID, revision: Int, outcome: OCRService.Outcome)] = []
             results.reserveCapacity(pending.count)
             var index = 0
             var running = 0
@@ -260,7 +312,11 @@ final class OCRCoordinator {
                     // backlog is minutes of work, and switching OCR off must
                     // stop it promptly rather than at the next batch.
                     guard !Task.isCancelled, OCRCoordinator.isEnabled else { return nil }
-                    return (entry.uuid, await OCRService.recognizeText(in: entry.payload))
+                    return (
+                        entry.uuid,
+                        entry.revision,
+                        await OCRService.recognize(in: entry.payload)
+                    )
                 }
             }
             while running > 0 { await harvest() }

@@ -35,7 +35,8 @@ enum EventNotifier {
     /// The category the two actions hang off, named on every request so the
     /// buttons appear on the banner.
     static let categoryIdentifier = "app.memoryclip.calendarEvent"
-    /// Removes the event again — `CalendarCoordinator.undoLastEvent()`.
+    /// Removes the event again — `CalendarCoordinator.undoEvent(_:)` on the
+    /// operation the banner carries in its `userInfo`.
     static let undoActionIdentifier = "app.memoryclip.calendarEvent.undo"
     /// Brings up Calendar so the user can see what landed.
     static let openActionIdentifier = "app.memoryclip.calendarEvent.open"
@@ -106,8 +107,20 @@ enum EventNotifier {
     /// Every failure here is silent on purpose: an event that could not be
     /// announced is still an event, and there is no window open to complain
     /// in when this runs.
+    ///
+    /// `operation` is the creation the banner announces, and the undo its
+    /// button must name: it rides in `userInfo` and becomes the request's
+    /// identifier, so the delegate can retract THIS creation rather than
+    /// whatever happened to be saved last — two events' banners each undo
+    /// their own.
     @MainActor
-    static func post(eventTitle: String, start: Date, isAllDay: Bool, calendarTitle: String) async {
+    static func post(
+        eventTitle: String,
+        start: Date,
+        isAllDay: Bool,
+        calendarTitle: String,
+        operation: UUID
+    ) async {
         guard isAvailable else { return }
         let center = UNUserNotificationCenter.current()
         guard await isAuthorized(center) else { return }
@@ -122,12 +135,13 @@ enum EventNotifier {
         content.title = text.title
         content.body = text.body
         content.categoryIdentifier = categoryIdentifier
+        content.userInfo["operationID"] = operation.uuidString
 
-        // No trigger: deliver now. A fresh identifier every time, so two
-        // events created in one burst are two banners rather than one
-        // replacing the other.
+        // No trigger: deliver now. The operation is the request's identifier
+        // too — a repost of the same creation would replace its banner
+        // rather than stack a second one.
         let request = UNNotificationRequest(
-            identifier: UUID().uuidString,
+            identifier: operation.uuidString,
             content: content,
             trigger: nil
         )

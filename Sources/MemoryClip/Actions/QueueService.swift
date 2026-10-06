@@ -56,9 +56,32 @@ final class QueueService: ObservableObject {
     /// written, on top of the settle time `PasteService` already waits.
     static let pasteInterval: TimeInterval = 0.35
 
+    /// How a queue run ended — the progress and the reason, for the UI to
+    /// report. `nil` while a run is in flight or before the first one.
+    enum StopReason: Equatable {
+        /// Every queued clip was handled: its ⌘V was posted, or — only
+        /// possible on a one-item run — its value was left on the clipboard.
+        /// (Posted, not confirmed: a synthetic event cannot acknowledge that
+        /// the destination consumed it — see `PasteService.postCommandV`.)
+        case finished(pasted: Int)
+        /// The user or teardown stopped the run; handled entries are out,
+        /// the rest stay queued for a retry.
+        case cancelled
+        /// The target app lost focus mid-run; handled entries are out, the
+        /// rest stay queued.
+        case targetLost
+        /// Paste delivery is impossible (auto-paste off, or no target app),
+        /// so a multi-clip run would only churn the clipboard — each write
+        /// overwriting the last. Nothing ran; the queue is intact.
+        case needsAutoPaste
+    }
+
     @Published private(set) var order = QueueOrder()
     /// True while a queue run is pasting, so the UI can show progress.
     @Published private(set) var isPasting = false
+    /// How the last run ended — read by the panel to say what happened and
+    /// what is still queued.
+    @Published private(set) var lastStopReason: StopReason?
 
     private let store: ClipStore
     private let pasteService: PasteService
@@ -67,6 +90,21 @@ final class QueueService: ObservableObject {
     /// A run whose token no longer matches must not touch that state: it has
     /// been cancelled or superseded, and clearing it would wipe a NEWER run.
     private var currentRunID: UUID?
+    /// Entries the in-flight run has already handled — completed pastes and
+    /// delivered copies. Held on the service rather than inside the task so
+    /// `cancel()` can retire them too: an interrupted run must not leave
+    /// already-pasted clips queued to repeat on retry.
+    private var completedInRun: Set<UUID> = []
+
+    /// Whether a ⌘V can actually reach `target` — the question the multi-
+    /// clip guard asks. Injectable so tests can drive the run loop without
+    /// Accessibility trust or a real target application.
+    var canDeliverPastes: (NSRunningApplication?) -> Bool = { PasteService.canAutoPaste(into: $0) }
+
+    /// How one ordinary clip is pasted inside a run — injectable so tests
+    /// exercise the run loop without delivering real keystrokes. nil takes
+    /// the real `PasteService` path.
+    var pasteStep: (@MainActor (ClipItem, NSRunningApplication?) async -> PasteService.PasteOutcome)?
 
     /// How a secret clip is pasted inside a run. `PanelController` wires it
     /// to `SecretsService.pasteOutcome`, which opens the cipher behind one
@@ -99,15 +137,30 @@ final class QueueService: ObservableObject {
 
     /// Paste every queued clip into `target`, in queue order, then clear
     /// the queue. Entries whose clip has since been deleted are skipped.
+    ///
+    /// A run that cannot deliver keystrokes — auto-paste off, or no target
+    /// app — is refused outright for a queue of more than one: each write
+    /// would only replace the clipboard the previous clip just reached,
+    /// leaving the queue "done" with nothing pasted but the last entry.
+    /// With one item the copy itself is a sensible outcome, so a single
+    /// entry runs regardless.
     func pasteAll(target: NSRunningApplication?, plainOnly: Bool = false) {
         guard !isPasting, !order.isEmpty else { return }
         let items = resolveItems()
         guard !items.isEmpty else {
             order.clear()
+            lastStopReason = .finished(pasted: 0)
+            return
+        }
+        guard items.count == 1 || canDeliverPastes(target) else {
+            lastStopReason = .needsAutoPaste
+            log.notice("Queue run declined: \(items.count) clips and no paste destination")
             return
         }
 
         isPasting = true
+        lastStopReason = nil
+        completedInRun = []
         let token = UUID()
         currentRunID = token
         run = Task { @MainActor [weak self] in
@@ -120,7 +173,13 @@ final class QueueService: ObservableObject {
                     try? await Task.sleep(for: .seconds(Self.pasteInterval))
                     if Task.isCancelled { break }
                 }
-                guard !item.isDeleted else { continue }
+                guard !item.isDeleted else {
+                    // A clip deleted mid-run can never be retried — its
+                    // entry is retired like a handled one, not queued
+                    // forever.
+                    self.completedInRun.insert(item.uuid)
+                    continue
+                }
                 let outcome: PasteService.PasteOutcome
                 if item.isSecret {
                     // The row holds no payload `pasteAndWait` could write;
@@ -128,6 +187,8 @@ final class QueueService: ObservableObject {
                     // does not abort the run the way `targetLost` does — it
                     // simply contributes nothing to the pasteboard.
                     outcome = await (self.secretPaste?(item, target) ?? .failed)
+                } else if let pasteStep = self.pasteStep {
+                    outcome = await pasteStep(item, target)
                 } else {
                     outcome = await self.pasteService.pasteAndWait(
                         item,
@@ -142,7 +203,17 @@ final class QueueService: ObservableObject {
                     log.notice("Queue run aborted after \(pasted) clips: target app lost focus")
                     break
                 }
-                if outcome.wroteClipboard { pasted += 1 }
+                // Only a delivered paste counts as done: `.failed` (empty
+                // clip, refused secret prompt) and `.copiedOnly` inside a
+                // multi-clip run leave the entry queued — the next clip's
+                // write would evict its clipboard spot anyway.
+                if outcome == .pasted {
+                    self.completedInRun.insert(item.uuid)
+                    pasted += 1
+                } else if items.count == 1, outcome.wroteClipboard {
+                    self.completedInRun.insert(item.uuid)
+                    pasted += 1
+                }
             }
             // Only the run that still owns the state may reset it — a
             // cancelled/superseded run must not clear a newer run's queue.
@@ -150,24 +221,39 @@ final class QueueService: ObservableObject {
             self.currentRunID = nil
             self.run = nil
             self.isPasting = false
+            // Handled entries leave the queue whatever happened; failed and
+            // unattempted ones stay — a retry must not repeat what already
+            // pasted, and must not silently lose what never ran.
+            for uuid in self.completedInRun {
+                self.order.remove(uuid)
+            }
+            self.completedInRun = []
             if !Task.isCancelled && !aborted {
-                self.order.clear()
+                self.lastStopReason = .finished(pasted: pasted)
                 log.notice("Queue run finished: \(pasted) clips")
+            } else {
+                self.lastStopReason = aborted ? .targetLost : .cancelled
             }
         }
     }
 
     /// Cancel an in-flight queue run (panel closing, app teardown).
     ///
-    /// The queue itself is left intact so the user can retry; the cancelled
-    /// task can no longer mutate any state because its run token is dropped
-    /// here.
+    /// Entries the run already handled are retired with it so a retry does
+    /// not paste them twice; the rest stay queued for that retry. The
+    /// cancelled task can no longer mutate any state because its run token
+    /// is dropped here.
     func cancel() {
         guard let run else { return }
         currentRunID = nil
         run.cancel()
         self.run = nil
         isPasting = false
+        for uuid in completedInRun {
+            order.remove(uuid)
+        }
+        completedInRun = []
+        lastStopReason = .cancelled
     }
 
     /// Live clips for the queued ids, in queue order. Also prunes ids whose

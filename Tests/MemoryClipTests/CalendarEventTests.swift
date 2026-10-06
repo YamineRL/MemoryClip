@@ -11,13 +11,21 @@ import XCTest
 /// live `EKEventStore`.
 @MainActor
 private final class FakeEventSink: EventSink {
-    /// Every event handed to `save`, in order.
-    private(set) var saved: [DetectedEvent] = []
-    private(set) var removals = 0
+    /// Every event handed to `save`, keyed by its creation operation — the
+    /// same identity the real sink keys its `EKEvent`s by.
+    private(set) var saved: [UUID: DetectedEvent] = [:]
+    /// Operation ids undo asked to remove, in order.
+    private(set) var removed: [UUID] = []
 
     /// Thrown instead of saving, to drive the failure paths.
     var saveError: CalendarError?
     var removeError: CalendarError?
+
+    /// Set once `save` is entered — lets a test hold a creation open so a
+    /// second one can race it.
+    private(set) var saveEntered = false
+    /// Runs inside `save`, before the receipt is built.
+    var onSave: (@MainActor () async throws -> Void)?
 
     var calendarTitle = "Work"
 
@@ -30,9 +38,11 @@ private final class FakeEventSink: EventSink {
     nonisolated(unsafe) var wouldPromptForAccess = false
 
     @MainActor
-    func save(_ event: DetectedEvent) async throws -> EventReceipt {
+    func save(_ event: DetectedEvent, operation: UUID) async throws -> EventReceipt {
+        saveEntered = true
+        if let onSave { try await onSave() }
         if let saveError { throw saveError }
-        saved.append(event)
+        saved[operation] = event
         return EventReceipt(
             eventIdentifier: "event-\(saved.count)",
             calendarTitle: calendarTitle,
@@ -41,10 +51,10 @@ private final class FakeEventSink: EventSink {
     }
 
     @MainActor
-    func removeLastSaved() async throws {
+    func removeSaved(_ operation: UUID) async throws -> Bool {
         if let removeError { throw removeError }
-        removals += 1
-        if !saved.isEmpty { saved.removeLast() }
+        removed.append(operation)
+        return saved.removeValue(forKey: operation) != nil
     }
 }
 
@@ -116,7 +126,7 @@ final class CalendarEventTests: XCTestCase {
         }
 
         XCTAssertEqual(sink.saved.count, 1)
-        XCTAssertEqual(sink.saved.first?.title, "Design review")
+        XCTAssertEqual(sink.saved.values.first?.title, "Design review")
         XCTAssertEqual(receipt.calendarTitle, "Work")
 
         // The clip records the event, which is what stops a second one being
@@ -311,20 +321,23 @@ final class CalendarEventTests: XCTestCase {
             return XCTFail("undo failed")
         }
 
-        XCTAssertEqual(sink.removals, 1)
+        XCTAssertEqual(sink.removed.count, 1)
         XCTAssertTrue(sink.saved.isEmpty)
         XCTAssertNil(try XCTUnwrap(store.item(withUUID: item.uuid)).calendarEventID)
     }
 
-    func testUndoWithNothingCreatedDoesNothing() async throws {
+    /// Nothing standing to undo is `.undoUnavailable`, not a claimed success:
+    /// a "success" that touched nothing is exactly the lie notification-undo
+    /// exists to stop telling.
+    func testUndoWithNothingCreatedReportsUnavailable() async throws {
         let store = try makeStore()
         let sink = FakeEventSink()
         let coordinator = CalendarCoordinator(store: store, sink: sink)
 
-        guard case .success = await coordinator.undoLastEvent() else {
-            return XCTFail("nothing to undo is not a failure")
+        guard case .failure(let error) = await coordinator.undoLastEvent() else {
+            return XCTFail("nothing to undo must not claim success")
         }
-        XCTAssertNil(coordinator.lastError)
+        XCTAssertEqual(error, .undoUnavailable)
     }
 
     func testAFailedRemovalKeepsTheIdentifierOnTheClip() async throws {
@@ -346,12 +359,123 @@ final class CalendarEventTests: XCTestCase {
         )
     }
 
+    /// P2.5's acceptance case: two clips, two events, and Undo on the FIRST
+    /// one's notification must remove the first one's event — not whichever
+    /// was created last, which is the bug operation identity fixes.
+    func testUndoRemovesTheOperationItNamesNotTheLast() async throws {
+        let store = try makeStore()
+        let first = try insert("Design review August 20, 2026 at 3:00 PM", into: store)
+        let second = try insert("Dentist August 21, 2026 at 9:00 AM", into: store)
+        let sink = FakeEventSink()
+        let coordinator = CalendarCoordinator(store: store, sink: sink)
+
+        _ = await coordinator.addEvent(for: first)
+        _ = await coordinator.addEvent(for: second)
+        let firstOperation = try XCTUnwrap(coordinator.operationID(forClipWith: first.uuid))
+        let secondOperation = try XCTUnwrap(coordinator.operationID(forClipWith: second.uuid))
+
+        guard case .success = await coordinator.undoEvent(firstOperation) else {
+            return XCTFail("undoing the first event failed")
+        }
+
+        XCTAssertEqual(sink.removed, [firstOperation],
+                       "undo must name the creation it retracts")
+        XCTAssertNotNil(sink.saved[secondOperation],
+                        "the second event is untouched")
+        XCTAssertNil(try XCTUnwrap(store.item(withUUID: first.uuid)).calendarEventID)
+        XCTAssertNotNil(try XCTUnwrap(store.item(withUUID: second.uuid)).calendarEventID)
+    }
+
+    /// An operation this run does not know — a notification for an event
+    /// created before launch, or already undone — reports unavailable, never
+    /// success. Claiming otherwise is how "Undo" lies.
+    func testUndoOfAnUnknownOperationReportsUnavailable() async throws {
+        let store = try makeStore()
+        let item = try insert(Self.invitation, into: store)
+        let sink = FakeEventSink()
+        let coordinator = CalendarCoordinator(store: store, sink: sink)
+
+        _ = await coordinator.addEvent(for: item)
+
+        guard case .failure(let error) = await coordinator.undoEvent(UUID()) else {
+            return XCTFail("an unknown operation must not claim success")
+        }
+        XCTAssertEqual(error, .undoUnavailable)
+    }
+
+    /// P2.6: a second `addEvent` for a clip whose first creation is still
+    /// inside `sink.save` must be declined — the check-then-await window is
+    /// exactly where a duplicate used to enter.
+    func testAConcurrentAddForTheSameClipIsDeclined() async throws {
+        let store = try makeStore()
+        let item = try insert(Self.invitation, into: store)
+        let sink = FakeEventSink()
+        sink.onSave = { try? await Task.sleep(for: .milliseconds(200)) }
+        let coordinator = CalendarCoordinator(store: store, sink: sink)
+
+        let firstResult = Task { @MainActor in await coordinator.addEvent(for: item) }
+        while !sink.saveEntered { await Task.yield() }
+
+        guard case .failure(let error) = await coordinator.addEvent(for: item) else {
+            return XCTFail("a racing add must not become a second event")
+        }
+        XCTAssertEqual(error, .alreadyInFlight)
+        _ = await firstResult.value
+
+        XCTAssertEqual(sink.saved.count, 1, "one clip, one event — the race produced no duplicate")
+    }
+
+    /// The clip moved on while the event was being created — edited, in
+    /// this case. The created event describes content that is gone, so the
+    /// honest move is to un-create it, not to record it or to leave it
+    /// orphaned in the calendar.
+    func testAClipChangedMidSaveUnCreatesTheEvent() async throws {
+        let store = try makeStore()
+        let item = try insert(Self.invitation, into: store)
+        let sink = FakeEventSink()
+        let coordinator = CalendarCoordinator(store: store, sink: sink)
+
+        sink.onSave = { [uuid = item.uuid] in
+            guard let live = store.item(withUUID: uuid) else { return }
+            _ = store.applyEdit(live, newText: "edited, no date")
+        }
+
+        guard case .failure(let error) = await coordinator.addEvent(for: item) else {
+            return XCTFail("a stale write-back must not record the event")
+        }
+        XCTAssertEqual(error, .clipChangedDuringSave)
+        XCTAssertTrue(sink.saved.isEmpty, "the orphaned event was removed")
+        XCTAssertEqual(sink.removed.count, 1)
+        XCTAssertNil(try XCTUnwrap(store.item(withUUID: item.uuid)).calendarEventID)
+    }
+
+    /// Same recovery, harder case: the clip was deleted outright while the
+    /// save was in flight. Nothing may be left standing.
+    func testAClipDeletedMidSaveUnCreatesTheEvent() async throws {
+        let store = try makeStore()
+        let item = try insert(Self.invitation, into: store)
+        let sink = FakeEventSink()
+        let coordinator = CalendarCoordinator(store: store, sink: sink)
+
+        sink.onSave = { [uuid = item.uuid] in
+            guard let live = store.item(withUUID: uuid) else { return }
+            store.delete(live)
+        }
+
+        guard case .failure(let error) = await coordinator.addEvent(for: item) else {
+            return XCTFail("a deleted clip must not keep the event")
+        }
+        XCTAssertEqual(error, .clipChangedDuringSave)
+        XCTAssertTrue(sink.saved.isEmpty)
+        XCTAssertEqual(sink.removed.count, 1)
+    }
+
     // MARK: - What is read off the clip
 
     func testTheModelsTitleIsTheFallbackTitle() async throws {
         let store = try makeStore()
         let item = try insert("August 20, 2026 at 3:00 PM", into: store)
-        store.applyRefinement(title: "Budget sync", summary: nil, text: nil, tags: [], toClipWith: item.uuid)
+        store.applyRefinement(title: "Budget sync", summary: nil, text: nil, tags: [], toClipWith: item.uuid, revision: 0)
         let sink = FakeEventSink()
         let coordinator = CalendarCoordinator(store: store, sink: sink)
 
@@ -375,7 +499,8 @@ final class CalendarEventTests: XCTestCase {
             summary: nil,
             text: "Standup on August 20, 2026 at 9:30am",
             tags: [],
-            toClipWith: item.uuid
+            toClipWith: item.uuid,
+            revision: 0
         )
 
         let coordinator = CalendarCoordinator(store: store, sink: FakeEventSink())

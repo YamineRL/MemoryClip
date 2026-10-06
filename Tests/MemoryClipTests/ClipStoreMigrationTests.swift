@@ -1,3 +1,4 @@
+import SQLite3
 import SwiftData
 import XCTest
 
@@ -30,6 +31,24 @@ final class ClipStoreMigrationTests: XCTestCase {
         return dir.appendingPathComponent("MemoryClip.store")
     }
 
+    /// A real SQLite file carrying a `ZCLIPITEM` table — the shape the
+    /// ownership probe requires before a generic `default.store` may be
+    /// adopted. Sidecars stay plain text: they are only ever copied.
+    private func writeStore(at url: URL) throws {
+        var db: OpaquePointer?
+        guard sqlite3_open(url.path, &db) == SQLITE_OK else {
+            throw NSError(domain: "fixture", code: 1)
+        }
+        defer { sqlite3_close(db) }
+        guard sqlite3_exec(
+            db,
+            "CREATE TABLE ZCLIPITEM (Z_PK INTEGER PRIMARY KEY)",
+            nil, nil, nil
+        ) == SQLITE_OK else {
+            throw NSError(domain: "fixture", code: 2)
+        }
+    }
+
     private func write(_ contents: String, to url: URL) throws {
         try Data(contents.utf8).write(to: url)
     }
@@ -47,16 +66,24 @@ final class ClipStoreMigrationTests: XCTestCase {
     func testMigratesStoreAndBothSidecars() throws {
         let legacy = legacyURL()
         let destination = try destinationURL()
-        try write("main", to: legacy)
+        try writeStore(at: legacy)
         try write("wal", to: URL(fileURLWithPath: legacy.path + "-wal"))
         try write("shm", to: URL(fileURLWithPath: legacy.path + "-shm"))
 
         let migrated = try ClipStore.migrateLegacyStore(from: legacy, to: destination)
 
         XCTAssertTrue(migrated)
-        XCTAssertEqual(try read(destination), "main")
+        XCTAssertTrue(ClipStore.looksLikeClipStore(destination))
         XCTAssertEqual(try read(URL(fileURLWithPath: destination.path + "-wal")), "wal")
-        XCTAssertEqual(try read(URL(fileURLWithPath: destination.path + "-shm")), "shm")
+        // The ownership probe opens the staged store, and SQLite rebuilds
+        // the -shm on any open — so the shm that lands at the destination is
+        // a regenerated wal-index, not the copied bytes. What matters is
+        // that a sidecar lands there at all.
+        XCTAssertTrue(exists(URL(fileURLWithPath: destination.path + "-shm")))
+
+        // The source is preserved until the destination has opened — here,
+        // until the test finalizes it the way `init` does.
+        ClipStore.finalizeLegacyMigration(legacy: legacy)
         XCTAssertFalse(exists(legacy), "The old store must not be left behind")
         XCTAssertFalse(exists(URL(fileURLWithPath: legacy.path + "-wal")))
         XCTAssertFalse(exists(URL(fileURLWithPath: legacy.path + "-shm")))
@@ -65,10 +92,10 @@ final class ClipStoreMigrationTests: XCTestCase {
     func testMigratesStoreWithoutSidecars() throws {
         let legacy = legacyURL()
         let destination = try destinationURL()
-        try write("main", to: legacy)
+        try writeStore(at: legacy)
 
         XCTAssertTrue(try ClipStore.migrateLegacyStore(from: legacy, to: destination))
-        XCTAssertEqual(try read(destination), "main")
+        XCTAssertTrue(ClipStore.looksLikeClipStore(destination))
         XCTAssertFalse(exists(URL(fileURLWithPath: destination.path + "-wal")))
     }
 
@@ -76,6 +103,19 @@ final class ClipStoreMigrationTests: XCTestCase {
         let destination = try destinationURL()
         XCTAssertFalse(try ClipStore.migrateLegacyStore(from: legacyURL(), to: destination))
         XCTAssertFalse(exists(destination))
+    }
+
+    /// `default.store` is the name every unsandboxed SwiftData app takes when
+    /// it does not pick one: a file there that is not a MemoryClip store is
+    /// somebody else's, and must be neither adopted nor deleted.
+    func testAStoreThatIsNotOursIsNotAdopted() throws {
+        let legacy = legacyURL()
+        let destination = try destinationURL()
+        try write("some other app's data", to: legacy)
+
+        XCTAssertFalse(try ClipStore.migrateLegacyStore(from: legacy, to: destination))
+        XCTAssertFalse(exists(destination), "A foreign default.store must not be adopted")
+        XCTAssertEqual(try read(legacy), "some other app's data", "…or touched")
     }
 
     func testExistingDestinationIsNeverClobbered() throws {
@@ -89,14 +129,37 @@ final class ClipStoreMigrationTests: XCTestCase {
         XCTAssertTrue(exists(legacy), "A skipped migration must leave the legacy file alone")
     }
 
+    /// An interrupted first attempt leaves the staging directory standing —
+    /// which is what tells the next launch the destination was never
+    /// committed. The relaunch quarantines the partial destination and
+    /// stages the whole store again rather than trusting the half-copy.
+    func testAnInterruptedMigrationIsStagedAgain() throws {
+        let legacy = legacyURL()
+        let destination = try destinationURL()
+        try writeStore(at: legacy)
+
+        // Simulate a crash mid-commit: a staged file, a PARTIAL destination
+        // and the staging directory all still standing.
+        let staging = ClipStore.migrationStagingDirectory(forStoreAt: destination)
+        try FileManager.default.createDirectory(at: staging, withIntermediateDirectories: true)
+        try write("half", to: destination)
+
+        XCTAssertTrue(try ClipStore.migrateLegacyStore(from: legacy, to: destination))
+        XCTAssertTrue(
+            ClipStore.looksLikeClipStore(destination),
+            "the destination is the whole staged store, not the partial copy"
+        )
+        XCTAssertFalse(exists(staging))
+    }
+
     func testMigrationIsIdempotent() throws {
         let legacy = legacyURL()
         let destination = try destinationURL()
-        try write("main", to: legacy)
+        try writeStore(at: legacy)
 
         XCTAssertTrue(try ClipStore.migrateLegacyStore(from: legacy, to: destination))
         XCTAssertFalse(try ClipStore.migrateLegacyStore(from: legacy, to: destination))
-        XCTAssertEqual(try read(destination), "main")
+        XCTAssertTrue(ClipStore.looksLikeClipStore(destination))
     }
 
     // MARK: - Permissions
@@ -238,7 +301,7 @@ final class ClipStoreMigrationTests: XCTestCase {
         let legacy = legacyURL()
         let destination = try destinationURL()
 
-        try write("main", to: legacy)
+        try writeStore(at: legacy)
         let legacySupport = ClipStore.externalStorageDirectory(forStoreAt: legacy)
         try FileManager.default.createDirectory(at: legacySupport, withIntermediateDirectories: true)
         try write("png-bytes", to: legacySupport.appendingPathComponent("blob"))
@@ -248,6 +311,8 @@ final class ClipStoreMigrationTests: XCTestCase {
         let movedSupport = ClipStore.externalStorageDirectory(forStoreAt: destination)
         XCTAssertEqual(movedSupport.lastPathComponent, ".MemoryClip_SUPPORT")
         XCTAssertEqual(try read(movedSupport.appendingPathComponent("blob")), "png-bytes")
+
+        ClipStore.finalizeLegacyMigration(legacy: legacy)
         XCTAssertFalse(exists(legacySupport), "The old blob directory must not be left behind")
     }
 }

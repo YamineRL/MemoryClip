@@ -59,6 +59,17 @@ enum CalendarError: LocalizedError, Equatable {
     case noWritableCalendar
     case saveFailed(String)
     case removeFailed(String)
+    /// The clip already records an event — a second would be a duplicate.
+    case alreadyScheduled
+    /// A creation for this clip is underway; its event covers this request.
+    case alreadyInFlight
+    /// Undo named a creation this run cannot reach: made before launch, or
+    /// already undone.
+    case undoUnavailable
+    /// The event was created but the clip changed underneath the save —
+    /// edited, sealed or deleted — so the event was un-created rather than
+    /// left orphaned.
+    case clipChangedDuringSave
 
     var errorDescription: String? {
         switch self {
@@ -78,6 +89,14 @@ enum CalendarError: LocalizedError, Equatable {
             return loc("The event could not be saved: %@", reason)
         case .removeFailed(let reason):
             return loc("The event could not be removed: %@", reason)
+        case .alreadyScheduled:
+            return loc("This clip already has an event in your calendar.")
+        case .alreadyInFlight:
+            return loc("This clip is already being added to your calendar.")
+        case .undoUnavailable:
+            return loc("That event can no longer be undone — it was created before MemoryClip last started, or was already undone.")
+        case .clipChangedDuringSave:
+            return loc("The clip changed while its event was being created, so the event was removed again.")
         }
     }
 
@@ -105,6 +124,14 @@ enum CalendarError: LocalizedError, Equatable {
             return "event save failed"
         case .removeFailed:
             return "event removal failed"
+        case .alreadyScheduled:
+            return "clip already scheduled"
+        case .alreadyInFlight:
+            return "creation already in flight"
+        case .undoUnavailable:
+            return "undo unavailable"
+        case .clipChangedDuringSave:
+            return "clip changed during save"
         }
     }
 }

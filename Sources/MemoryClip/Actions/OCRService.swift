@@ -64,42 +64,79 @@ enum OCRService {
     /// `OCRPipelineBenchmarks.testTablePassOverhead`.
     static let detectsTables = true
 
-    /// Recognize text in encoded image data (PNG/TIFF/JPEG…).
+    /// What one recognition attempt ended in.
     ///
-    /// Returns nil when the data isn't a decodable image, when Vision
-    /// fails, or when nothing legible was found — callers use nil to mean
-    /// "no text", not "try again".
+    /// The four cases are deliberately distinct: they used to all fold into
+    /// `nil`, which is what let a transient Vision failure mark a clip as
+    /// done forever and a deleted screenshot file retry pointlessly. The
+    /// coordinator maps each to its own persistence and retry behaviour.
+    enum Outcome: Sendable, Equatable {
+        /// Recognition ran and produced text.
+        case text(String)
+        /// Recognition ran on a valid image and found nothing legible. Done:
+        /// the same bytes will not read differently tomorrow.
+        case noText
+        /// There is no usable source — undecodable bytes, a zero-dimensioned
+        /// image, a screenshot file that is gone. Not retryable: the input
+        /// cannot change underneath us.
+        case unavailableSource
+        /// Vision itself failed. Retryable — recognition is a service call
+        /// and a transient failure says nothing about the image.
+        case failure
+
+        /// The recognized string, for callers that only want the text.
+        var text: String? {
+            if case .text(let string) = self { return string }
+            return nil
+        }
+
+        /// Whether a later attempt might produce a different answer. Only
+        /// `.failure` qualifies — `.noText` is a property of the bytes and
+        /// `.unavailableSource` of their absence.
+        var isRetryable: Bool { self == .failure }
+    }
+
+    /// Recognize text in encoded image data (PNG/TIFF/JPEG…).
     ///
     /// Safe to call from several tasks at once: each call builds its own
     /// request, and Vision serializes what it must internally.
-    static func recognizeText(in imageData: Data) async -> String? {
-        guard !imageData.isEmpty else { return nil }
+    static func recognize(in imageData: Data) async -> Outcome {
+        guard !imageData.isEmpty else { return .unavailableSource }
         let options: [CFString: Any] = [kCGImageSourceShouldCache: false]
         guard hasPixels(CGImageSourceCreateWithData(imageData as CFData, options as CFDictionary))
-        else { return nil }
-        return await recognize { try await $0.perform(on: imageData) }
+        else { return .unavailableSource }
+        return await runRecognition { try await $0.perform(on: imageData) }
     }
 
     /// Recognize text in an image file, without reading it into memory first.
     ///
     /// Vision opens the URL itself and streams what it needs, so a screenshot
     /// clip — which holds a path rather than bytes — is recognized at no
-    /// resident-memory cost. Returns nil for the same three reasons as the
-    /// `Data` entry point, plus a file that has been moved or deleted since
-    /// it was captured.
-    static func recognizeText(inFileAt url: URL) async -> String? {
+    /// resident-memory cost.
+    static func recognize(inFileAt url: URL) async -> Outcome {
         let options: [CFString: Any] = [kCGImageSourceShouldCache: false]
         guard hasPixels(CGImageSourceCreateWithURL(url as CFURL, options as CFDictionary))
-        else { return nil }
-        return await recognize { try await $0.perform(on: url) }
+        else { return .unavailableSource }
+        return await runRecognition { try await $0.perform(on: url) }
     }
 
     /// Recognize text from whichever shape the clip's pixels take.
-    static func recognizeText(in payload: ImagePayload) async -> String? {
+    static func recognize(in payload: ImagePayload) async -> Outcome {
         switch payload {
-        case .data(let data): return await recognizeText(in: data)
-        case .fileURL(let url): return await recognizeText(inFileAt: url)
+        case .data(let data): return await recognize(in: data)
+        case .fileURL(let url): return await recognize(inFileAt: url)
         }
+    }
+
+    /// The recognized string, or nil for any other outcome — the pre-Outcome
+    /// shape, kept for callers that never distinguished failure kinds.
+    static func recognizeText(in imageData: Data) async -> String? {
+        await recognize(in: imageData).text
+    }
+
+    /// The recognized string, or nil for any other outcome.
+    static func recognizeText(inFileAt url: URL) async -> String? {
+        await recognize(inFileAt: url).text
     }
 
     /// Whether there is an image here with actual pixels in it — asked
@@ -127,20 +164,22 @@ enum OCRService {
     }
 
     /// Shared body of the entry points above: build a request, run the
-    /// caller's `perform` overload, and fold failure into nil.
-    private static func recognize(
+    /// caller's `perform` overload, and name the outcome instead of folding
+    /// everything into nil.
+    private static func runRecognition(
         _ perform: (RecognizeTextRequest) async throws -> [RecognizedTextObservation]
-    ) async -> String? {
+    ) async -> Outcome {
         var request = RecognizeTextRequest()
         request.recognitionLevel = recognitionLevel
         request.usesLanguageCorrection = true
         request.automaticallyDetectsLanguage = detectsLanguageAutomatically
 
         do {
-            return text(from: try await perform(request))
+            guard let text = text(from: try await perform(request)) else { return .noText }
+            return .text(text)
         } catch {
             log.error("OCR failed: \(error.localizedDescription)")
-            return nil
+            return .failure
         }
     }
 

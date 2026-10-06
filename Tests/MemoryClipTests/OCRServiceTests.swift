@@ -164,11 +164,11 @@ final class OCRServiceTests: XCTestCase {
     /// interleave.
     func testRecognizeAllReturnsOneResultPerImageKeyedByUUID() async throws {
         let words = ["ALPHA", "BRAVO", "CHARLIE", "DELTA", "ECHO"]
-        var pending: [(uuid: UUID, payload: ImagePayload)] = []
+        var pending: [(uuid: UUID, revision: Int, payload: ImagePayload)] = []
         var expected: [UUID: String] = [:]
         for word in words {
             let uuid = UUID()
-            pending.append((uuid, .data(try makePNG(text: word))))
+            pending.append((uuid, 0, .data(try makePNG(text: word))))
             expected[uuid] = word
         }
 
@@ -178,7 +178,7 @@ final class OCRServiceTests: XCTestCase {
         XCTAssertEqual(Set(results.map(\.uuid)), Set(pending.map(\.uuid)))
         for result in results {
             let word = try XCTUnwrap(expected[result.uuid])
-            let text = try XCTUnwrap(result.text, "no text for \(word)")
+            let text = try XCTUnwrap(result.outcome.text, "no text for \(word)")
             XCTAssertTrue(
                 text.uppercased().contains(word),
                 "result for \(word) carried the wrong image's text: \(text)"
@@ -193,9 +193,9 @@ final class OCRServiceTests: XCTestCase {
         await MainActor.run { UserDefaults.standard.set(false, forKey: OCRCoordinator.enabledKey) }
         defer { UserDefaults.standard.set(true, forKey: OCRCoordinator.enabledKey) }
 
-        let pending: [(uuid: UUID, payload: ImagePayload)] = [
-            (UUID(), .data(try makePNG(text: "ONE"))),
-            (UUID(), .data(try makePNG(text: "TWO"))),
+        let pending: [(uuid: UUID, revision: Int, payload: ImagePayload)] = [
+            (UUID(), 0, .data(try makePNG(text: "ONE"))),
+            (UUID(), 0, .data(try makePNG(text: "TWO"))),
         ]
 
         let results = await OCRCoordinator.recognizeAll(pending, concurrency: 3)
@@ -211,7 +211,9 @@ final class OCRServiceTests: XCTestCase {
     /// Concurrency wider than the batch must not deadlock or drop work.
     func testRecognizeAllWithConcurrencyWiderThanTheBatch() async throws {
         UserDefaults.standard.set(true, forKey: OCRCoordinator.enabledKey)
-        let pending: [(uuid: UUID, payload: ImagePayload)] = [(UUID(), .data(try makePNG(text: "SOLO")))]
+        let pending: [(uuid: UUID, revision: Int, payload: ImagePayload)] = [
+            (UUID(), 0, .data(try makePNG(text: "SOLO"))),
+        ]
 
         let results = await OCRCoordinator.recognizeAll(pending, concurrency: 8)
 
@@ -274,6 +276,56 @@ final class OCRServiceTests: XCTestCase {
     func testNonImageDataYieldsNoText() async {
         let result = await OCRService.recognizeText(in: Data("not an image".utf8))
         XCTAssertNil(result)
+    }
+
+    // MARK: - Outcomes are distinct, not folded into nil
+
+    /// P3.10: "no image to read" is a different answer than "an image with
+    /// nothing legible" — the first is not worth a retry, the second is a
+    /// property of the bytes. Both used to come back as `nil`.
+    func testEmptyDataIsAnUnavailableSourceNotNoText() async {
+        let outcome = await OCRService.recognize(in: Data())
+        XCTAssertEqual(outcome, .unavailableSource)
+        XCTAssertFalse(outcome.isRetryable)
+    }
+
+    func testUndecodableBytesAreAnUnavailableSource() async {
+        let outcome = await OCRService.recognize(in: Data("not an image".utf8))
+        XCTAssertEqual(outcome, .unavailableSource)
+        XCTAssertFalse(outcome.isRetryable)
+    }
+
+    /// A valid image Vision finds nothing in is `.noText` — done, not
+    /// retryable, and not "something went wrong".
+    func testABlankImageIsNoTextNotAFailure() async throws {
+        let png = try makePNG(text: "")
+        let outcome = await OCRService.recognize(in: png)
+        XCTAssertEqual(outcome, .noText)
+        XCTAssertFalse(outcome.isRetryable)
+    }
+
+    func testAMissingScreenshotFileIsAnUnavailableSource() async {
+        let url = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("never-existed-\(UUID().uuidString).png")
+        let outcome = await OCRService.recognize(inFileAt: url)
+        XCTAssertEqual(outcome, .unavailableSource)
+    }
+
+    /// The coordinator hands each batch entry's revision through so the
+    /// write-back can refuse stale results — assert it arrives intact.
+    func testRecognizeAllCarriesEachEntrysRevision() async throws {
+        UserDefaults.standard.set(true, forKey: OCRCoordinator.enabledKey)
+        let pending: [(uuid: UUID, revision: Int, payload: ImagePayload)] = [
+            (UUID(), 7, .data(try makePNG(text: "REV"))),
+            (UUID(), 3, .data(try makePNG(text: "ISION"))),
+        ]
+
+        let results = await OCRCoordinator.recognizeAll(pending, concurrency: 2)
+
+        XCTAssertEqual(
+            Dictionary(results.map { ($0.uuid, $0.revision) }, uniquingKeysWith: { a, _ in a }),
+            Dictionary(pending.map { ($0.uuid, $0.revision) }, uniquingKeysWith: { a, _ in a })
+        )
     }
 
     func testBlankImageYieldsNoText() async throws {

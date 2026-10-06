@@ -42,19 +42,24 @@ protocol EventSink: Sendable {
     /// prompt, which is every sink but the EventKit one.
     var wouldPromptForAccess: Bool { get }
 
-    /// Create `event` in the user's default calendar.
-    func save(_ event: DetectedEvent) async throws -> EventReceipt
-
-    /// Remove the event this sink created last, if it still holds it.
+    /// Create `event` in the user's default calendar, as the creation
+    /// `operation` names it.
     ///
-    /// Takes no identifier on purpose. MemoryClip asks for **write-only**
-    /// calendar access, which grants creating events and nothing else: a
-    /// lookup by identifier, or any predicate query, needs full access and is
-    /// not available here at any price. So the only handle on a created event
-    /// is the object the sink made, held in memory — which is what "the last
-    /// one" means, and why undo cannot outlive the run of the app that did the
-    /// creating.
-    func removeLastSaved() async throws
+    /// The operation identifier is the undo handle: write-only access means
+    /// the event can never be looked up again, so the in-memory `EKEvent` is
+    /// keyed by the operation the caller minted — which is what lets undo
+    /// later say WHICH creation it is retracting instead of merely "the last
+    /// one".
+    func save(_ event: DetectedEvent, operation: UUID) async throws -> EventReceipt
+
+    /// Remove the event created by `operation`, if this sink still holds it.
+    ///
+    /// Returns false when the sink holds nothing for that operation — the
+    /// event was created by a previous run of the app (undo cannot outlive
+    /// the process that created it; see `EventKitSink`'s write-only note)
+    /// or was already undone. The caller reports that rather than claiming
+    /// an undo nothing performed.
+    func removeSaved(_ operation: UUID) async throws -> Bool
 }
 
 extension EventSink {

@@ -106,6 +106,68 @@ final class ScreenshotClipTests: XCTestCase {
         XCTAssertEqual(store.recent(limit: 10).count, 1)
     }
 
+    /// A screenshot overwritten in place keeps its URL — and its dedup hash —
+    /// but not its pixels. Everything derived from the old file is stale:
+    /// the next capture must reset OCR, thumbnail and refinement state so the
+    /// pipelines run again against the new bytes.
+    func testARewrittenFileInvalidatesWhatWasDerivedFromIt() throws {
+        let url = try writePNG(named: "Screenshot 5a.png", text: "FIRST")
+        let store = try ClipStore(inMemory: true)
+        let item = try XCTUnwrap(store.insertScreenshot(at: url))
+
+        // Simulate the pipelines having run against the first file.
+        store.applyOCR("FIRST", toClipWith: item.uuid, revision: item.contentRevision)
+        store.applyThumbnail(Data([1, 2, 3]), toClipWith: item.uuid, revision: item.contentRevision)
+        item.refinedTitle = "First screenshot"
+        store.save()
+        let before = item.contentRevision
+
+        // macOS replaces a screenshot in place: same path, new bytes (a
+        // different length also moves the signature's size half).
+        try? FileManager.default.removeItem(at: url)
+        let rewritten = try writePNG(named: url.lastPathComponent, text: "SECOND VERSION")
+        XCTAssertEqual(rewritten, url)
+
+        let reseen = try XCTUnwrap(store.insertScreenshot(at: url))
+
+        XCTAssertEqual(reseen.uuid, item.uuid, "same path adopts the same row")
+        XCTAssertNotEqual(reseen.contentRevision, before)
+        XCTAssertNil(reseen.ocrText)
+        XCTAssertFalse(reseen.ocrAttempted, "the new pixels have not been recognised")
+        XCTAssertNil(reseen.thumbnailData)
+        XCTAssertFalse(reseen.thumbnailAttempted)
+        XCTAssertNil(reseen.refinedTitle)
+        XCTAssertFalse(reseen.refineAttempted)
+        XCTAssertFalse(
+            store.pendingOCR(limit: 10).isEmpty,
+            "the rewritten screenshot must re-enter the OCR backlog"
+        )
+    }
+
+    /// Same bytes rewritten (a tool touching the file without changing it
+    /// meaningfully) — signature unchanged, nothing is invalidated.
+    func testAnIdenticalRewriteKeepsTheDerivedState() throws {
+        let url = try writePNG(named: "Screenshot 5b.png", text: "SAME")
+        let store = try ClipStore(inMemory: true)
+        let item = try XCTUnwrap(store.insertScreenshot(at: url))
+        store.applyOCR("SAME", toClipWith: item.uuid, revision: item.contentRevision)
+        let before = item.contentRevision
+        let signature = item.screenshotSignature
+
+        // Rewrite the same bytes back — same size; force the same mtime so
+        // the signature cannot differ.
+        let bytes = try Data(contentsOf: url)
+        let attrs = try FileManager.default.attributesOfItem(atPath: url.path)
+        try bytes.write(to: url)
+        try FileManager.default.setAttributes(attrs, ofItemAtPath: url.path)
+
+        let reseen = try XCTUnwrap(store.insertScreenshot(at: url))
+        XCTAssertEqual(reseen.screenshotSignature, signature)
+        XCTAssertEqual(reseen.contentRevision, before)
+        XCTAssertEqual(reseen.ocrText, "SAME")
+        XCTAssertTrue(reseen.ocrAttempted)
+    }
+
     func testAFileClipForTheSamePathIsAdoptedRatherThanDuplicated() throws {
         let url = try writePNG(named: "Screenshot 5.png")
         let store = try ClipStore(inMemory: true)
@@ -201,7 +263,7 @@ final class ScreenshotClipTests: XCTestCase {
         // Nothing recognised yet: nothing to refine.
         XCTAssertTrue(store.pendingRefinement(limit: 10).isEmpty)
 
-        store.applyOCR("some words on screen", toClipWith: item.uuid)
+        store.applyOCR("some words on screen", toClipWith: item.uuid, revision: 0)
         XCTAssertEqual(store.pendingRefinement(limit: 10).count, 1)
 
         store.applyRefinement(
@@ -209,7 +271,8 @@ final class ScreenshotClipTests: XCTestCase {
             summary: "A screenshot with words.",
             text: "some words on screen",
             tags: ["screenshot"],
-            toClipWith: item.uuid
+            toClipWith: item.uuid,
+            revision: 0
         )
         XCTAssertTrue(store.pendingRefinement(limit: 10).isEmpty, "A refined clip must not be re-queued")
 
@@ -227,14 +290,15 @@ final class ScreenshotClipTests: XCTestCase {
         let store = try ClipStore(inMemory: true)
         let url = try writePNG(named: "Screenshot 10.png")
         let item = try XCTUnwrap(store.insertScreenshot(at: url))
-        store.applyOCR("checkout page", toClipWith: item.uuid)
+        store.applyOCR("checkout page", toClipWith: item.uuid, revision: 0)
 
         store.applyRefinement(
             title: "Card 4111 1111 1111 1111",
             summary: "",
             text: "Card 4111 1111 1111 1111 on file",
             tags: ["billing"],
-            toClipWith: item.uuid
+            toClipWith: item.uuid,
+            revision: 0
         )
 
         let refined = try XCTUnwrap(store.item(withUUID: item.uuid))

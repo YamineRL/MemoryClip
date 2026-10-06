@@ -121,7 +121,7 @@ final class NotePipelineTests: XCTestCase {
         let screenshot = try writeScreenshot(named: "Screenshot 1.png")
         let store = try ClipStore(inMemory: true)
         let item = try XCTUnwrap(store.insertScreenshot(at: screenshot))
-        store.applyOCR("Tag the re-\nlease and run the build for version two point one", toClipWith: item.uuid)
+        store.applyOCR("Tag the re-\nlease and run the build for version two point one", toClipWith: item.uuid, revision: 0)
 
         let coordinator = NoteCoordinator(store: store, refiner: StubRefiner())
         let result = await coordinator.exportNote(for: item)
@@ -150,7 +150,7 @@ final class NotePipelineTests: XCTestCase {
         let screenshot = try writeScreenshot(named: "Screenshot 2.png")
         let store = try ClipStore(inMemory: true)
         let item = try XCTUnwrap(store.insertScreenshot(at: screenshot))
-        store.applyOCR("some recognised words worth keeping around", toClipWith: item.uuid)
+        store.applyOCR("some recognised words worth keeping around", toClipWith: item.uuid, revision: 0)
 
         let coordinator = NoteCoordinator(store: store, refiner: StubRefiner())
         guard case .success(let receipt) = await coordinator.exportNote(for: item) else {
@@ -172,7 +172,7 @@ final class NotePipelineTests: XCTestCase {
         let screenshot = try writeScreenshot(named: "Screenshot 3.png")
         let store = try ClipStore(inMemory: true)
         let item = try XCTUnwrap(store.insertScreenshot(at: screenshot))
-        store.applyOCR("the first recognition of this screenshot", toClipWith: item.uuid)
+        store.applyOCR("the first recognition of this screenshot", toClipWith: item.uuid, revision: 0)
 
         let coordinator = NoteCoordinator(store: store, refiner: StubRefiner())
         guard case .success(let first) = await coordinator.exportNote(for: item) else {
@@ -207,7 +207,7 @@ final class NotePipelineTests: XCTestCase {
         let screenshot = try writeScreenshot(named: "Screenshot 5.png")
         let store = try ClipStore(inMemory: true)
         let item = try XCTUnwrap(store.insertScreenshot(at: screenshot))
-        store.applyOCR("plenty of recognised text here to work with", toClipWith: item.uuid)
+        store.applyOCR("plenty of recognised text here to work with", toClipWith: item.uuid, revision: 0)
 
         let coordinator = NoteCoordinator(store: store, refiner: StubRefiner())
         let result = await coordinator.exportNote(for: item)
@@ -227,7 +227,7 @@ final class NotePipelineTests: XCTestCase {
         for index in 1...3 {
             let url = try writeScreenshot(named: "Screenshot drain \(index).png")
             let item = try XCTUnwrap(store.insertScreenshot(at: url))
-            store.applyOCR("recognised text number \(index) with enough length", toClipWith: item.uuid)
+            store.applyOCR("recognised text number \(index) with enough length", toClipWith: item.uuid, revision: 0)
         }
         XCTAssertEqual(store.pendingRefinement(limit: 10).count, 3)
 
@@ -257,11 +257,12 @@ final class NotePipelineTests: XCTestCase {
 
         let store = try ClipStore(inMemory: true)
         let short = try XCTUnwrap(store.insertScreenshot(at: try writeScreenshot(named: "Short.png")))
-        store.applyOCR("Cancel  OK", toClipWith: short.uuid)
+        store.applyOCR("Cancel  OK", toClipWith: short.uuid, revision: 0)
         let long = try XCTUnwrap(store.insertScreenshot(at: try writeScreenshot(named: "Long.png")))
         store.applyOCR(
             "A screenshot with a real paragraph of text in it, well past the threshold.",
-            toClipWith: long.uuid
+            toClipWith: long.uuid,
+            revision: 0
         )
 
         let coordinator = NoteCoordinator(store: store, refiner: StubRefiner())
@@ -326,7 +327,7 @@ final class NotePipelineTests: XCTestCase {
     func testAKickDuringADrainIsNotLost() async throws {
         let store = try ClipStore(inMemory: true)
         let first = try XCTUnwrap(store.insertScreenshot(at: try writeScreenshot(named: "First.png")))
-        store.applyOCR("the first recognised paragraph, long enough to refine", toClipWith: first.uuid)
+        store.applyOCR("the first recognised paragraph, long enough to refine", toClipWith: first.uuid, revision: 0)
 
         let coordinator = NoteCoordinator(store: store, refiner: StubRefiner())
         coordinator.processPending()
@@ -334,7 +335,7 @@ final class NotePipelineTests: XCTestCase {
         // Arrives while the first drain is in flight, and queues a clip the
         // running drain may already have queried past.
         let second = try XCTUnwrap(store.insertScreenshot(at: try writeScreenshot(named: "Second.png")))
-        store.applyOCR("the second recognised paragraph, also long enough", toClipWith: second.uuid)
+        store.applyOCR("the second recognised paragraph, also long enough", toClipWith: second.uuid, revision: 0)
         coordinator.processPending()
 
         var attempts = 0
@@ -353,13 +354,14 @@ final class NotePipelineTests: XCTestCase {
     func testDraftPrefersTheModelsTextAndKeepsTheRecognitionBeside() throws {
         let store = try ClipStore(inMemory: true)
         let item = try XCTUnwrap(store.insertScreenshot(at: try writeScreenshot(named: "Draft.png")))
-        store.applyOCR("raw recognition", toClipWith: item.uuid)
+        store.applyOCR("raw recognition", toClipWith: item.uuid, revision: 0)
         store.applyRefinement(
             title: "A title",
             summary: "A summary.",
             text: "cleaned recognition",
             tags: ["tag"],
-            toClipWith: item.uuid
+            toClipWith: item.uuid,
+            revision: 0
         )
 
         let draft = try XCTUnwrap(NoteCoordinator.draft(for: try XCTUnwrap(store.item(withUUID: item.uuid))))
@@ -372,7 +374,7 @@ final class NotePipelineTests: XCTestCase {
     func testDraftFallsBackToRawRecognitionWithoutDuplicatingIt() throws {
         let store = try ClipStore(inMemory: true)
         let item = try XCTUnwrap(store.insertScreenshot(at: try writeScreenshot(named: "Unrefined.png")))
-        store.applyOCR("raw only", toClipWith: item.uuid)
+        store.applyOCR("raw only", toClipWith: item.uuid, revision: 0)
 
         let draft = try XCTUnwrap(NoteCoordinator.draft(for: try XCTUnwrap(store.item(withUUID: item.uuid))))
         XCTAssertEqual(draft.body, "raw only")
@@ -402,7 +404,7 @@ final class NotePipelineTests: XCTestCase {
             sourceAppName: "Preview"
         )
         let uuid = try XCTUnwrap(store.pendingOCR().first?.uuid)
-        store.applyOCR("text in the picture", toClipWith: uuid)
+        store.applyOCR("text in the picture", toClipWith: uuid, revision: 0)
 
         let draft = try XCTUnwrap(NoteCoordinator.draft(for: try XCTUnwrap(store.item(withUUID: uuid))))
         XCTAssertNil(draft.sourceFileURL)

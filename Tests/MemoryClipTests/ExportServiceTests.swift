@@ -56,6 +56,9 @@ final class ExportServiceTests: XCTestCase {
         XCTAssertEqual(lhs.createdAt, rhs.createdAt, file: file, line: line)
         XCTAssertEqual(lhs.lastUsedAt, rhs.lastUsedAt, file: file, line: line)
         XCTAssertEqual(lhs.isPinned, rhs.isPinned, file: file, line: line)
+        XCTAssertEqual(lhs.isScreenshot, rhs.isScreenshot, file: file, line: line)
+        XCTAssertEqual(lhs.originalText, rhs.originalText, file: file, line: line)
+        XCTAssertEqual(lhs.screenshotSignature, rhs.screenshotSignature, file: file, line: line)
         XCTAssertEqual(lhs.richTextBase64, rhs.richTextBase64, file: file, line: line)
         XCTAssertEqual(lhs.imageBase64, rhs.imageBase64, file: file, line: line)
     }
@@ -298,7 +301,7 @@ final class ExportServiceTests: XCTestCase {
         let firstLine = csv.components(separatedBy: "\n").first
         XCTAssertEqual(
             firstLine,
-            "kind,text,colorHex,fileURLs,sourceAppName,createdAt,lastUsedAt,isPinned,pinboard"
+            "kind,text,colorHex,fileURLs,sourceAppName,createdAt,lastUsedAt,isPinned,pinboard,isScreenshot"
         )
     }
 
@@ -314,7 +317,7 @@ final class ExportServiceTests: XCTestCase {
         XCTAssertEqual(lines.count, 3)
         XCTAssertEqual(
             lines[1] + "\n" + lines[2],
-            "text,\"He said \"\"hi\"\", politely\nand left\",,,Notes,\(iso8601(createdAt)),,false,"
+            "text,\"He said \"\"hi\"\", politely\nand left\",,,Notes,\(iso8601(createdAt)),,false,,false"
         )
         // Plain fields stay unquoted.
         XCTAssertFalse(csv.contains("\"Notes\""))
@@ -327,7 +330,7 @@ final class ExportServiceTests: XCTestCase {
         // No special characters anywhere, so a plain split is safe.
         let fields = row.components(separatedBy: ",")
 
-        XCTAssertEqual(fields.count, 9)
+        XCTAssertEqual(fields.count, 10)
         XCTAssertEqual(fields[6], "")
         XCTAssertEqual(fields[5], iso8601(createdAt))
     }
@@ -338,8 +341,8 @@ final class ExportServiceTests: XCTestCase {
         let row = ExportService.csv(from: [clip]).components(separatedBy: "\n")[1]
 
         XCTAssertTrue(row.contains(",\(iso8601(lastUsedAt)),"))
-        // The pinboard column trails `isPinned`, empty for a board-less pin.
-        XCTAssertTrue(row.hasSuffix(",true,"))
+        // `pinboard` (empty here) and `isScreenshot` trail `isPinned`.
+        XCTAssertTrue(row.hasSuffix(",true,,false"))
     }
 
     func testCSVFileURLsJoinedWithSemicolonSpace() {
@@ -358,7 +361,7 @@ final class ExportServiceTests: XCTestCase {
     func testCSVEmptyArrayIsHeaderOnly() {
         XCTAssertEqual(
             ExportService.csv(from: []),
-            "kind,text,colorHex,fileURLs,sourceAppName,createdAt,lastUsedAt,isPinned,pinboard"
+            "kind,text,colorHex,fileURLs,sourceAppName,createdAt,lastUsedAt,isPinned,pinboard,isScreenshot"
         )
     }
 
@@ -614,20 +617,89 @@ final class ExportServiceTests: XCTestCase {
         }
     }
 
+    // MARK: - The format version and screenshot identity (P2.9)
+
+    /// The document envelope declares `formatVersion` so a future reader can
+    /// tell what it is looking at — and a version-1 file without it still
+    /// imports, since every field added since is optional.
+    func testThePinboardEnvelopeDeclaresItsFormatVersion() throws {
+        let json = try ExportService.json(
+            from: [makeClip()],
+            pinboards: [PinboardExport(name: "Work", color: nil, order: 0)]
+        )
+
+        XCTAssertTrue(json.contains("\"formatVersion\": \(ClipExport.formatVersion)"), json)
+
+        let document = try ExportService.imports(fromJSON: json)
+        XCTAssertEqual(document.pinboards.map(\.name), ["Work"])
+        XCTAssertEqual(document.clips.count, 1)
+    }
+
+    /// P2.9's acceptance case: a screenshot exported and imported keeps its
+    /// identity — `isScreenshot` is what makes it eligible for OCR,
+    /// thumbnailing and the file-not-bytes payload policy, so losing it
+    /// silently demoted every exported screenshot to an ordinary file row.
+    @MainActor
+    func testAScreenshotKeepsItsIdentityThroughJSON() throws {
+        let clip = ClipExport(
+            kind: "file",
+            text: nil,
+            colorHex: nil,
+            fileURLs: ["file:///Users/x/Desktop/Screenshot%201.png"],
+            sourceAppBundleID: nil,
+            sourceAppName: "Screenshot",
+            createdAt: createdAt,
+            lastUsedAt: nil,
+            isPinned: false,
+            isScreenshot: true,
+            originalText: "https://dirty.example/?utm_source=x",
+            screenshotSignature: "12345-1700000000"
+        )
+
+        let json = try ExportService.json(from: [clip])
+        let document = try ExportService.imports(fromJSON: json)
+        let restored = try XCTUnwrap(document.clips.first)
+
+        XCTAssertTrue(restored.isScreenshot)
+        XCTAssertEqual(restored.originalText, "https://dirty.example/?utm_source=x")
+        XCTAssertEqual(restored.screenshotSignature, "12345-1700000000")
+
+        // And the clip the import builds is a screenshot row, not a file row.
+        let item = try ExportService.item(from: restored)
+        XCTAssertTrue(item.isScreenshot)
+        XCTAssertEqual(item.screenshotSignature, "12345-1700000000")
+        XCTAssertEqual(item.originalText, "https://dirty.example/?utm_source=x")
+    }
+
+    /// A version-1 record — no `isScreenshot`, `originalText` or
+    /// `screenshotSignature` keys — decodes with the documented defaults
+    /// instead of failing or inventing state.
+    func testAVersionOneClipDecodesWithDefaults() throws {
+        let json = "[{\"kind\":\"file\",\"fileURLs\":[\"file:///tmp/a.png\"],"
+            + "\"createdAt\":\"\(iso8601(createdAt))\",\"isPinned\":false}]"
+
+        let document = try ExportService.imports(fromJSON: json)
+        let clip = try XCTUnwrap(document.clips.first)
+
+        XCTAssertFalse(clip.isScreenshot)
+        XCTAssertNil(clip.originalText)
+        XCTAssertNil(clip.screenshotSignature)
+    }
+
     /// The CSV's trailing `pinboard` column: the board's name, defused and
-    /// escaped like every other field.
+    /// escaped like every other field. `isScreenshot` follows it.
     func testCSVPinboardColumnCarriesTheBoardName() {
         let row = ExportService.csv(from: [makeClip(pinboard: "Commands")])
             .components(separatedBy: "\n")[1]
-        XCTAssertTrue(row.hasSuffix(",true,Commands"), row)
+        XCTAssertTrue(row.hasSuffix(",true,Commands,false"), row)
 
         // A board name that is a formula trigger is defused, and one with a
         // comma is quoted: the column is text like any other.
         let formula = ExportService.csv(from: [makeClip(pinboard: "=cmd")])
             .components(separatedBy: "\n")[1]
-        XCTAssertTrue(formula.hasSuffix(",true,'=cmd"), formula)
+        XCTAssertTrue(formula.hasSuffix(",true,'=cmd,false"), formula)
         let quoted = ExportService.csv(from: [makeClip(pinboard: "a,b")])
             .components(separatedBy: "\n")[1]
-        XCTAssertTrue(quoted.hasSuffix(",true,\"a,b\""), quoted)
+        XCTAssertTrue(quoted.hasSuffix(",true,\"a,b\",false"), quoted)
     }
 }
