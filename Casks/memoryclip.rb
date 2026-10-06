@@ -1,6 +1,6 @@
 cask "memoryclip" do
-  version "0.7.1"
-  sha256 "6d5bf8b0b484bf6a6571fb013e003dddad3d2a5b9ddb6e68ae472836f5939406"
+  version "0.7.2"
+  sha256 "979a631c4fe9c480948444499dbf631877d96fd85574da2c8111eb77217f037e"
 
   url "https://github.com/YamineRL/MemoryClip/releases/download/v#{version}/MemoryClip-#{version}.zip"
   name "MemoryClip"
