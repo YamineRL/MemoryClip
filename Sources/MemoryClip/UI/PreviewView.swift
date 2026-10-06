@@ -710,6 +710,14 @@ final class PreviewTextView: NSTextView {
     /// Height the text lays out to at `width`.
     func height(forWidth width: CGFloat) -> CGFloat {
         guard let container = textContainer, let layoutManager else { return 0 }
+        // Put back what was there: a width measured at some other proposal
+        // would otherwise stay as the wrap width, and the lines would run
+        // past the pane the view is finally laid out in.
+        let wrapWidth = container.size
+        defer {
+            container.size = wrapWidth
+            layoutManager.ensureLayout(for: container)
+        }
         container.size = CGSize(width: width, height: CGFloat.greatestFiniteMagnitude)
         layoutManager.ensureLayout(for: container)
         return layoutManager.usedRect(for: container).height.rounded(.up)
