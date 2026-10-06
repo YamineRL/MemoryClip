@@ -2193,7 +2193,7 @@ struct PanelContentView: View {
             // Overlaid on the spacer so a bubble coming and going never
             // resizes the chips beside it.
             Spacer(minLength: Design.Space.tight)
-                .overlay(alignment: .trailing) { hintBubble(topBarHint) }
+                .overlay(alignment: .trailing) { hintBubble(topBarHint).fixedSize() }
 
             // The badge doubles as the editing-mode marker: while a draft is
             // open it reads EDIT whether or not vim navigation is on, since
