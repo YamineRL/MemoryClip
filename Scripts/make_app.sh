@@ -29,7 +29,7 @@ cat > "$CONST_PROTOCOLS" <<'EOF'
 ["AppIntent","EntityQuery","AppEntity","TransientEntity","AppEnum","AppShortcutProviding","AppShortcutsProvider","AnyResolverProviding","AppIntentsPackage","DynamicOptionsProvider"]
 EOF
 
-swift build -c release \
+swift build -c release --build-system native \
     -Xswiftc -emit-const-values \
     -Xswiftc -Xfrontend -Xswiftc -const-gather-protocols-file \
     -Xswiftc -Xfrontend -Xswiftc "$PWD/$CONST_PROTOCOLS"
