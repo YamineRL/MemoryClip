@@ -1620,6 +1620,14 @@ struct PanelContentView: View {
         stripHintExpired ? nil : stripHintText
     }
 
+    /// The one bubble the top bar shows: the strip's, which answers what the
+    /// keyboard is doing right now, before the preview's Quick Look nudge.
+    private var topBarHint: String? {
+        if let stripHint { return stripHint }
+        guard previewVisible, let item = previewItem, !item.isDeleted, !previewHintExpired else { return nil }
+        return previewHintText(for: item)
+    }
+
     /// The strip bubble's text before the timeout gates it. The expiry
     /// task keys on this, so a fresh hint — a new query, a new selection
     /// — restarts the clock even when the last one timed out.
@@ -1924,9 +1932,6 @@ struct PanelContentView: View {
                             textTabToggle: previewTextTabToggle
                         )
                         .frame(height: resolvedPreviewHeight)
-                        .overlay(alignment: .topTrailing) {
-                            hintBubble(previewHintExpired ? nil : previewHintText(for: item))
-                        }
                         // A nudge, not chrome: seven seconds up, then gone.
                         // The task id is the raw text so a new hint — the
                         // next previewable clip — restarts the clock.
@@ -2183,7 +2188,12 @@ struct PanelContentView: View {
 
             filterChips
 
+            // Both hint bubbles float here, in the empty part of the top
+            // bar, rather than over the clips or the preview they describe.
+            // Overlaid on the spacer so a bubble coming and going never
+            // resizes the chips beside it.
             Spacer(minLength: Design.Space.tight)
+                .overlay(alignment: .trailing) { hintBubble(topBarHint) }
 
             // The badge doubles as the editing-mode marker: while a draft is
             // open it reads EDIT whether or not vim navigation is on, since
@@ -3044,16 +3054,13 @@ struct PanelContentView: View {
         actions.close()
     }
 
-    /// A hint in its place at the top trailing corner of whatever it floats
-    /// over, or nothing at all. One helper for both bubbles so they sit the
-    /// same distance off the edge and fade in and out the same way.
+    /// A hint bubble, or nothing at all. One helper for both hints so they
+    /// fade in and out the same way; the caller decides where it floats.
     @ViewBuilder
     private func hintBubble(_ text: String?) -> some View {
         ZStack {
             if let text {
                 HintBubble(text: text)
-                    .padding(.top, Design.Space.normal)
-                    .padding(.trailing, Design.Space.loose)
             }
         }
         .animation(Design.Motion.standard, value: text)
@@ -3206,10 +3213,6 @@ struct PanelContentView: View {
                 // that there are more clips to the right.
                 .scrollMoreHint(.horizontal)
                 .frame(height: Design.Size.cardStripHeight)
-                // Top trailing rather than centred on the strip's bottom
-                // edge: the resize handle lives there, and the bubble must
-                // not stand on the control it shares the pane with.
-                .overlay(alignment: .topTrailing) { hintBubble(stripHint) }
                 // A nudge, not chrome: seven seconds up, then gone. The task
                 // id is the raw text so a fresh hint restarts the clock.
                 .task(id: stripHintText) {
