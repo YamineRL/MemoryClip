@@ -475,7 +475,7 @@ extension FoundationModelsRefiner {
     /// hard failure on exactly the longest notes. The input bound is where
     /// length is controlled.
     static var generationOptions: GenerationOptions {
-        GenerationOptions(sampling: .greedy)
+        GenerationOptions(samplingMode: .greedy)
     }
 
     // MARK: - Mapping

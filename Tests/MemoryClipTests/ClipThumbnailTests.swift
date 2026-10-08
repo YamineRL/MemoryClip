@@ -192,7 +192,7 @@ final class ClipThumbnailTests: XCTestCase {
         XCTAssertEqual(store.pendingThumbnails(limit: 2).count, 2)
 
         let uuid = try XCTUnwrap(store.pendingThumbnails(limit: 1).first?.uuid)
-        store.applyThumbnail(Data("x".utf8), toClipWith: uuid)
+        store.applyThumbnail(Data("x".utf8), toClipWith: uuid, revision: 0)
         XCTAssertEqual(store.pendingThumbnails(limit: 50).count, 3)
         XCTAssertFalse(store.pendingThumbnails(limit: 50).contains { $0.uuid == uuid })
     }
@@ -200,7 +200,7 @@ final class ClipThumbnailTests: XCTestCase {
     func testApplyThumbnailToUnknownUUIDIsANoOp() async throws {
         let store = try makeStore()
         store.insert(imageClip("a", data: try makePNG()), sourceBundleID: nil, sourceAppName: nil)
-        store.applyThumbnail(Data("x".utf8), toClipWith: UUID())
+        store.applyThumbnail(Data("x".utf8), toClipWith: UUID(), revision: 0)
         XCTAssertEqual(store.pendingThumbnails().count, 1)
     }
 }

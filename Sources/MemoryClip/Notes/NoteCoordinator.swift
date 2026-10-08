@@ -199,6 +199,10 @@ final class NoteCoordinator {
         let uuid: UUID
         let input: RefinementInput
         let isScreenshot: Bool
+        /// The `contentRevision` this input was read from. The write-back
+        /// commits only if the row still carries it — a refinement of text
+        /// that has since been edited or sealed must land nowhere.
+        let revision: Int
     }
 
     /// A finished translation and the language it actually landed in, which is
@@ -246,7 +250,8 @@ final class NoteCoordinator {
                 // settings; this is the layer that has them.
                 language: LanguageDetector.dominantLanguage(of: raw, preferring: NoteTranslation.enabledLanguages)
             ),
-            isScreenshot: item.isScreenshot
+            isScreenshot: item.isScreenshot,
+            revision: item.contentRevision
         )
     }
 
@@ -260,13 +265,15 @@ final class NoteCoordinator {
             tags: processed.refined.tags,
             language: Self.recordedLanguage(for: job.input),
             translation: processed.translation,
-            toClipWith: job.uuid
+            toClipWith: job.uuid,
+            revision: job.revision
         )
 
         await autoExportIfWanted(
             uuid: job.uuid,
             isScreenshot: job.isScreenshot,
-            textLength: job.input.rawText.count
+            textLength: job.input.rawText.count,
+            revision: job.revision
         )
     }
 
@@ -397,10 +404,22 @@ final class NoteCoordinator {
     /// Screenshots only, and only above the configured length: automatic
     /// export exists to capture the screenshots worth keeping, and every
     /// pasteboard image becoming a note is how a vault gets buried.
-    private func autoExportIfWanted(uuid: UUID, isScreenshot: Bool, textLength: Int) async {
+    private func autoExportIfWanted(
+        uuid: UUID,
+        isScreenshot: Bool,
+        textLength: Int,
+        revision: Int
+    ) async {
         guard Self.isAutoNoteEnabled, isScreenshot else { return }
         guard textLength >= Self.autoNoteMinimumCharacters else { return }
-        guard let item = store.item(withUUID: uuid), item.notePath == nil else { return }
+        // Eligibility is re-read NOW, off the model — the clip this job was
+        // launched against may have been sealed or edited while the model
+        // worked, and a note must never be written from either state.
+        guard let item = store.item(withUUID: uuid),
+              !item.isSecret,
+              item.contentRevision == revision,
+              item.notePath == nil
+        else { return }
         _ = await exportNote(for: item)
     }
 
@@ -409,9 +428,15 @@ final class NoteCoordinator {
     /// The entry point for the panel's "Save as Note" action as well as the
     /// automatic path, so a manual export of a clip that has not been refined
     /// yet refines it first rather than writing the raw recognition.
+    ///
+    /// A sealed clip has nothing to write — its only copy of the plaintext
+    /// lives in the vault's cipher — so the export refuses rather than
+    /// producing an empty note.
     @discardableResult
     func exportNote(for item: ClipItem) async -> Result<NoteReceipt, NoteError> {
+        guard !item.isSecret else { return finish(.failure(.nothingToWrite)) }
         let uuid = item.uuid
+        let revision = item.contentRevision
         if !item.refineAttempted, Self.isRefinementEnabled, let job = Self.job(for: item) {
             let processed = await process(job)
             store.applyRefinement(
@@ -421,11 +446,21 @@ final class NoteCoordinator {
                 tags: processed.refined.tags,
                 language: Self.recordedLanguage(for: job.input),
                 translation: processed.translation,
-                toClipWith: uuid
+                toClipWith: uuid,
+                revision: job.revision
             )
         }
 
-        guard let current = store.item(withUUID: uuid), let draft = Self.draft(for: current) else {
+        // The model awaited above is exactly where the row can change under
+        // us — seal, edit, delete. The eligibility check runs AFTER that
+        // await, immediately before the external write: a note for content
+        // that no longer exists (or is no longer allowed to leave the store)
+        // is not written.
+        guard let current = store.item(withUUID: uuid),
+              !current.isSecret,
+              current.contentRevision == revision,
+              let draft = Self.draft(for: current)
+        else {
             return finish(.failure(.nothingToWrite))
         }
         let existing = current.notePath
@@ -433,7 +468,7 @@ final class NoteCoordinator {
         do {
             let sink = try NoteSinkFactory.make()
             let receipt = try await sink.write(draft, replacing: existing)
-            store.applyNote(path: receipt.location, toClipWith: uuid)
+            store.applyNote(path: receipt.location, toClipWith: uuid, revision: revision)
             log.notice("Wrote a note for a clip (\(receipt.location, privacy: .private))")
             return finish(.success(receipt))
         } catch let error as NoteError {

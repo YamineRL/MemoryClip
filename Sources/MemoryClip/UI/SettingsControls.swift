@@ -515,17 +515,17 @@ struct CalendarAutoCreateSetup: View {
         Group {
             HStack(spacing: Design.Space.normal) {
                 Label {
-                    Text(loc("Add events automatically"))
+                    Text(loc("Suggest calendar events"))
                 } icon: {
                     SettingsIcon(symbol: "calendar.badge.plus", tint: Color(nsColor: .systemRed))
                 }
                 Spacer(minLength: Design.Space.normal)
-                Toggle(loc("Add events automatically"), isOn: $autoCreate)
+                Toggle(loc("Suggest calendar events"), isOn: $autoCreate)
                     .labelsHidden()
             }
 
             if showsDetail {
-                SettingsHint(loc("An event is created on its own only when the clip names a time of day and either a meeting link or an address. A bare date — a deadline in a paragraph, an expiry notice, a headline — is left alone. Anything MemoryClip passes over you can still add yourself: select the clip in the panel and choose Add to Calendar."))
+                SettingsHint(loc("MemoryClip asks before adding: a clip that names a time of day and either a meeting link or an address is offered as an event — you choose Add, Edit… or Not Now. A bare date — a deadline in a paragraph, an expiry notice, a headline — is left alone. Anything it passes over you can still add yourself: select the clip in the panel and choose Add to Calendar."))
             }
 
             if autoCreate, !access.canCreateEvents {
@@ -569,15 +569,15 @@ struct CalendarAutoCreateSetup: View {
         access = EventKitSink.access
     }
 
-    /// Why automatic events are not happening, and what to do about it.
+    /// Why event suggestions cannot become events, and what to do about it.
     private var accessWarning: String {
         switch access {
         case .denied:
-            return loc("Automatic events are on, but permission to add them was refused. Allow MemoryClip in System Settings → Privacy & Security → Calendars; macOS will not ask a second time on its own.")
+            return loc("Event suggestions are on, but permission to add them was refused. Allow MemoryClip in System Settings → Privacy & Security → Calendars; macOS will not ask a second time on its own.")
         case .restricted:
             return loc("Calendar access is turned off on this Mac by a profile or by Screen Time, so no event can be added.")
         case .notAsked, .granted:
-            return loc("Automatic events are on, but MemoryClip has not been given calendar access yet, so nothing will be added. Switch this off and on again to be asked.")
+            return loc("Event suggestions are on, but MemoryClip has not been given calendar access yet. The first time you choose Add on a suggestion, macOS will ask.")
         }
     }
 }

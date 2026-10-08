@@ -19,7 +19,11 @@ enum AppNotifications {
         guard EventNotifier.isAvailable else { return }
         let center = UNUserNotificationCenter.current()
         center.delegate = delegate
-        center.setNotificationCategories([EventNotifier.category, UpdateNotifier.category])
+        center.setNotificationCategories([
+            EventNotifier.category,
+            EventNotifier.offerCategory,
+            UpdateNotifier.category,
+        ])
     }
 }
 
@@ -58,22 +62,63 @@ final class AppNotificationDelegate: NSObject, UNUserNotificationCenterDelegate 
 
     /// Act on a tapped button.
     ///
-    /// Only the action identifier crosses to the main actor: `UNNotificationResponse`
-    /// is a reference type that is not `Sendable`, and the identifier is all
-    /// this needs.
+    /// Only value types cross to the main actor: `UNNotificationResponse`
+    /// is a reference type that is not `Sendable`, so the action identifier
+    /// and the creation's operation uuid are read off here and passed over.
     nonisolated func userNotificationCenter(
         _ center: UNUserNotificationCenter,
         didReceive response: UNNotificationResponse
     ) async {
-        await handle(response.actionIdentifier)
+        let content = response.notification.request.content
+        let operation = (content.userInfo["operationID"] as? String)
+            .flatMap(UUID.init(uuidString:))
+        let clipUUID = (content.userInfo["clipUUID"] as? String)
+            .flatMap(UUID.init(uuidString:))
+        let eventStart = (content.userInfo["eventStart"] as? TimeInterval)
+            .map(Date.init(timeIntervalSinceReferenceDate:))
+        log.notice("Notification action \(response.actionIdentifier, privacy: .public) on \(content.categoryIdentifier, privacy: .public)")
+        await handle(
+            response.actionIdentifier,
+            operation: operation,
+            clipUUID: clipUUID,
+            eventStart: eventStart,
+            category: content.categoryIdentifier
+        )
     }
 
-    private func handle(_ action: String) async {
+    private func handle(_ action: String, operation: UUID?, clipUUID: UUID?, eventStart: Date?, category: String) async {
         switch action {
         case EventNotifier.undoActionIdentifier:
-            _ = await calendarCoordinator.undoLastEvent()
+            // The banner names the creation it announced; undo retracts THAT
+            // one, not whatever was saved most recently. A banner from an
+            // older run carries no operation the coordinator still knows —
+            // the answer is `.undoUnavailable`, not silence.
+            if let operation {
+                _ = await calendarCoordinator.undoEvent(operation)
+            } else {
+                _ = await calendarCoordinator.undoLastEvent()
+            }
         case EventNotifier.openActionIdentifier:
-            Self.openCalendar()
+            Self.openCalendar(showing: eventStart)
+        case EventNotifier.addActionIdentifier:
+            // The offer's yes. A clip that disappeared behind its banner is
+            // answered by the coordinator's own error path.
+            if let clipUUID {
+                _ = await calendarCoordinator.acceptOfferedEvent(forClipWith: clipUUID)
+            }
+        case EventNotifier.editActionIdentifier:
+            // The offer's edit: the appointment becomes a draft .ics in the
+            // default calendar app — editable before it is anything, and
+            // nothing at all if it is discarded.
+            if let clipUUID, let detected = calendarCoordinator.detectedEvent(forClipWith: clipUUID) {
+                Self.openForEditing(detected, uid: clipUUID.uuidString)
+            }
+        case EventNotifier.declineActionIdentifier:
+            // Not Now, said out loud: the question is answered, so the
+            // banner asking it goes too.
+            if let clipUUID {
+                EventNotifier.dismissOffer(forClipWith: clipUUID)
+            }
         case UpdateNotifier.downloadActionIdentifier:
             // The banner outlives the check that posted it — it can be sitting
             // in Notification Centre days later — so the release is looked up
@@ -83,22 +128,127 @@ final class AppNotificationDelegate: NSObject, UNUserNotificationCenterDelegate 
             } else {
                 updateChecker.check(userInitiated: false)
             }
+        case UNNotificationDefaultActionIdentifier:
+            // The banner's body was tapped. For the created-event banner that
+            // means "show me what landed" — Calendar opened on the event's own
+            // day, not at today. For the offer it raises the question as a
+            // real dialog: a banner-style notification hides its buttons under
+            // a hover chevron, and an answer must never hinge on the user
+            // knowing that.
+            if category == EventNotifier.categoryIdentifier {
+                Self.openCalendar(showing: eventStart)
+            } else if category == EventNotifier.offerCategoryIdentifier, let clipUUID {
+                presentOfferDialog(forClipWith: clipUUID)
+            }
         default:
-            // The banner itself was clicked, or it was dismissed. Neither is
-            // an instruction, and MemoryClip has no window to bring forward
-            // for one.
+            // The banner's own close control and dismissals — neither is
+            // an instruction.
             break
         }
     }
 
-    /// Bring up Calendar.
+    /// Write the offer's event as an .ics and open it in the default handler.
     ///
-    /// The app, by bundle identifier, rather than a URL scheme: `calshow:` is
-    /// undocumented, has no guarantee of surviving a release, and there is
-    /// nothing to deep-link to anyway — write-only access means MemoryClip
-    /// cannot resolve its own event back to something to show. Opening the app
-    /// is what the button honestly does.
-    private static func openCalendar() {
+    /// Calendar.app shows an "add this event" inspector where every field is
+    /// editable before anything is committed — the modify-first flow EventKit
+    /// cannot give, since its events are already saved when written.
+    /// A failure to write the draft is logged, not thrown: the user can
+    /// still answer the same offer with Add.
+    private static func openForEditing(_ event: DetectedEvent, uid: String) {
+        do {
+            let url = try EventICSDocument.writeTemporarily(for: event, uid: uid)
+            NSWorkspace.shared.open(url)
+        } catch {
+            log.error("Calendar draft could not be written: \(error.localizedDescription, privacy: .public)")
+        }
+    }
+
+    /// The offer's body tap, raised as a real dialog.
+    ///
+    /// Banner-style notifications — the style macOS defaults to — show no
+    /// buttons until the user hovers and opens the chevron, so for most
+    /// users the offer reads as an announcement, not a question. The dialog
+    /// gives the tap the three answers the banner carries: Add writes the
+    /// event, Edit drafts it as an .ics, Not Now closes. A clip that vanished
+    /// behind its banner is logged, not answered.
+    private func presentOfferDialog(forClipWith uuid: UUID) {
+        guard let detected = calendarCoordinator.detectedEvent(forClipWith: uuid) else {
+            log.notice("Offer tapped for a clip that no longer holds an event")
+            return
+        }
+        let text = EventNotifier.offerMessage(
+            eventTitle: detected.title,
+            start: detected.start,
+            isAllDay: detected.isAllDay
+        )
+        let alert = NSAlert()
+        alert.alertStyle = .informational
+        alert.messageText = text.title
+        alert.informativeText = text.body
+        alert.addButton(withTitle: loc("Add"))
+        alert.addButton(withTitle: loc("Edit…"))
+        alert.addButton(withTitle: loc("Not Now"))
+        NSApp.activate()
+        switch alert.runModal() {
+        case .alertFirstButtonReturn:
+            Task { _ = await calendarCoordinator.acceptOfferedEvent(forClipWith: uuid) }
+        case .alertSecondButtonReturn:
+            Self.openForEditing(detected, uid: uuid.uuidString)
+        default:
+            break
+        }
+    }
+
+    /// Bring up Calendar, on the event's own day when one is known.
+    ///
+    /// `calshow:` — the old undocumented scheme — is not claimed by anything
+    /// on this system, so navigation goes through Calendar's own scripting
+    /// interface: `view calendar at` needs only a date, which is all
+    /// write-only EventKit access leaves in MemoryClip's hands anyway. A
+    /// refused Automation consent, an unanswered consent prompt, or a
+    /// missing date degrades to opening the app plain.
+    private static func openCalendar(showing date: Date? = nil) {
+        if let date, showCalendar(at: date) {
+            // The event landed Calendar on the event's day; bring it forward.
+            activateCalendar()
+            return
+        }
+        activateCalendar()
+    }
+
+    /// Ask Calendar to display `date` ("view calendar", event class 'wrbt'
+    /// id 'aec9', per its scripting dictionary). The date rides as a raw
+    /// long-date-time parameter rather than an AppleScript string, so the
+    /// call does not depend on the user's locale. Consent is the price: the
+    /// first send raises macOS's "MemoryClip wants to control Calendar"
+    /// prompt — legitimate here, behind a button the user pressed.
+    private static func showCalendar(at date: Date) -> Bool {
+        let event = NSAppleEventDescriptor(
+            eventClass: AEEventClass(0x7772_6274), // 'wrbt'
+            eventID: AEEventID(0x6165_6339), // 'aec9'
+            targetDescriptor: NSAppleEventDescriptor(bundleIdentifier: "com.apple.iCal"),
+            returnID: AEReturnID(kAutoGenerateReturnID),
+            transactionID: AETransactionID(kAnyTransactionID)
+        )
+        event.setParam(
+            NSAppleEventDescriptor(date: date),
+            forKeyword: AEKeyword(0x7774_6474) // 'wtdt' — at <date>
+        )
+        do {
+            // waitForReply distinguishes a delivered command from a refused
+            // one — a noReply send would leave the fallback unreachable —
+            // and the timeout keeps a pending consent prompt from hanging
+            // the notification handler.
+            _ = try event.sendEvent(options: .waitForReply, timeout: 5)
+            return true
+        } catch {
+            log.error("Calendar navigation failed: \(error.localizedDescription, privacy: .public)")
+            return false
+        }
+    }
+
+    /// Launch or foreground Calendar without a destination.
+    private static func activateCalendar() {
         guard let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.apple.iCal") else {
             log.error("Calendar.app could not be located")
             return

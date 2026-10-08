@@ -219,7 +219,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // exists. Only the clips this batch produced text for are offered,
             // so nothing rescans the history.
             Task { @MainActor [weak self] in
-                await self?.calendarCoordinator.autoCreateIfWanted(forClipsWith: recognized)
+                await self?.calendarCoordinator.offerIfWanted(forClipsWith: recognized)
             }
         }
 
@@ -337,10 +337,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// so that with the feature off — which is the default — a copy costs one
     /// `UserDefaults` read and no query at all.
     private func offerNewestClipToCalendar() {
-        guard CalendarCoordinator.isAutoCreateEnabled,
+        guard CalendarCoordinator.isOfferEnabled,
               let item = store.recent(limit: 1).first else { return }
         Task { @MainActor [weak self] in
-            await self?.calendarCoordinator.autoCreateIfWanted(for: item)
+            await self?.calendarCoordinator.offerIfWanted(for: item)
         }
     }
 

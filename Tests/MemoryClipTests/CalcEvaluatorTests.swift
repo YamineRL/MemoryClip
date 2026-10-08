@@ -126,6 +126,23 @@ final class CalcEvaluatorTests: XCTestCase {
         XCTAssertEqual(CalcEvaluator.format(100.0), "100")
     }
 
+    /// The `places == 0` regression: zero-stripping used to run on the
+    /// integer part too, so 1,000,000,000 came out "1".
+    func testFormatLargeIntegersKeepTheirZeros() {
+        XCTAssertEqual(CalcEvaluator.format(1_000_000_000), "1000000000")
+        XCTAssertEqual(CalcEvaluator.format(-1_000_000_000), "-1000000000")
+        XCTAssertEqual(CalcEvaluator.format(10_000_000_000), "10000000000")
+        XCTAssertEqual(CalcEvaluator.format(1_230_000_000), "1230000000")
+        XCTAssertEqual(CalcEvaluator.format(9_999_999_999), "9999999999")
+    }
+
+    /// Rounding a 10-significant-digit value up across a power of ten must
+    /// not corrupt the integer either.
+    func testFormatRoundingUpAcrossAPowerOfTen() {
+        XCTAssertEqual(CalcEvaluator.format(9_999_999_999.6), "10000000000")
+        XCTAssertEqual(CalcEvaluator.format(999_999_999_999.9), "1000000000000")
+    }
+
     func testFormatFractional() {
         XCTAssertEqual(CalcEvaluator.format(0.5), "0.5")
         XCTAssertEqual(CalcEvaluator.format(2.5), "2.5")

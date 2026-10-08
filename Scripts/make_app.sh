@@ -29,7 +29,7 @@ cat > "$CONST_PROTOCOLS" <<'EOF'
 ["AppIntent","EntityQuery","AppEntity","TransientEntity","AppEnum","AppShortcutProviding","AppShortcutsProvider","AnyResolverProviding","AppIntentsPackage","DynamicOptionsProvider"]
 EOF
 
-swift build -c release --build-system native \
+swift build -c release \
     -Xswiftc -emit-const-values \
     -Xswiftc -Xfrontend -Xswiftc -const-gather-protocols-file \
     -Xswiftc -Xfrontend -Xswiftc "$PWD/$CONST_PROTOCOLS"
@@ -107,9 +107,28 @@ BUILD_DIR="$(dirname "$BIN")"
 SOURCE_LIST="$APPINTENTS_DIR/sources.list"
 CONST_LIST="$APPINTENTS_DIR/constvalues.list"
 find "$PWD/Sources/MemoryClip" -name '*.swift' -print | sort > "$SOURCE_LIST"
-find "$BUILD_DIR/MemoryClip.build" -name '*.swiftconstvalues' -print | sort > "$CONST_LIST"
+
+# The const-values files sit beside the emitted objects, and the build
+# systems disagree about where that is: the classic layout puts
+# MemoryClip.build next to the product, the swiftbuild backend — the
+# default now that 'native' is deprecated — nests it under
+# .build/out/Intermediates.noindex. Take the first candidate that actually
+# yields files, and keep only this configuration's: a shared intermediates
+# tree can also hold Debug's.
+CONST_LIST_TMP="$(mktemp -t memoryclip-constvalues)"
+: > "$CONST_LIST"
+for candidate in \
+    "$BUILD_DIR/MemoryClip.build" \
+    "$PWD/.build/arm64-apple-macosx/release/MemoryClip.build" \
+    "$PWD/.build/out/Intermediates.noindex/MemoryClip.build"; do
+    [ -d "$candidate" ] || continue
+    find "$candidate" -name '*.swiftconstvalues' -print | grep -v '/Debug/' | sort > "$CONST_LIST_TMP"
+    [ -s "$CONST_LIST_TMP" ] && { mv "$CONST_LIST_TMP" "$CONST_LIST"; break; }
+done
+rm -f "$CONST_LIST_TMP"
 if [ ! -s "$CONST_LIST" ]; then
-    echo "error: no .swiftconstvalues under $BUILD_DIR/MemoryClip.build" >&2
+    echo "error: no .swiftconstvalues found; looked beside $BIN, under" >&2
+    echo "       .build/arm64-apple-macosx/release and .build/out/Intermediates.noindex" >&2
     echo "       an incremental build skips unchanged files; delete .build and rerun" >&2
     exit 1
 fi

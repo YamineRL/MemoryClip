@@ -1,4 +1,5 @@
 import Foundation
+import SQLite3
 import SwiftData
 
 /// SwiftData-backed store for clipboard history.
@@ -36,6 +37,10 @@ final class ClipStore {
                 configurations: [ModelConfiguration(url: url)]
             )
             Self.restrictPermissions(forStoreAt: url)
+            // The container opened the migrated store: only now may the
+            // legacy source be retired. A crash or failed open leaves it in
+            // place for the next launch to stage again.
+            Self.finalizeLegacyMigration()
         }
     }
 
@@ -83,6 +88,10 @@ final class ClipStore {
 
     /// Create `directory` owner-only (0700), tightening it if it already
     /// exists with looser permissions.
+    ///
+    /// A chmod that fails is thrown rather than swallowed: the store holds
+    /// every clip the user ever copied, and "0700 assumed" is a privacy
+    /// claim the caller must not make on a guess.
     static func createStoreDirectory(at directory: URL) throws {
         let fileManager = FileManager.default
         if !fileManager.fileExists(atPath: directory.path) {
@@ -92,48 +101,156 @@ final class ClipStore {
                 attributes: [.posixPermissions: 0o700]
             )
         } else {
-            try? fileManager.setAttributes([.posixPermissions: 0o700], ofItemAtPath: directory.path)
+            do {
+                try fileManager.setAttributes(
+                    [.posixPermissions: 0o700],
+                    ofItemAtPath: directory.path
+                )
+            } catch {
+                log.error("Could not tighten permissions on \(directory.lastPathComponent): \(error.localizedDescription)")
+                throw error
+            }
         }
     }
 
-    /// Move a pre-existing store (and its -wal/-shm sidecars) to the new
-    /// namespaced path. No-op unless the legacy store exists AND the new one
-    /// does not, so it runs exactly once and can never clobber live data.
+    /// Staging directory a legacy migration copies into before anything is
+    /// renamed into place. Its PRESENCE is the completion marker: files land
+    /// at the destination only by rename out of staging, so a destination
+    /// with a sibling staging directory still standing is by construction
+    /// incomplete — the next launch moves it aside and stages again.
+    nonisolated static func migrationStagingDirectory(forStoreAt destination: URL) -> URL {
+        destination.deletingLastPathComponent()
+            .appendingPathComponent(".\(destination.deletingPathExtension().lastPathComponent).migrating", isDirectory: true)
+    }
+
+    /// Whether `url` is a Core Data store holding a ClipItem table — the
+    /// ownership check the legacy migration runs before adopting a generic
+    /// `default.store`. `default.store` is the name EVERY unsandboxed
+    /// SwiftData app takes when it does not pick one, so presence alone is
+    /// not evidence the file is MemoryClip's.
+    static func looksLikeClipStore(_ url: URL) -> Bool {
+        var db: OpaquePointer?
+        guard sqlite3_open_v2(url.path, &db, SQLITE_OPEN_READONLY, nil) == SQLITE_OK
+        else { return false }
+        defer { sqlite3_close(db) }
+        var statement: OpaquePointer?
+        defer { sqlite3_finalize(statement) }
+        guard sqlite3_prepare_v2(
+            db,
+            "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'ZCLIPITEM'",
+            -1,
+            &statement,
+            nil
+        ) == SQLITE_OK else { return false }
+        return sqlite3_step(statement) == SQLITE_ROW
+    }
+
+    /// Move a pre-existing store (and its -wal/-shm sidecars and external
+    /// storage) to the new namespaced path. No-op unless the legacy store
+    /// exists AND the new one does not.
+    ///
+    /// Restart-safe: every file is copied into a staging directory first,
+    /// then RENAMED into place only once the whole set is staged. A crash
+    /// mid-copy leaves the staging directory standing and the legacy source
+    /// untouched — the next launch discards the partial destination and
+    /// stages again, instead of treating a half-copied store as migrated.
+    /// The legacy source is deleted by `finalizeLegacyMigration`, after the
+    /// destination has actually opened.
+    ///
+    /// A `default.store` that does not look like MemoryClip's (no
+    /// `ZCLIPITEM` table) is neither adopted nor deleted — it belongs to
+    /// some other app that took the same default.
     ///
     /// Failures are surfaced: silently starting with an empty history would
     /// look, to the user, exactly like losing it.
     @discardableResult
     static func migrateLegacyStore(from legacy: URL, to destination: URL) throws -> Bool {
         let fileManager = FileManager.default
+        let staging = migrationStagingDirectory(forStoreAt: destination)
+
+        // A previous interrupted run: the destination files are partial and
+        // the staging directory holds whatever it managed to copy. Both go
+        // aside; the legacy source is still there to copy afresh.
+        if fileManager.fileExists(atPath: staging.path) {
+            if fileManager.fileExists(atPath: destination.path) {
+                try moveStoreAside(forStoreAt: destination)
+            }
+            try? fileManager.removeItem(at: staging)
+        }
+
         guard fileManager.fileExists(atPath: legacy.path) else { return false }
         guard !fileManager.fileExists(atPath: destination.path) else { return false }
 
-        // Copy first, then remove: a crash mid-migration leaves the original
-        // intact rather than a half-moved pair of files.
-        var copied: [URL] = []
+        // Copy into staging, then rename out: nothing appears at the
+        // destination until the whole store is staged, and the staged set
+        // is either fully renamed or provably incomplete.
+        var staged: [URL] = []
         do {
+            try fileManager.createDirectory(at: staging, withIntermediateDirectories: true)
             for suffix in storeSidecarSuffixes {
                 let source = legacy.appendingSuffixToLastPathComponent(suffix)
                 guard fileManager.fileExists(atPath: source.path) else { continue }
-                let target = destination.appendingSuffixToLastPathComponent(suffix)
+                let target = staging.appendingPathComponent(source.lastPathComponent)
                 try fileManager.copyItem(at: source, to: target)
-                copied.append(target)
+                staged.append(target)
             }
             // Image clips over the inlining threshold live in a `.NAME_SUPPORT`
             // directory beside the store, keyed by the store's file name. It
             // has to travel with the store or every large image goes missing.
             let legacySupport = externalStorageDirectory(forStoreAt: legacy)
             if fileManager.fileExists(atPath: legacySupport.path) {
-                let target = externalStorageDirectory(forStoreAt: destination)
+                let target = staging
+                    .appendingPathComponent(legacySupport.lastPathComponent, isDirectory: true)
                 try fileManager.copyItem(at: legacySupport, to: target)
-                copied.append(target)
+                staged.append(target)
             }
         } catch {
-            // Roll back partial copies so the next launch retries cleanly.
-            for url in copied { try? fileManager.removeItem(at: url) }
+            try? fileManager.removeItem(at: staging)
             throw error
         }
 
+        // Probe the staged copy — never the original. Opening a SQLite store
+        // rewrites its -shm even in readonly mode, and the legacy source has
+        // to survive byte-for-byte until the destination has committed. A
+        // `default.store` that fails the probe is foreign: discard the
+        // staged copies and leave the file exactly where it was.
+        guard looksLikeClipStore(staging.appendingPathComponent(legacy.lastPathComponent)) else {
+            try? fileManager.removeItem(at: staging)
+            log.notice("Skipped legacy migration: \(legacy.lastPathComponent) is not a MemoryClip store")
+            return false
+        }
+
+        // Commit: rename every staged item into place. The destination file
+        // names differ from the legacy ones (`default.store` →
+        // `MemoryClip.store`, `.default_SUPPORT` → `.MemoryClip_SUPPORT`),
+        // so each rename retargets, not just relocates.
+        for item in staged {
+            let name = item.lastPathComponent
+            let target: URL
+            if name.hasPrefix(".") {
+                target = externalStorageDirectory(forStoreAt: destination)
+            } else if name.hasSuffix("-wal") {
+                target = destination.appendingSuffixToLastPathComponent("-wal")
+            } else if name.hasSuffix("-shm") {
+                target = destination.appendingSuffixToLastPathComponent("-shm")
+            } else {
+                target = destination
+            }
+            try fileManager.moveItem(at: item, to: target)
+        }
+        try? fileManager.removeItem(at: staging)
+        log.notice("Migrated clipboard store to the namespaced path (\(staged.count) files)")
+        return true
+    }
+
+    /// Delete the legacy store after the migrated destination has opened.
+    ///
+    /// Runs from `init` once the container is live — never inside the copy
+    /// itself — so the source survives every failure mode that could still
+    /// leave the destination unreadable. `legacy` is injectable so the
+    /// migration tests can finalize a temp store rather than the real path.
+    static func finalizeLegacyMigration(legacy: URL = legacyStoreURL) {
+        let fileManager = FileManager.default
         for suffix in storeSidecarSuffixes {
             let source = legacy.appendingSuffixToLastPathComponent(suffix)
             if fileManager.fileExists(atPath: source.path) {
@@ -141,18 +258,29 @@ final class ClipStore {
             }
         }
         try? fileManager.removeItem(at: externalStorageDirectory(forStoreAt: legacy))
-        log.notice("Migrated clipboard store to the namespaced path (\(copied.count) files)")
-        return true
     }
 
     /// chmod 0600 the store and its sidecars — the store holds every clip the
     /// user ever copied and must not be readable by other local accounts.
+    ///
+    /// Failures are logged rather than swallowed: "owner-only" is a privacy
+    /// claim, and a chmod that silently failed would make the claim a lie
+    /// nothing ever surfaces. (Still non-throwing: a store that cannot be
+    /// tightened is warned about, not made unusable — the user's own account
+    /// can always read it.)
     static func restrictPermissions(forStoreAt url: URL) {
         let fileManager = FileManager.default
         for suffix in storeSidecarSuffixes {
             let target = url.appendingSuffixToLastPathComponent(suffix)
             guard fileManager.fileExists(atPath: target.path) else { continue }
-            try? fileManager.setAttributes([.posixPermissions: 0o600], ofItemAtPath: target.path)
+            do {
+                try fileManager.setAttributes(
+                    [.posixPermissions: 0o600],
+                    ofItemAtPath: target.path
+                )
+            } catch {
+                log.error("Could not tighten permissions on \(target.lastPathComponent): \(error.localizedDescription)")
+            }
         }
         restrictPermissions(forExternalStorageOf: url)
     }
@@ -171,7 +299,11 @@ final class ClipStore {
         let fileManager = FileManager.default
         let root = externalStorageDirectory(forStoreAt: url)
         guard fileManager.fileExists(atPath: root.path) else { return }
-        try? fileManager.setAttributes([.posixPermissions: 0o700], ofItemAtPath: root.path)
+        do {
+            try fileManager.setAttributes([.posixPermissions: 0o700], ofItemAtPath: root.path)
+        } catch {
+            log.error("Could not tighten permissions on \(root.lastPathComponent): \(error.localizedDescription)")
+        }
 
         guard let enumerator = fileManager.enumerator(
             at: root,
@@ -179,10 +311,14 @@ final class ClipStore {
         ) else { return }
         for case let entry as URL in enumerator {
             let isDirectory = (try? entry.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory ?? false
-            try? fileManager.setAttributes(
-                [.posixPermissions: isDirectory ? 0o700 : 0o600],
-                ofItemAtPath: entry.path
-            )
+            do {
+                try fileManager.setAttributes(
+                    [.posixPermissions: isDirectory ? 0o700 : 0o600],
+                    ofItemAtPath: entry.path
+                )
+            } catch {
+                log.error("Could not tighten permissions on \(entry.lastPathComponent): \(error.localizedDescription)")
+            }
         }
     }
 
@@ -223,23 +359,35 @@ final class ClipStore {
 
     /// Move a broken store out of the way (keeping it for forensics/recovery)
     /// so a fresh one can be created. Returns the directory it was moved to.
+    ///
+    /// The whole store travels as one unit — database, -wal/-shm sidecars
+    /// AND the `.NAME_SUPPORT` external-blob directory — so the quarantine is
+    /// a recoverable store, not a database whose image payloads stayed behind.
     @discardableResult
-    static func moveStoreAside() throws -> URL {
+    static func moveStoreAside(forStoreAt url: URL = storeURL) throws -> URL {
         let fileManager = FileManager.default
         let stamp = ISO8601DateFormatter().string(from: .now)
             .replacingOccurrences(of: ":", with: "-")
-        let quarantine = storeDirectory.appendingPathComponent("Damaged-\(stamp)", isDirectory: true)
+        let quarantine = url.deletingLastPathComponent()
+            .appendingPathComponent("Damaged-\(stamp)", isDirectory: true)
         try fileManager.createDirectory(
             at: quarantine,
             withIntermediateDirectories: true,
             attributes: [.posixPermissions: 0o700]
         )
         for suffix in storeSidecarSuffixes {
-            let source = storeURL.appendingSuffixToLastPathComponent(suffix)
+            let source = url.appendingSuffixToLastPathComponent(suffix)
             guard fileManager.fileExists(atPath: source.path) else { continue }
             try fileManager.moveItem(
                 at: source,
                 to: quarantine.appendingPathComponent(source.lastPathComponent)
+            )
+        }
+        let support = externalStorageDirectory(forStoreAt: url)
+        if fileManager.fileExists(atPath: support.path) {
+            try fileManager.moveItem(
+                at: support,
+                to: quarantine.appendingPathComponent(support.lastPathComponent, isDirectory: true)
             )
         }
         return quarantine
@@ -434,6 +582,7 @@ final class ClipStore {
     ///   screenshot deduplicated onto. nil only if the insert failed.
     @discardableResult
     func insertScreenshot(at url: URL, createdAt: Date = .now) -> ClipItem? {
+        let signature = Self.signature(ofFileAt: url)
         let hash = ContentParser.hashText("file:" + url.absoluteString)
         if let existing = fetchByHash(hash).first {
             // Already known — most likely the user copied the file in Finder
@@ -441,8 +590,28 @@ final class ClipStore {
             // so it joins the OCR and note pipelines, and float it.
             existing.isScreenshot = true
             existing.createdAt = createdAt
+            // A file rewritten in place keeps its URL — and its hash — but is
+            // not the same pixels. Everything derived from the previous file
+            // is stale; reset it so OCR and thumbnailing run again.
+            if existing.screenshotSignature != signature {
+                existing.screenshotSignature = signature
+                existing.ocrText = nil
+                existing.ocrAttempted = false
+                existing.thumbnailData = nil
+                existing.thumbnailAttempted = false
+                existing.refinedTitle = nil
+                existing.refinedSummary = nil
+                existing.refinedText = nil
+                existing.refinedTags = []
+                existing.refineAttempted = false
+                existing.translatedText = nil
+                existing.sourceLanguage = nil
+                existing.notePath = nil
+                existing.noteExportedAt = nil
+                existing.contentRevision += 1
+            }
             save()
-            if !existing.thumbnailAttempted { scheduleThumbnailBackfill() }
+            scheduleThumbnailBackfill()
             return existing
         }
 
@@ -456,13 +625,36 @@ final class ClipStore {
             sourceBundleID: Self.screenshotSourceBundleID,
             sourceAppName: Self.screenshotSourceName,
             createdAt: createdAt,
-            isScreenshot: true
+            isScreenshot: true,
+            screenshotSignature: signature
         )
         context.insert(item)
         save()
         enforceCap()
         scheduleThumbnailBackfill()
         return item
+    }
+
+    /// The "same file?" answer for a path: byte size plus modification date.
+    /// Deliberately not a content hash — a screenshot can be tens of
+    /// megabytes, and the watcher's question (was this file rewritten since
+    /// it was recorded?) is answered by the filesystem metadata that changed
+    /// with it.
+    static func signature(ofFileAt url: URL) -> String? {
+        // `URL.resourceValues` caches previously fetched keys PER URL
+        // INSTANCE — asking the same URL object twice answers with the first
+        // stat it took, which is exactly the file-replaced-in-place case this
+        // signature exists to detect. `attributesOfItem` reads live every
+        // call.
+        guard let attributes = try? FileManager.default.attributesOfItem(atPath: url.path),
+              let size = attributes[.size] as? NSNumber,
+              let modified = attributes[.modificationDate] as? Date
+        else { return nil }
+        // Millisecond precision: a file replaced in place lands seconds or
+        // more apart, while sub-millisecond differences are stat/Date
+        // representation noise — the same logical file must always produce
+        // the same signature.
+        return "\(size.int64Value):\(String(format: "%.3f", modified.timeIntervalSince1970))"
     }
 
     /// Identity recorded on screenshot clips, standing in for a source app.
@@ -519,8 +711,17 @@ final class ClipStore {
 
     /// Store an OCR result (or the lack of one) against a clip. Marks the
     /// clip as attempted either way so it is not re-queued.
-    func applyOCR(_ text: String?, toClipWith uuid: UUID) {
-        guard let item = item(withUUID: uuid) else { return }
+    ///
+    /// `revision` is the `contentRevision` the job was launched against:
+    /// the result is dropped when the row has been edited, sealed, or
+    /// otherwise changed since, because it describes content that is gone.
+    /// A sealed clip accepts nothing — OCR output is searchable plaintext,
+    /// exactly what sealing removed from the row.
+    func applyOCR(_ text: String?, toClipWith uuid: UUID, revision: Int) {
+        guard let item = item(withUUID: uuid),
+              !item.isSecret,
+              item.contentRevision == revision
+        else { return }
 
         // Vision output is persisted AND indexed for search, so it needs the
         // same sensitive-data guard as captured text: a screenshot of a
@@ -587,8 +788,21 @@ final class ClipStore {
     ///   into external storage, which is what stops it being materialized on
     ///   every fetch — clips captured before that attribute existed would
     ///   otherwise keep their bytes in the row forever.
-    func applyThumbnail(_ data: Data?, toClipWith uuid: UUID, rewritingBlob blob: Data? = nil) {
-        guard let item = item(withUUID: uuid) else { return }
+    /// `revision` is the `contentRevision` the thumbnail was launched
+    /// against — the write-back is dropped when the row changed since,
+    /// because a thumbnail of the previous payload is a picture of content
+    /// that is gone, and the blob rewrite would resurrect an old image.
+    /// A sealed clip accepts nothing.
+    func applyThumbnail(
+        _ data: Data?,
+        toClipWith uuid: UUID,
+        revision: Int,
+        rewritingBlob blob: Data? = nil
+    ) {
+        guard let item = item(withUUID: uuid),
+              !item.isSecret,
+              item.contentRevision == revision
+        else { return }
         item.thumbnailData = data
         item.thumbnailAttempted = true
         if let blob { item.imageData = blob }
@@ -608,14 +822,15 @@ final class ClipStore {
         defer { isBackfillingThumbnails = false }
 
         while !Task.isCancelled {
-            let pending: [(uuid: UUID, payload: ImagePayload?)] = pendingThumbnails(limit: batchSize)
-                .map { ($0.uuid, $0.imagePayload) }
+            let pending: [(uuid: UUID, revision: Int, payload: ImagePayload?)] =
+                pendingThumbnails(limit: batchSize)
+                    .map { ($0.uuid, $0.contentRevision, $0.imagePayload) }
             guard !pending.isEmpty else { return }
 
             for entry in pending {
                 if Task.isCancelled { return }
                 guard let payload = entry.payload else {
-                    applyThumbnail(nil, toClipWith: entry.uuid)
+                    applyThumbnail(nil, toClipWith: entry.uuid, revision: entry.revision)
                     continue
                 }
                 let thumbnail = await Task.detached(priority: .utility) {
@@ -626,9 +841,14 @@ final class ClipStore {
                 // screenshot clip has no blob to move — its bytes are the
                 // user's file and must stay there, untouched.
                 if case .data(let data) = payload {
-                    applyThumbnail(thumbnail, toClipWith: entry.uuid, rewritingBlob: data)
+                    applyThumbnail(
+                        thumbnail,
+                        toClipWith: entry.uuid,
+                        revision: entry.revision,
+                        rewritingBlob: data
+                    )
                 } else {
-                    applyThumbnail(thumbnail, toClipWith: entry.uuid)
+                    applyThumbnail(thumbnail, toClipWith: entry.uuid, revision: entry.revision)
                 }
             }
         }
@@ -800,6 +1020,20 @@ final class ClipStore {
     func markAsSecret(_ item: ClipItem) -> Bool {
         guard let vault = secrets, !item.isSecret else { return false }
         guard let plaintext = item.text, !plaintext.isEmpty else { return false }
+        // Only a clip whose whole payload is its text may be sealed. Pixels
+        // (`imageData`), file references and screenshot state are payload the
+        // cipher does not cover — a row carrying them is rejected rather
+        // than half-sealed, which is what the comment above has always
+        // promised and what an imported/inconsistent row could otherwise
+        /// violate. Residual derived fields with no payload behind them
+        /// (a thumbnail without its image) are wiped below, not rejected.
+        guard item.imageData?.isEmpty != false,
+              item.fileURLStrings.isEmpty,
+              !item.isScreenshot
+        else {
+            log.notice("markAsSecret refused: clip carries a non-text payload")
+            return false
+        }
         let cipher: Data
         do {
             cipher = try vault.seal(plaintext)
@@ -830,12 +1064,23 @@ final class ClipStore {
         item.notePath = nil
         item.noteExportedAt = nil
         item.calendarEventID = nil
+        item.thumbnailData = nil
+        item.colorHex = nil
         item.kind = .text
         item.isSecret = true
         item.secretCipher = cipher
         item.secretLabel = kind.label
         item.secretMasked = SecretMask.mask(trimmed, kind: kind)
         item.contentHash = vault.hash(trimmed, for: .dedup)
+        // The same expiry policy captured one-time codes live under: a code
+        // converted by hand forgets itself on the same clock, and a pin —
+        // already on the clip or added later — is what lifts it.
+        item.expiresAt = kind == .oneTimeCode && SecretSettings.forgetsOneTimeCodes && !item.isPinned
+            ? Date(timeIntervalSinceNow: SecretSettings.oneTimeCodeLifetime)
+            : nil
+        // Every outstanding background result is now stale: sealed or not,
+        // the content it was computed against is gone.
+        item.contentRevision += 1
         save()
         return true
     }
@@ -854,6 +1099,7 @@ final class ClipStore {
         item.expiresAt = nil
         item.text = plaintext
         item.contentHash = ContentParser.hashText("text:\(plaintext)")
+        item.contentRevision += 1
         save()
     }
 
@@ -963,6 +1209,11 @@ final class ClipStore {
     ///   - translation: the English rendering of `ocrText`, when the clip was
     ///     not already in English. nil clears any earlier one, which is what
     ///     a clip whose language could not be translated should end up with.
+    ///   - revision: the `contentRevision` the refinement job was launched
+    ///     against. A result computed from content that has since been
+    ///     edited, sealed or deleted is dropped rather than stamped onto
+    ///     the new state — and a sealed clip accepts no derived plaintext
+    ///     at all.
     func applyRefinement(
         title: String?,
         summary: String?,
@@ -970,9 +1221,13 @@ final class ClipStore {
         tags: [String],
         language: String? = nil,
         translation: TranslatedText? = nil,
-        toClipWith uuid: UUID
+        toClipWith uuid: UUID,
+        revision: Int
     ) {
-        guard let item = item(withUUID: uuid) else { return }
+        guard let item = item(withUUID: uuid),
+              !item.isSecret,
+              item.contentRevision == revision
+        else { return }
 
         var acceptedText = text
         var acceptedTitle = title
@@ -985,8 +1240,11 @@ final class ClipStore {
         var acceptedTags = acceptedText == nil && translation == nil ? [] : tags
         var acceptedTranslation = translation
         if SensitiveFilter.isFilteringEnabled {
-            let combined = [title, summary, text, translation?.text]
-                .compactMap { $0 }
+            // Tags are persisted AND emitted into note front matter, so they
+            // face the same card-number check as the text fields — a number
+            // the model returned only as a tag must not reach disk.
+            let combined = ([title, summary, text, translation?.text]
+                .compactMap { $0 } + [tags.joined(separator: " ")])
                 .joined(separator: "\n")
             if !combined.isEmpty, SensitiveFilter.isLikelyCardNumber(combined) {
                 acceptedText = nil
@@ -1011,8 +1269,16 @@ final class ClipStore {
     /// Record where a note for this clip was written. Non-nil `notePath` is
     /// what makes the next export update the same note instead of writing a
     /// second one.
-    func applyNote(path: String, exportedAt: Date = .now, toClipWith uuid: UUID) {
-        guard let item = item(withUUID: uuid) else { return }
+    ///
+    /// `revision` is the `contentRevision` the export was launched against:
+    /// a note written for content that has since been edited or sealed is
+    /// not recorded — and a sealed clip gains no reference to a file it was
+    /// converted to stop pointing at.
+    func applyNote(path: String, exportedAt: Date = .now, toClipWith uuid: UUID, revision: Int) {
+        guard let item = item(withUUID: uuid),
+              !item.isSecret,
+              item.contentRevision == revision
+        else { return }
         item.notePath = path
         item.noteExportedAt = exportedAt
         save()
@@ -1021,10 +1287,25 @@ final class ClipStore {
     /// Record the calendar event created from this clip, or clear it with nil
     /// when the event has been undone. Non-nil is what marks the clip as
     /// already scheduled.
-    func applyCalendarEvent(_ identifier: String?, toClipWith uuid: UUID) {
-        guard let item = item(withUUID: uuid) else { return }
+    ///
+    /// `revision` is the `contentRevision` the event's details were detected
+    /// on: recording the identifier under a clip whose content has changed
+    /// would tie it to an appointment it no longer describes. Clearing
+    /// passes `revision: nil` — an undo is always allowed to un-record
+    /// itself.
+    ///
+    /// - Returns: whether the identifier was recorded. False lets the
+    ///   caller un-create the event rather than leave it orphaned in the
+    ///   user's calendar, unattributable to any clip.
+    @discardableResult
+    func applyCalendarEvent(_ identifier: String?, toClipWith uuid: UUID, revision: Int? = nil) -> Bool {
+        guard let item = item(withUUID: uuid) else { return false }
+        if identifier != nil {
+            guard !item.isSecret, item.contentRevision == revision else { return false }
+        }
         item.calendarEventID = identifier
         save()
+        return true
     }
 
     /// One clip by uuid — the indexed, limit-1 lookup the write-back paths
@@ -1106,6 +1387,11 @@ final class ClipStore {
         item.clipTranslationSource = nil
         item.clipTranslationTarget = nil
 
+        // The content changed: results still in flight for the old text
+        // (refinement, translation, note export) must be refused by the
+        // write-backs rather than stamped onto the new.
+        item.contentRevision += 1
+
         // Merge every other clip already carrying the new hash into this one
         // (fetchByHash's limit-1 would answer only the newest match, and the
         // edited row itself can be it, so the merge fetches them all).
@@ -1172,6 +1458,7 @@ final class ClipStore {
         item.kind = snapshot.kind
         item.colorHex = snapshot.colorHex
         item.contentHash = snapshot.contentHash
+        item.contentRevision += 1
         save()
     }
 
@@ -1382,12 +1669,19 @@ final class ClipStore {
         }
     }
 
-    func save() {
-        guard context.hasChanges else { return }
+    /// Persist pending changes. Returns false when the save threw — the
+    /// caller deciding whether a write "happened" (dedup state, pipeline
+    /// bookkeeping, UI claims) must check rather than assume: a swallowed
+    /// failure here used to be indistinguishable from success.
+    @discardableResult
+    func save() -> Bool {
+        guard context.hasChanges else { return true }
         do {
             try context.save()
+            return true
         } catch {
             log.error("ClipStore save failed: \(error.localizedDescription)")
+            return false
         }
     }
 

@@ -38,9 +38,9 @@ import Foundation
 final class EventKitSink: EventSink {
     private let store = EKEventStore()
 
-    /// The event created by the last successful `save`, and the only thing
-    /// undo can act on. See the write-only note above.
-    private var lastSaved: EKEvent?
+    /// The events this sink created, keyed by their operation identifier —
+    /// the only thing undo can act on. See the write-only note above.
+    private var saved: [UUID: EKEvent] = [:]
 
     // MARK: - EventSink
 
@@ -62,9 +62,32 @@ final class EventKitSink: EventSink {
     /// process has been told yes, whatever TCC says afterwards; the rule that
     /// matters — never raise the first prompt from a background capture — is
     /// unaffected, since a run that has never asked still has the flag clear.
+    ///
+    /// The remembered grant loses to a CURRENT refusal: a user who revokes
+    /// access in System Settings mid-run must not keep producing silent
+    /// failures while the flag says yes. `.denied`/`.restricted` therefore
+    /// outrank it; the flag only ever wins over `.notDetermined`, the one
+    /// status that lies.
+    /// Whether a save could succeed at all — refused access means the
+    /// offer's Add button would only ever fail, so the offer is not made.
+    /// `.notAsked` passes on purpose: the button is the user action the
+    /// first prompt is allowed to belong to.
+    nonisolated var canReachCalendar: Bool {
+        Self.access != .denied && Self.access != .restricted
+    }
+
     nonisolated var wouldPromptForAccess: Bool {
-        guard !Self.grantedInThisRun.value else { return false }
-        return EKEventStore.authorizationStatus(for: .event) == .notDetermined
+        switch EKEventStore.authorizationStatus(for: .event) {
+        case .denied, .restricted:
+            // No prompt is coming — the request is refused outright. The
+            // automatic path may proceed to `save`, which reports the
+            // refusal as an error rather than a silent skip.
+            return false
+        case .notDetermined:
+            return !Self.grantedInThisRun.value
+        default:
+            return false
+        }
     }
 
     /// Set the moment any request comes back granted, and never cleared.
@@ -86,7 +109,7 @@ final class EventKitSink: EventSink {
     }
 
     @MainActor
-    func save(_ event: DetectedEvent) async throws -> EventReceipt {
+    func save(_ event: DetectedEvent, operation: UUID) async throws -> EventReceipt {
         try await requestAccess()
 
         guard let calendar = store.defaultCalendarForNewEvents else {
@@ -99,7 +122,7 @@ final class EventKitSink: EventSink {
         } catch {
             throw CalendarError.saveFailed(error.localizedDescription)
         }
-        lastSaved = created
+        saved[operation] = created
 
         log.notice("Created a calendar event")
         return EventReceipt(
@@ -110,18 +133,20 @@ final class EventKitSink: EventSink {
     }
 
     @MainActor
-    func removeLastSaved() async throws {
-        // Nothing held means nothing this sink can reach: either no event has
-        // been created in this run, or one has already been undone. Neither is
-        // a failure to report — there is simply nothing left to do.
-        guard let event = lastSaved else { return }
+    func removeSaved(_ operation: UUID) async throws -> Bool {
+        // Nothing held for this operation means nothing this sink can reach:
+        // either the event was created by an earlier run of the app, or it
+        // has already been undone. False is the honest answer — there is
+        // simply nothing left to remove.
+        guard let event = saved[operation] else { return false }
         do {
             try store.remove(event, span: .thisEvent, commit: true)
         } catch {
             throw CalendarError.removeFailed(error.localizedDescription)
         }
-        lastSaved = nil
-        log.notice("Removed the last calendar event MemoryClip created")
+        saved[operation] = nil
+        log.notice("Removed a calendar event MemoryClip created")
+        return true
     }
 
     // MARK: - Access
@@ -203,11 +228,22 @@ final class EventKitSink: EventSink {
         // `.notDetermined` after a request that genuinely succeeded, and a
         // warning telling someone to grant access they have already granted
         // is worse than no warning at all.
+        // A current refusal outranks the remembered grant — the user may have
+        // revoked access in System Settings since this process asked, and a
+        // Settings pane that says Granted then is lying. The flag only
+        // exists to outrank `.notDetermined`, the status that lies.
+        switch EKEventStore.authorizationStatus(for: .event) {
+        case .denied: return .denied
+        case .restricted: return .restricted
+        default: break
+        }
         if grantedInThisRun.value { return .granted }
         switch EKEventStore.authorizationStatus(for: .event) {
         case .notDetermined: return .notAsked
-        case .restricted: return .restricted
+        // Unreachable — the first switch already returned — but named so the
+        // exhaustiveness checker stops warning about them.
         case .denied: return .denied
+        case .restricted: return .restricted
         case .fullAccess, .writeOnly: return .granted
         @unknown default: return .notAsked
         }

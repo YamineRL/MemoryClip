@@ -189,6 +189,66 @@ final class ContentParserTests: XCTestCase {
         }
     }
 
+    /// P3.11: a pasteboard image has a budget. Past `maxImageBytes` the clip
+    /// is skipped entirely — captured "for free" was the old behaviour, and
+    /// a multi-hundred-megabyte photo is better handled as the file it
+    /// usually also is on the board.
+    func testAnImageOverTheByteCapIsSkipped() {
+        let pasteboard = makePasteboard()
+        let oversized = Data(repeating: 0x89, count: ContentParser.maxImageBytes + 1)
+        pasteboard.setData(oversized, forType: .png)
+
+        XCTAssertNil(
+            ContentParser.parse(pasteboard),
+            "an image over \(ContentParser.maxImageBytes) bytes must not be captured"
+        )
+    }
+
+    /// The encoded-type preference: a board offering both PNG data and an
+    /// NSImage representation keeps the encoded bytes — no TIFF decode, no
+    /// PNG re-encode on the main actor.
+    func testImagePrefersTheEncodedRepresentation() {
+        let pasteboard = makePasteboard()
+        let encoded = Data("pretend-png".utf8)
+        pasteboard.setData(encoded, forType: .png)
+
+        XCTAssertEqual(ContentParser.imageData(from: pasteboard), encoded)
+    }
+
+    /// `pixelSize` answers from the header — the guard that enforces
+    /// `maxImagePixels` never decodes a bitmap.
+    func testPixelSizeReadsTheHeaderOnly() throws {
+        let rep = NSBitmapImageRep(
+            bitmapDataPlanes: nil,
+            pixelsWide: 4,
+            pixelsHigh: 6,
+            bitsPerSample: 8,
+            samplesPerPixel: 4,
+            hasAlpha: true,
+            isPlanar: false,
+            colorSpaceName: .deviceRGB,
+            bytesPerRow: 16,
+            bitsPerPixel: 32
+        )
+        let png = try XCTUnwrap(rep?.representation(using: .png, properties: [:]))
+
+        let size = try XCTUnwrap(ContentParser.pixelSize(of: png))
+        XCTAssertEqual(size.width, 4)
+        XCTAssertEqual(size.height, 6)
+        XCTAssertEqual(size.pixels, 24)
+    }
+
+    /// Garbage under an image type is data, not pixels — still bounded by
+    /// bytes, tolerated by the pixel check rather than rejected for being
+    /// unparseable.
+    func testNonImageBytesAreCapturedWithinTheByteCap() {
+        let pasteboard = makePasteboard()
+        let bytes = Data("not really a png".utf8)
+        pasteboard.setData(bytes, forType: .png)
+
+        XCTAssertEqual(ContentParser.imageData(from: pasteboard), bytes)
+    }
+
     func testFileURLs() {
         let pasteboard = makePasteboard()
         pasteboard.writeObjects([NSURL(fileURLWithPath: "/tmp/memoryclip-test.txt")])

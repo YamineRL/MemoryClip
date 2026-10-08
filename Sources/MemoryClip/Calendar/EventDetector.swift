@@ -68,6 +68,19 @@ enum EventDetector {
         "meet", "call", "video", "conf", "conference", "join", "vc", "room", "live"
     ]
 
+    /// How far a corroborating detail may sit from the date it belongs to,
+    /// in UTF-16 units between the closest edges of the two matches.
+    ///
+    /// A real invitation writes its details as a block — subject, when,
+    /// where, link, a handful of lines. A long email thread can carry a
+    /// date in one section, an address in a signature four paragraphs down
+    /// and a Zoom link in an unrelated earlier message, and combining them
+    /// fabricates an appointment that exists nowhere. So a link or address
+    /// only counts when it lives NEXT to the date: the window is wide
+    /// enough for a label-and-value pair or a wrapped line, far too narrow
+    /// to reach across a thread.
+    static let detailProximity = 320
+
     /// The appointment in `text`, or nil when it names no date at all.
     ///
     /// - Parameters:
@@ -103,13 +116,17 @@ enum EventDetector {
         let named = subject.substring(with: dateMatch.range)
         let hasClockTime = namesAClockTime(named)
 
+        // Corroboration counts only when it lives next to the date —
+        // `detailProximity` above has the reasoning. A detail that belongs
+        // to some other part of the text is not this appointment's.
         let location = matches
-            .first { $0.resultType == .address }
+            .first { $0.resultType == .address && $0.range.isNear(dateMatch.range, within: detailProximity) }
             .flatMap { addressLine(from: $0.addressComponents) }
 
         let meetingURL = matches
-            .compactMap { $0.resultType == .link ? $0.url : nil }
-            .first(where: isMeetingURL)
+            .compactMap { $0.resultType == .link ? (url: $0.url, range: $0.range) : nil }
+            .first { $0.url.map(isMeetingURL) == true && $0.range.isNear(dateMatch.range, within: detailProximity) }
+            .flatMap(\.url)
 
         // Left nil unless the text named a zone: `timeZone` means "the text
         // said so", which is what the sink needs in order to decide whether to
@@ -377,5 +394,21 @@ enum EventDetector {
         guard text.utf8.count > maxScannedUTF8Bytes else { return text }
         let bytes = text.utf8.prefix(maxScannedUTF8Bytes)
         return String(decoding: bytes, as: UTF8.self)
+    }
+}
+
+private extension NSRange {
+    /// Whether two matches sit within `distance` UTF-16 units of each other,
+    /// measuring between their closest edges (0 when they overlap or touch).
+    func isNear(_ other: NSRange, within distance: Int) -> Bool {
+        let gap: Int
+        if location + length <= other.location {
+            gap = other.location - (location + length)
+        } else if other.location + other.length <= location {
+            gap = location - (other.location + other.length)
+        } else {
+            gap = 0
+        }
+        return gap <= distance
     }
 }

@@ -1,6 +1,8 @@
 import AppKit
 import CryptoKit
 import Foundation
+import ImageIO
+import OSLog
 
 /// Turns a pasteboard snapshot into a `CapturedClip` (type detection, hashing).
 @MainActor
@@ -63,7 +65,7 @@ enum ContentParser {
         }
 
         // 4. Image.
-        if let image = NSImage(pasteboard: pasteboard), let data = imageData(for: image) {
+        if let data = imageData(from: pasteboard) {
             return CapturedClip(
                 kind: .image,
                 text: nil,
@@ -182,6 +184,78 @@ enum ContentParser {
         guard scheme == "http" || scheme == "https" else { return false }
         guard let host = url.host, host.contains(".") else { return false }
         return true
+    }
+
+    /// The largest image payload a clip may hold, in encoded bytes.
+    ///
+    /// A pasteboard image is unbounded in theory — a photo-library export
+    /// can offer hundreds of megabytes — while a clipboard manager's rows
+    /// are small by design. 64 MB is far past any screenshot (a 5K full
+    /// display is ~15 MB PNG); bigger content is a photo, and a photo is
+    /// better handled as the file it usually also is on the board.
+    static let maxImageBytes = 64 * 1024 * 1024
+
+    /// The largest image a clip may hold, in pixels. Read from the header
+    /// alone — no bitmap decode — so the check costs a few hundred bytes of
+    /// the payload it guards.
+    static let maxImagePixels = 128_000_000
+
+    /// Encoded representations to take straight off the pasteboard, in
+    /// preference order. An image the source app already encoded needs no
+    /// TIFF decode and no PNG re-encode — the two costs the old
+    /// `NSImage` path paid on every capture, on the main actor.
+    static let preferredImageTypes: [NSPasteboard.PasteboardType] = [
+        .png,
+        .tiff,
+        NSPasteboard.PasteboardType("public.jpeg"),
+        NSPasteboard.PasteboardType("com.compuserve.gif"),
+    ]
+
+    /// The clip's image bytes from a pasteboard, or nil when there is no
+    /// usable image. Prefers the encoded representations the source app
+    /// already wrote (`preferredImageTypes`); falls back to decoding an
+    /// `NSImage` snapshot only when none are offered. Everything is bound
+    /// by `maxImageBytes`/`maxImagePixels`: oversized content is skipped
+    /// with a notice rather than captured at whatever cost it asks.
+    static func imageData(from pasteboard: NSPasteboard) -> Data? {
+        for type in preferredImageTypes {
+            if let data = pasteboard.data(forType: type), !data.isEmpty {
+                return boundedImageData(data)
+            }
+        }
+        guard let image = NSImage(pasteboard: pasteboard),
+              let data = imageData(for: image)
+        else { return nil }
+        return boundedImageData(data)
+    }
+
+    /// `data` if it fits the capture budget, nil (with a log line) when it
+    /// does not. The pixel read is header-only — ImageIO answers without
+    /// decoding the bitmap.
+    private static func boundedImageData(_ data: Data) -> Data? {
+        guard data.count <= maxImageBytes else {
+            log.notice("Image clip skipped: payload over the \(maxImageBytes, privacy: .public)-byte cap")
+            return nil
+        }
+        if let size = pixelSize(of: data), size.pixels > maxImagePixels {
+            log.notice("Image clip skipped: \(size.pixels, privacy: .public) pixels over the cap")
+            return nil
+        }
+        return data
+    }
+
+    /// Pixel dimensions from an encoded image's header, or nil when the
+    /// data does not declare them — which is tolerated rather than fatal:
+    /// a format ImageIO cannot size is still captured, bounded by bytes.
+    static func pixelSize(of data: Data) -> (pixels: Int, width: Int, height: Int)? {
+        let options: [CFString: Any] = [kCGImageSourceShouldCache: false]
+        guard let source = CGImageSourceCreateWithData(data as CFData, options as CFDictionary),
+              CGImageSourceGetCount(source) > 0,
+              let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
+              let width = properties[kCGImagePropertyPixelWidth] as? Int,
+              let height = properties[kCGImagePropertyPixelHeight] as? Int
+        else { return nil }
+        return (width * height, width, height)
     }
 
     /// Encode an NSImage as portable image data (PNG preferred).

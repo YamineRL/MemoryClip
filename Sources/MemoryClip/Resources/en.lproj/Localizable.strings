@@ -429,6 +429,10 @@
 "There is no calendar to add the event to. Open Calendar and choose a default calendar for new events." = "There is no calendar to add the event to. Open Calendar and choose a default calendar for new events.";
 "The event could not be saved: %@" = "The event could not be saved: %@";
 "The event could not be removed: %@" = "The event could not be removed: %@";
+"This clip already has an event in your calendar." = "This clip already has an event in your calendar.";
+"This clip is already being added to your calendar." = "This clip is already being added to your calendar.";
+"That event can no longer be undone — it was created before MemoryClip last started, or was already undone." = "That event can no longer be undone — it was created before MemoryClip last started, or was already undone.";
+"The clip changed while its event was being created, so the event was removed again." = "The clip changed while its event was being created, so the event was removed again.";
 "Join: %@" = "Join: %@";
 "Add to Calendar" = "Add to Calendar";
 "Add to Calendar Again" = "Add to Calendar Again";
@@ -440,8 +444,8 @@
 "Add the selected clip to the calendar" = "Add the selected clip to the calendar";
 "Calendar" = "Calendar";
 "Adding events" = "Adding events";
-"Add events automatically" = "Add events automatically";
-"An event is created on its own only when the clip names a time of day and either a meeting link or an address. A bare date — a deadline in a paragraph, an expiry notice, a headline — is left alone. Anything MemoryClip passes over you can still add yourself: select the clip in the panel and choose Add to Calendar." = "An event is created on its own only when the clip names a time of day and either a meeting link or an address. A bare date — a deadline in a paragraph, an expiry notice, a headline — is left alone. Anything MemoryClip passes over you can still add yourself: select the clip in the panel and choose Add to Calendar.";
+"Suggest calendar events" = "Suggest calendar events";
+"MemoryClip asks before adding: a clip that names a time of day and either a meeting link or an address is offered as an event — you choose Add, Edit… or Not Now. A bare date — a deadline in a paragraph, an expiry notice, a headline — is left alone. Anything it passes over you can still add yourself: select the clip in the panel and choose Add to Calendar." = "MemoryClip asks before adding: a clip that names a time of day and either a meeting link or an address is offered as an event — you choose Add, Edit… or Not Now. A bare date — a deadline in a paragraph, an expiry notice, a headline — is left alone. Anything it passes over you can still add yourself: select the clip in the panel and choose Add to Calendar.";
 "Tell me when an event is added" = "Tell me when an event is added";
 "The notification names the event and when it starts, and carries an Undo button that takes it straight back out of your calendar. Undo works while MemoryClip is running; after a quit, remove the event in Calendar like any other." = "The notification names the event and when it starts, and carries an Undo button that takes it straight back out of your calendar. Undo works while MemoryClip is running; after a quit, remove the event in Calendar like any other.";
 "Events" = "Events";
@@ -449,11 +453,13 @@
 "Used only when the clip names a start and no end. Text that gives both — \"3:00 PM – 4:00 PM\" — books exactly what it says." = "Used only when the clip names a start and no end. Text that gives both — \"3:00 PM – 4:00 PM\" — books exactly what it says.";
 "macOS asks once, the first time an event is added. MemoryClip asks only for permission to add events: it cannot read your calendar, and so cannot offer you a list to pick from. Events go to whichever calendar you have set as the default for new events in Calendar." = "macOS asks once, the first time an event is added. MemoryClip asks only for permission to add events: it cannot read your calendar, and so cannot offer you a list to pick from. Events go to whichever calendar you have set as the default for new events in Calendar.";
 "Added to your %@ calendar" = "Added to your %@ calendar";
+"Add this event to your calendar?" = "Add this event to your calendar?";
+"Not Now" = "Not Now";
 "%@ — %@" = "%@ — %@";
 "Open in Calendar" = "Open in Calendar";
-"Automatic events are on, but permission to add them was refused. Allow MemoryClip in System Settings → Privacy & Security → Calendars; macOS will not ask a second time on its own." = "Automatic events are on, but permission to add them was refused. Allow MemoryClip in System Settings → Privacy & Security → Calendars; macOS will not ask a second time on its own.";
+"Event suggestions are on, but permission to add them was refused. Allow MemoryClip in System Settings → Privacy & Security → Calendars; macOS will not ask a second time on its own." = "Event suggestions are on, but permission to add them was refused. Allow MemoryClip in System Settings → Privacy & Security → Calendars; macOS will not ask a second time on its own.";
+"Event suggestions are on, but MemoryClip has not been given calendar access yet. The first time you choose Add on a suggestion, macOS will ask." = "Event suggestions are on, but MemoryClip has not been given calendar access yet. The first time you choose Add on a suggestion, macOS will ask.";
 "Calendar access is turned off on this Mac by a profile or by Screen Time, so no event can be added." = "Calendar access is turned off on this Mac by a profile or by Screen Time, so no event can be added.";
-"Automatic events are on, but MemoryClip has not been given calendar access yet, so nothing will be added. Switch this off and on again to be asked." = "Automatic events are on, but MemoryClip has not been given calendar access yet, so nothing will be added. Switch this off and on again to be asked.";
 "A few more things" = "A few more things";
 "A time, a meeting link, an address — read straight out of the text." = "A time, a meeting link, an address — read straight out of the text.";
 "All on-device, all waiting in Settings when you want them." = "All on-device, all waiting in Settings when you want them.";

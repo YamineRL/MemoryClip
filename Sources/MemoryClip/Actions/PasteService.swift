@@ -311,6 +311,14 @@ final class PasteService {
         UserDefaults.standard.bool(forKey: SettingsKeys.autoPaste)
     }
 
+    /// Whether a paste can actually be delivered: the setting is on AND
+    /// there is an app to aim the keystroke at. `QueueService` asks before
+    /// starting a multi-clip run — without both halves a run is only
+    /// clipboard churn, each write overwriting the last.
+    static func canAutoPaste(into target: NSRunningApplication?) -> Bool {
+        isAutoPasteEnabled && target != nil
+    }
+
     /// What the paste is actually written as, once the user's per-app rules
     /// have had their say about where it is going.
     ///

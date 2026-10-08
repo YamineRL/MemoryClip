@@ -35,14 +35,14 @@ struct DetectedEvent: Sendable, Equatable {
     /// in whatever zone the Mac is in, which is the common case.
     var timeZone: TimeZone?
 
-    /// Whether this is corroborated enough to create without being asked.
+    /// Whether this is corroborated enough to be worth offering.
     ///
     /// True only when the text gave a *clock time* and at least one of a
-    /// meeting link or an address. The automatic setting keys off this and
+    /// meeting link or an address. The suggestion setting keys off this and
     /// nothing else: a bare date in a paragraph — "Q3 ends September 30", a
     /// news article, an expiry notice — is a date, not an appointment, and
-    /// silently turning every one of them into a calendar entry would make the
-    /// feature something you switch off rather than something you rely on.
+    /// even asking about every one of them would make the feature something
+    /// you switch off rather than something you rely on.
     /// The manual button has no such requirement; a human pressing it has
     /// already made the judgement this flag is standing in for.
     var isStrongSignal: Bool

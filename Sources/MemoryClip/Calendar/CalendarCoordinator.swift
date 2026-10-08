@@ -13,14 +13,20 @@ import Foundation
 /// `ClipItem` is not Sendable.
 @MainActor
 final class CalendarCoordinator {
-    /// Whether an appointment-shaped clip creates its event without being
-    /// asked. Read here rather than cached, so a change in Settings takes
-    /// effect on the next clip and not on the next launch.
-    nonisolated static var isAutoCreateEnabled: Bool {
+    /// Whether an appointment-shaped clip offers its event to the user.
+    /// Read here rather than cached, so a change in Settings takes effect
+    /// on the next clip and not on the next launch.
+    ///
+    /// "Offer", not "create": the setting used to let an event be written
+    /// unprompted, and that turned out to mean junk detections landing in a
+    /// calendar the user never saw a proposal for. Nothing is created on
+    /// this path any more — the banner's Add button is the only yes.
+    nonisolated static var isOfferEnabled: Bool {
         UserDefaults.standard.bool(forKey: CalendarSettingsKeys.autoCreate)
     }
 
-    /// Whether an automatically created event announces itself.
+    /// Whether an event created through the offer's Add announces itself —
+    /// the second banner, the one Undo lives on.
     nonisolated static var notifiesOnAutoCreate: Bool {
         UserDefaults.standard.bool(forKey: CalendarSettingsKeys.notifyOnAutoCreate)
     }
@@ -39,11 +45,27 @@ final class CalendarCoordinator {
     private let store: ClipStore
     private let sink: any EventSink
 
-    /// The clip the last successful `addEvent` was for, so undo knows whose
-    /// identifier to clear. Held rather than looked up because the sink's own
-    /// undo is "the last one I made" — see `EventSink.removeLastSaved` — and
-    /// these two have to mean the same event.
-    private var lastEventClipUUID: UUID?
+    /// One successful creation, bound to the operation that made it. An
+    /// operation identifier is minted per `addEvent`, carried into the sink
+    /// and onto the notification, and is the ONLY handle undo has: write-only
+    /// calendar access means the event can never be looked up again, so undo
+    /// must say which creation it is retracting rather than "the last one".
+    private struct EventOperation {
+        let operationID: UUID
+        let clipUUID: UUID
+    }
+
+    /// The operations this run completed, in creation order — "undo the
+    /// last" pops the tail. Entries live for the process only, like the
+    /// events they name.
+    private var operations: [EventOperation] = []
+
+    /// Clip uuids with an `addEvent` currently in flight. Actor isolation
+    /// does NOT serialise this: `sink.save` awaits, and anything calling in
+    /// during that suspension would pass the `calendarEventID == nil` check
+    /// on the same clip — a manual click racing the automatic path is how a
+    /// duplicate event lands. The set closes that window.
+    private var inFlight: Set<UUID> = []
 
     /// The last calendar failure, for the UI to surface. Cleared by a success.
     ///
@@ -70,12 +92,19 @@ final class CalendarCoordinator {
     /// what gets scanned. The clip's model-written title is handed to the
     /// detector as the fallback, since a screenshot of an invitation is often
     /// titled better by the model than by its own first surviving line.
-    func event(for item: ClipItem) -> DetectedEvent? {
+    ///
+    /// `automatic` reverses that preference: an event written WITHOUT the
+    /// user looking must stand on evidence the clip actually carries — its
+    /// own text or the raw OCR — never on the model's rewrite of it. Refined
+    /// text is a convenience layer for presentation; a hallucinated or
+    /// "helpfully" reordered date must not reach the calendar on its own.
+    func event(for item: ClipItem, automatic: Bool = false) -> DetectedEvent? {
         let refined = item.refinedText?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         let ocr = item.ocrText?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         let own = item.text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
 
-        let text = [refined, ocr, own].first { !$0.isEmpty } ?? ""
+        let candidates = automatic ? [own, ocr, refined] : [refined, ocr, own]
+        let text = candidates.first { !$0.isEmpty } ?? ""
         guard !text.isEmpty else { return nil }
 
         let title = item.refinedTitle?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
@@ -90,20 +119,58 @@ final class CalendarCoordinator {
 
     /// Create the calendar event for one clip.
     ///
-    /// The entry point for the panel's "Add to Calendar" action. Failure is
-    /// always a `CalendarError`, so the caller has one sentence to show and
-    /// nothing to interpret.
+    /// The entry point for the panel's "Add to Calendar" action AND the
+    /// automatic path — the deduplication and revision guards below are what
+    /// make a shared entry point safe. Failure is always a `CalendarError`,
+    /// so the caller has one sentence to show and nothing to interpret.
+    ///
+    /// - Parameters:
+    ///   - automatic: detect from the clip's own evidence rather than the
+    ///     model's rewrite — see `event(for:automatic:)`.
+    ///   - allowRepeat: create even though `calendarEventID` is already set.
+    ///     Off by default: a second event for one appointment is a duplicate
+    ///     in the user's calendar, and the only way to want it is to mean it.
     @discardableResult
-    func addEvent(for item: ClipItem) async -> Result<EventReceipt, CalendarError> {
+    func addEvent(
+        for item: ClipItem,
+        automatic: Bool = false,
+        allowRepeat: Bool = false
+    ) async -> Result<EventReceipt, CalendarError> {
         let uuid = item.uuid
-        guard let detected = event(for: item) else {
+
+        guard allowRepeat || item.calendarEventID == nil else {
+            return finish(.failure(.alreadyScheduled))
+        }
+        // Two creations for one clip cannot overlap: the check-then-await in
+        // `sink.save` is exactly where a second caller slips in. A concurrent
+        // request is declined, not queued — the first one's event covers it.
+        guard inFlight.insert(uuid).inserted else {
+            return finish(.failure(.alreadyInFlight))
+        }
+        defer { inFlight.remove(uuid) }
+
+        let revision = item.contentRevision
+        guard let detected = event(for: item, automatic: automatic) else {
             return finish(.failure(.nothingToSchedule))
         }
+        let operation = UUID()
 
         do {
-            let receipt = try await sink.save(detected)
-            store.applyCalendarEvent(receipt.eventIdentifier, toClipWith: uuid)
-            lastEventClipUUID = uuid
+            let receipt = try await sink.save(detected, operation: operation)
+            // The event exists. Recording it is the step that can still
+            // fail: the clip may have been edited, sealed or deleted while
+            // the save awaited — in which case the event describes content
+            // that is gone, and the honest move is to un-create it rather
+            // than leave an orphaned appointment.
+            guard store.applyCalendarEvent(
+                receipt.eventIdentifier,
+                toClipWith: uuid,
+                revision: revision
+            ) else {
+                _ = try? await sink.removeSaved(operation)
+                return finish(.failure(.clipChangedDuringSave))
+            }
+            operations.append(EventOperation(operationID: operation, clipUUID: uuid))
             log.notice("Added a clip to the calendar (\(receipt.calendarTitle, privacy: .private))")
             return finish(.success(receipt))
         } catch let error as CalendarError {
@@ -113,20 +180,22 @@ final class CalendarCoordinator {
         }
     }
 
-    // MARK: - Creating without being asked
+    // MARK: - Offering an event instead of writing one
 
-    /// Create this clip's event unprompted, when the user asked for that to
-    /// happen and the clip is corroborated enough to deserve it.
+    /// Offer this clip's appointment to the user, when the feature is on and
+    /// the clip is corroborated enough to be worth asking about.
     ///
-    /// Returns nil for every clip it declines, which is nearly all of them.
-    /// Nothing is reported to the user on a decline: this runs while a clip is
-    /// being captured, with no window open and nobody waiting on an answer.
+    /// Returns the detected event when an offer was posted, nil for every
+    /// clip it declines — nearly all of them. Nothing is created here:
+    /// detection is cheap and innocent, writing is what needed consent.
+    /// The banner carries Add / Edit / Not Now, and only those buttons can
+    /// turn the offer into an event.
     @discardableResult
-    func autoCreateIfWanted(for item: ClipItem) async -> EventReceipt? {
+    func offerIfWanted(for item: ClipItem) async -> DetectedEvent? {
         // Off unless asked for. Read first because it is the cheapest guard
         // here, and because it being off is the common case — it makes the
         // whole feature cost one `UserDefaults` read per captured clip.
-        guard Self.isAutoCreateEnabled else { return nil }
+        guard Self.isOfferEnabled else { return nil }
 
         // A clip that already has an event is a clip this has already seen,
         // or one the user added by hand. Either way a second event for the
@@ -135,76 +204,147 @@ final class CalendarCoordinator {
         guard item.calendarEventID == nil else { return nil }
 
         // Nothing that reads as an appointment: no date at all, or no text.
-        guard let detected = event(for: item) else { return nil }
+        // The offer scans the clip's own evidence — its text, or the raw
+        // recognition — never the model's rewrite, which is a convenience
+        // layer over the record, not the record.
+        guard let detected = event(for: item, automatic: true) else { return nil }
 
         // The line between "there is a date in here" and "this is an
         // appointment". `isStrongSignal` wants a clock time and either a
-        // meeting link or an address; see `DetectedEvent.isStrongSignal` for
-        // why a bare date must never become an event on its own. The manual
-        // button has no such requirement, and should not.
+        // meeting link or an address *near the date*; see
+        // `DetectedEvent.isStrongSignal` for why a bare date must never
+        // become an event on its own, and `EventDetector` for why the
+        // corroboration must live next to it. The manual button has no such
+        // requirement, and should not.
         guard detected.isStrongSignal else { return nil }
 
-        // The first permission prompt must not come from here. A TCC dialog
-        // raised by a background capture arrives with nothing on screen that
-        // asked for it — `NotesAppSink`'s header records what that costs for
-        // the Automation grant — so an app that has never been asked declines
-        // and leaves the prompt to the panel's button, which a human pressed.
-        // Once answered, every later capture takes this path normally.
-        guard !sink.wouldPromptForAccess else {
-            log.notice("Automatic calendar event skipped: calendar access has not been asked for yet")
-            return nil
-        }
+        // An offer whose only save-answer leads to a certain failure is a
+        // dead button: a refused grant means nothing can be added, so there
+        // is nothing worth asking. A never-asked state still gets the offer —
+        // the Add button is a user press, and the first TCC prompt is
+        // allowed to belong to it.
+        guard sink.canReachCalendar else { return nil }
 
-        guard case .success(let receipt) = await addEvent(for: item) else { return nil }
-
-        // Something that writes to a calendar behind the user's back is only
-        // acceptable while it keeps saying that it did — and the banner is
-        // where undo lives, which is the other half of the same bargain.
-        if Self.notifiesOnAutoCreate {
-            await EventNotifier.post(
-                eventTitle: detected.title,
-                start: receipt.start,
-                isAllDay: detected.isAllDay,
-                calendarTitle: receipt.calendarTitle
-            )
-        }
-        return receipt
+        await EventNotifier.postOffer(
+            eventTitle: detected.title,
+            start: detected.start,
+            isAllDay: detected.isAllDay,
+            clipUUID: item.uuid
+        )
+        return detected
     }
 
-    /// Offer a batch of clips to the automatic path.
+    /// Offer a batch of clips. Returns the uuids an offer was posted for —
+    /// the observable half of a method whose output is a notification.
     ///
     /// The screenshot half of the wiring: a screenshot has no text when it is
     /// captured, so its appointment only exists once recognition has run, and
     /// `OCRCoordinator` reports the clips a batch produced text for. Bounded
     /// by that batch — this never queries history and never revisits a clip it
     /// has already answered for.
-    func autoCreateIfWanted(forClipsWith uuids: [UUID]) async {
-        guard Self.isAutoCreateEnabled, !uuids.isEmpty else { return }
+    @discardableResult
+    func offerIfWanted(forClipsWith uuids: [UUID]) async -> [UUID] {
+        guard Self.isOfferEnabled, !uuids.isEmpty else { return [] }
+        var offered: [UUID] = []
         for item in store.items(withUUIDs: uuids) {
-            await autoCreateIfWanted(for: item)
+            if await offerIfWanted(for: item) != nil {
+                offered.append(item.uuid)
+            }
         }
+        return offered
     }
 
-    /// Remove the event created last and forget it on the clip.
+    // MARK: - Answering an offer
+
+    /// The appointment detection would find for `uuid`'s clip, or nil when
+    /// the clip is gone or holds none.
     ///
-    /// Succeeds with nothing done when no event has been created in this run:
-    /// the sink can only reach an event it still holds, so past that point
-    /// there is nothing to undo rather than something that went wrong.
+    /// Used by the offer's Edit button, which needs the `DetectedEvent` —
+    /// to hand to a calendar app as an .ics — rather than a save.
+    func detectedEvent(forClipWith uuid: UUID) -> DetectedEvent? {
+        guard let item = store.item(withUUID: uuid) else { return nil }
+        return event(for: item, automatic: true)
+    }
+
+    /// Create the event an offer's Add button was pressed for.
+    ///
+    /// The clip is re-fetched by uuid — the banner may outlive the clip, and
+    /// this is a save, so it goes through `addEvent`'s dedupe, in-flight and
+    /// revision machinery like every other creation. A clip that vanished
+    /// behind its banner answers `.nothingToSchedule`.
+    ///
+    /// A success announces itself through the created-event banner when the
+    /// setting wants it: that banner is where Undo lives.
     @discardableResult
-    func undoLastEvent() async -> Result<Void, CalendarError> {
+    func acceptOfferedEvent(forClipWith uuid: UUID) async -> Result<EventReceipt, CalendarError> {
+        log.notice("Offer accepted for clip \(uuid.uuidString, privacy: .private)")
+        guard let item = store.item(withUUID: uuid) else {
+            return finish(.failure(.nothingToSchedule))
+        }
+        let detected = event(for: item, automatic: true)
+        // `addEvent` already records a failure through `finish` — its result
+        // is passed through untouched rather than double-logged.
+        let result = await addEvent(for: item, automatic: true)
+        guard case .success(let receipt) = result else { return result }
+        EventNotifier.dismissOffer(forClipWith: uuid)
+        if Self.notifiesOnAutoCreate, let operation = operationID(forClipWith: uuid) {
+            await EventNotifier.post(
+                eventTitle: detected?.title ?? loc("Event"),
+                start: receipt.start,
+                isAllDay: detected?.isAllDay ?? false,
+                calendarTitle: receipt.calendarTitle,
+                operation: operation
+            )
+        }
+        return finish(.success(receipt))
+    }
+
+    /// The operation a successful `addEvent` recorded for `uuid` — the
+    /// identifier a notification's `userInfo` carries back to `undoEvent`.
+    /// The notification delegate and tests are its readers.
+    func operationID(forClipWith uuid: UUID) -> UUID? {
+        operations.last(where: { $0.clipUUID == uuid })?.operationID
+    }
+
+    /// Remove the event a specific creation made and forget it on the clip.
+    ///
+    /// The honest failure modes are reported, not smoothed over: an
+    /// operation this run does not know — the notification outlived the app,
+    /// or the event was already undone — is `.undoUnavailable`, never a
+    /// claimed success.
+    @discardableResult
+    func undoEvent(_ operationID: UUID) async -> Result<Void, CalendarError> {
+        guard let index = operations.firstIndex(where: { $0.operationID == operationID }) else {
+            return finish(.failure(.undoUnavailable))
+        }
+        let operation = operations[index]
+
         do {
-            try await sink.removeLastSaved()
+            guard try await sink.removeSaved(operationID) else {
+                return finish(.failure(.undoUnavailable))
+            }
         } catch let error as CalendarError {
             return finish(.failure(error))
         } catch {
             return finish(.failure(.removeFailed(error.localizedDescription)))
         }
 
-        if let uuid = lastEventClipUUID {
-            store.applyCalendarEvent(nil, toClipWith: uuid)
-            lastEventClipUUID = nil
-        }
+        operations.remove(at: index)
+        store.applyCalendarEvent(nil, toClipWith: operation.clipUUID)
         return finish(.success(()))
+    }
+
+    /// Remove the event created last and forget it on the clip.
+    ///
+    /// Fails `.undoUnavailable` when this run created nothing that is still
+    /// standing — the sink can only reach events it still holds, so past
+    /// that point there is nothing to undo, and saying so beats silence.
+    @discardableResult
+    func undoLastEvent() async -> Result<Void, CalendarError> {
+        guard let last = operations.last else {
+            return finish(.failure(.undoUnavailable))
+        }
+        return await undoEvent(last.operationID)
     }
 
     /// Record the outcome: a success clears the held failure, a failure keeps

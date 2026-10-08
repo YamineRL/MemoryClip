@@ -935,7 +935,7 @@ final class TranslationPipelineTests: XCTestCase {
         addTeardownBlock { try? FileManager.default.removeItem(at: url) }
 
         let item = try XCTUnwrap(store.insertScreenshot(at: url))
-        store.applyOCR(text, toClipWith: item.uuid)
+        store.applyOCR(text, toClipWith: item.uuid, revision: 0)
         return try XCTUnwrap(store.item(withUUID: item.uuid))
     }
 
@@ -1196,7 +1196,8 @@ final class TranslationPipelineTests: XCTestCase {
             text: nil,
             tags: ["card"],
             translation: TranslatedText(text: "Card number 4111 1111 1111 1111", sourceLanguage: "fr"),
-            toClipWith: item.uuid
+            toClipWith: item.uuid,
+            revision: 0
         )
 
         let refreshed = try XCTUnwrap(store.item(withUUID: item.uuid))
@@ -1220,7 +1221,8 @@ final class TranslationPipelineTests: XCTestCase {
             text: nil,
             tags: ["meeting"],
             translation: TranslatedText(text: "The meeting is on Tuesday", sourceLanguage: "ar"),
-            toClipWith: item.uuid
+            toClipWith: item.uuid,
+            revision: 0
         )
 
         let refreshed = try XCTUnwrap(store.item(withUUID: item.uuid))

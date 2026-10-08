@@ -103,8 +103,13 @@ enum CalcEvaluator {
         var text: String
         if places >= 0 {
             text = String(format: "%.\(places)f", rounded)
-            while text.hasSuffix("0") { text.removeLast() }
-            if text.hasSuffix(".") { text.removeLast() }
+            // Trailing zeros are trimmed only when there IS a fractional
+            // part: `places == 0` emits a bare integer, and stripping its
+            // zeros would corrupt it — 1,000,000,000 used to come out "1".
+            if text.contains(".") {
+                while text.hasSuffix("0") { text.removeLast() }
+                if text.hasSuffix(".") { text.removeLast() }
+            }
         } else {
             text = String(format: "%.0f", rounded)
         }

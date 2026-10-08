@@ -7,6 +7,11 @@ import Foundation
 /// Base64 strings; `richTextBase64` and `imageBase64` are JSON-only — the CSV
 /// format intentionally excludes them (see `ExportService.csv(from:)`).
 struct ClipExport: Codable, Sendable {
+    /// The export format this record's shape belongs to. Version 2 added
+    /// `isScreenshot`, `originalText` and `screenshotSignature`; documents
+    /// missing them decode as version 1 with the defaults below.
+    static let formatVersion = 2
+
     var kind: String            // ClipKind.rawValue
     var text: String?
     var colorHex: String?
@@ -27,10 +32,83 @@ struct ClipExport: Codable, Sendable {
     /// back verbatim: merging into a board that already has members may tie,
     /// and the order comparator's createdAt tiebreak absorbs that.
     var pinboardOrder: Double? = nil
+    /// Whether this clip is a screenshot reference (kind `.file`, pixels on
+    /// disk). Without it an exported screenshot comes back as an ordinary
+    /// file — permanently invisible to the OCR and thumbnail pipelines
+    /// that `isScreenshot` is the membership card for.
+    var isScreenshot: Bool = false
+    /// The URL as copied, when `text` holds the cleaned version. Carried so
+    /// an imported link restores the badge and the restore row, not just
+    /// the cleaned text.
+    var originalText: String? = nil
+    /// The file signature the screenshot watcher tracks, so an imported
+    /// screenshot's staleness bookkeeping survives the trip.
+    var screenshotSignature: String? = nil
     // NOTE: richTextData/imageData are intentionally omitted from CSV;
     // they travel as Base64 in JSON ONLY (kept out of the CSV columns below).
     var richTextBase64: String? // JSON-only field; excluded from CSV columns
     var imageBase64: String?    // JSON-only field; excluded from CSV columns
+
+    /// Decode a record from any format version: fields added in version 2
+    /// are read when present and defaulted when a version-1 file lacks them.
+    init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        kind = try container.decode(String.self, forKey: .kind)
+        text = try container.decodeIfPresent(String.self, forKey: .text)
+        colorHex = try container.decodeIfPresent(String.self, forKey: .colorHex)
+        fileURLs = try container.decode([String].self, forKey: .fileURLs)
+        sourceAppBundleID = try container.decodeIfPresent(String.self, forKey: .sourceAppBundleID)
+        sourceAppName = try container.decodeIfPresent(String.self, forKey: .sourceAppName)
+        createdAt = try container.decode(Date.self, forKey: .createdAt)
+        lastUsedAt = try container.decodeIfPresent(Date.self, forKey: .lastUsedAt)
+        isPinned = try container.decode(Bool.self, forKey: .isPinned)
+        pinboard = try container.decodeIfPresent(String.self, forKey: .pinboard)
+        pinboardColor = try container.decodeIfPresent(String.self, forKey: .pinboardColor)
+        pinboardOrder = try container.decodeIfPresent(Double.self, forKey: .pinboardOrder)
+        isScreenshot = try container.decodeIfPresent(Bool.self, forKey: .isScreenshot) ?? false
+        originalText = try container.decodeIfPresent(String.self, forKey: .originalText)
+        screenshotSignature = try container.decodeIfPresent(String.self, forKey: .screenshotSignature)
+        richTextBase64 = try container.decodeIfPresent(String.self, forKey: .richTextBase64)
+        imageBase64 = try container.decodeIfPresent(String.self, forKey: .imageBase64)
+    }
+
+    init(
+        kind: String,
+        text: String?,
+        colorHex: String?,
+        fileURLs: [String],
+        sourceAppBundleID: String?,
+        sourceAppName: String?,
+        createdAt: Date,
+        lastUsedAt: Date?,
+        isPinned: Bool,
+        pinboard: String? = nil,
+        pinboardColor: String? = nil,
+        pinboardOrder: Double? = nil,
+        isScreenshot: Bool = false,
+        originalText: String? = nil,
+        screenshotSignature: String? = nil,
+        richTextBase64: String? = nil,
+        imageBase64: String? = nil
+    ) {
+        self.kind = kind
+        self.text = text
+        self.colorHex = colorHex
+        self.fileURLs = fileURLs
+        self.sourceAppBundleID = sourceAppBundleID
+        self.sourceAppName = sourceAppName
+        self.createdAt = createdAt
+        self.lastUsedAt = lastUsedAt
+        self.isPinned = isPinned
+        self.pinboard = pinboard
+        self.pinboardColor = pinboardColor
+        self.pinboardOrder = pinboardOrder
+        self.isScreenshot = isScreenshot
+        self.originalText = originalText
+        self.screenshotSignature = screenshotSignature
+        self.richTextBase64 = richTextBase64
+        self.imageBase64 = imageBase64
+    }
 }
 
 /// One pinboard as the export lists it: a name, a colour and a place in the
@@ -109,6 +187,9 @@ enum ExportService {
             pinboard: item.pinboard?.name,
             pinboardColor: item.pinboard?.colorName,
             pinboardOrder: item.pinboardOrder,
+            isScreenshot: item.isScreenshot,
+            originalText: item.originalText,
+            screenshotSignature: item.screenshotSignature,
             richTextBase64: Self.base64(item.richTextData),
             imageBase64: Self.base64(item.imageData)
         )
@@ -148,6 +229,7 @@ enum ExportService {
         "lastUsedAt",
         "isPinned",
         "pinboard",
+        "isScreenshot",
     ].joined(separator: ",")
 
     // MARK: Streaming
@@ -187,7 +269,7 @@ enum ExportService {
                     .enumerated()
                     .map { index, line in index == 0 ? line : "  " + line }
                     .joined(separator: "\n")
-                pinboardsPrefix = "{\n  \"pinboards\": " + indented + ",\n  \"clips\": "
+                pinboardsPrefix = "{\n  \"formatVersion\": \(ClipExport.formatVersion),\n  \"pinboards\": " + indented + ",\n  \"clips\": "
             } else {
                 pinboardsPrefix = nil
             }
@@ -231,6 +313,7 @@ enum ExportService {
                     clip.lastUsedAt.map(dateFormatter.string(from:)) ?? "",
                     clip.isPinned ? "true" : "false",
                     clip.pinboard ?? "",
+                    clip.isScreenshot ? "true" : "false",
                 ]
                 return "\n" + fields.map { csvEscaped(csvDefused($0)) }.joined(separator: ",")
             }
@@ -302,6 +385,10 @@ enum ExportService {
             return ImportDocument(pinboards: [], clips: clips)
         }
         struct Document: Codable {
+            /// Present from format version 2 onward; absent means a
+            /// version-1 document. Parsed so a future version bump has
+            /// somewhere to be checked — today every version reads the same.
+            var formatVersion: Int?
             var pinboards: [PinboardExport]?
             var clips: [ClipExport]
         }
@@ -339,7 +426,10 @@ enum ExportService {
             sourceAppName: clip.sourceAppName,
             createdAt: clip.createdAt,
             lastUsedAt: clip.lastUsedAt,
-            isPinned: clip.isPinned
+            isPinned: clip.isPinned,
+            isScreenshot: clip.isScreenshot,
+            originalText: clip.originalText,
+            screenshotSignature: clip.screenshotSignature
         )
     }
 
