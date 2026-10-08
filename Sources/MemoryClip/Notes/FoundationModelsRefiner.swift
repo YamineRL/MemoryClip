@@ -475,7 +475,13 @@ extension FoundationModelsRefiner {
     /// hard failure on exactly the longest notes. The input bound is where
     /// length is controlled.
     static var generationOptions: GenerationOptions {
-        GenerationOptions(samplingMode: .greedy)
+        // The init label was renamed in the SDK that ships with Swift 6.4;
+        // older SDKs only have `sampling:` and newer ones deprecate it.
+        #if compiler(>=6.4)
+            GenerationOptions(samplingMode: .greedy)
+        #else
+            GenerationOptions(sampling: .greedy)
+        #endif
     }
 
     // MARK: - Mapping
