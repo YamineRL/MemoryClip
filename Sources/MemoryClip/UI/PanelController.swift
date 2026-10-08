@@ -595,6 +595,7 @@ final class PanelController: NSObject, NSWindowDelegate {
     /// panel stays live while it happens. Only failure interrupts: a clip that
     /// got its event says so itself, in the card's stat line.
     private func addToCalendar(for item: ClipItem) {
+        log.notice("Add to calendar invoked from the panel for clip \(item.uuid.uuidString, privacy: .private)")
         Task { @MainActor [weak self] in
             guard let self else { return }
             let result = await self.calendarCoordinator.addEvent(for: item)
@@ -717,7 +718,7 @@ final class PanelController: NSObject, NSWindowDelegate {
     /// window serves it to the search.
     private lazy var searchFieldEditor = SearchOperatorFieldEditor()
 
-    func windowWillReturnFieldEditor(_ sender: NSWindow, to client: Any?) -> NSText? {
+    func windowWillReturnFieldEditor(_ sender: NSWindow, to client: Any?) -> Any? {
         searchFieldEditor
     }
 }
