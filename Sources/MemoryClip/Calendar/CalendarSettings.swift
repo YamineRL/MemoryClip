@@ -7,14 +7,15 @@ import Foundation
 /// Settings pane, and a key defined next to one of those is a key the other
 /// two have to guess at.
 enum CalendarSettingsKeys {
-    /// Whether a clip that reads as an appointment creates its event without
-    /// being asked. Only a `DetectedEvent.isStrongSignal` clip ever qualifies.
+    /// Whether a clip that reads as an appointment is offered as an event.
+    /// Only a `DetectedEvent.isStrongSignal` clip ever qualifies. Named
+    /// "autoCreate" from before the flow asked first — the key is kept so the
+    /// setting survives, but nothing is created on this path any more.
     static let autoCreate = "calendarAutoCreate"
     /// How long an event runs when the text named a start but no end.
     static let eventDurationMinutes = "calendarEventDurationMinutes"
-    /// Whether an event created automatically says so. Separate from
-    /// `autoCreate` because something that writes to a calendar behind the
-    /// user's back is only acceptable while it keeps announcing that it did.
+    /// Whether an event added through the offer announces itself — the
+    /// banner Undo lives on.
     static let notifyOnAutoCreate = "calendarNotifyOnAutoCreate"
 
     /// Registered at launch. Automatic creation is OFF: writing to a calendar

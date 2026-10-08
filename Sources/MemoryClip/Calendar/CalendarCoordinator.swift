@@ -13,14 +13,20 @@ import Foundation
 /// `ClipItem` is not Sendable.
 @MainActor
 final class CalendarCoordinator {
-    /// Whether an appointment-shaped clip creates its event without being
-    /// asked. Read here rather than cached, so a change in Settings takes
-    /// effect on the next clip and not on the next launch.
-    nonisolated static var isAutoCreateEnabled: Bool {
+    /// Whether an appointment-shaped clip offers its event to the user.
+    /// Read here rather than cached, so a change in Settings takes effect
+    /// on the next clip and not on the next launch.
+    ///
+    /// "Offer", not "create": the setting used to let an event be written
+    /// unprompted, and that turned out to mean junk detections landing in a
+    /// calendar the user never saw a proposal for. Nothing is created on
+    /// this path any more — the banner's Add button is the only yes.
+    nonisolated static var isOfferEnabled: Bool {
         UserDefaults.standard.bool(forKey: CalendarSettingsKeys.autoCreate)
     }
 
-    /// Whether an automatically created event announces itself.
+    /// Whether an event created through the offer's Add announces itself —
+    /// the second banner, the one Undo lives on.
     nonisolated static var notifiesOnAutoCreate: Bool {
         UserDefaults.standard.bool(forKey: CalendarSettingsKeys.notifyOnAutoCreate)
     }
@@ -174,20 +180,22 @@ final class CalendarCoordinator {
         }
     }
 
-    // MARK: - Creating without being asked
+    // MARK: - Offering an event instead of writing one
 
-    /// Create this clip's event unprompted, when the user asked for that to
-    /// happen and the clip is corroborated enough to deserve it.
+    /// Offer this clip's appointment to the user, when the feature is on and
+    /// the clip is corroborated enough to be worth asking about.
     ///
-    /// Returns nil for every clip it declines, which is nearly all of them.
-    /// Nothing is reported to the user on a decline: this runs while a clip is
-    /// being captured, with no window open and nobody waiting on an answer.
+    /// Returns the detected event when an offer was posted, nil for every
+    /// clip it declines — nearly all of them. Nothing is created here:
+    /// detection is cheap and innocent, writing is what needed consent.
+    /// The banner carries Add / Edit / Not Now, and only those buttons can
+    /// turn the offer into an event.
     @discardableResult
-    func autoCreateIfWanted(for item: ClipItem) async -> EventReceipt? {
+    func offerIfWanted(for item: ClipItem) async -> DetectedEvent? {
         // Off unless asked for. Read first because it is the cheapest guard
         // here, and because it being off is the common case — it makes the
         // whole feature cost one `UserDefaults` read per captured clip.
-        guard Self.isAutoCreateEnabled else { return nil }
+        guard Self.isOfferEnabled else { return nil }
 
         // A clip that already has an event is a clip this has already seen,
         // or one the user added by hand. Either way a second event for the
@@ -196,9 +204,9 @@ final class CalendarCoordinator {
         guard item.calendarEventID == nil else { return nil }
 
         // Nothing that reads as an appointment: no date at all, or no text.
-        // The automatic path scans the clip's own evidence — its text, or
-        // the raw recognition — never the model's rewrite, which is a
-        // convenience layer over the record, not the record.
+        // The offer scans the clip's own evidence — its text, or the raw
+        // recognition — never the model's rewrite, which is a convenience
+        // layer over the record, not the record.
         guard let detected = event(for: item, automatic: true) else { return nil }
 
         // The line between "there is a date in here" and "this is an
@@ -210,50 +218,85 @@ final class CalendarCoordinator {
         // requirement, and should not.
         guard detected.isStrongSignal else { return nil }
 
-        // The first permission prompt must not come from here. A TCC dialog
-        // raised by a background capture arrives with nothing on screen that
-        // asked for it — `NotesAppSink`'s header records what that costs for
-        // the Automation grant — so an app that has never been asked declines
-        // and leaves the prompt to the panel's button, which a human pressed.
-        // Once answered, every later capture takes this path normally.
-        guard !sink.wouldPromptForAccess else {
-            log.notice("Automatic calendar event skipped: calendar access has not been asked for yet")
-            return nil
-        }
+        // An offer whose only save-answer leads to a certain failure is a
+        // dead button: a refused grant means nothing can be added, so there
+        // is nothing worth asking. A never-asked state still gets the offer —
+        // the Add button is a user press, and the first TCC prompt is
+        // allowed to belong to it.
+        guard sink.canReachCalendar else { return nil }
 
-        guard case .success(let receipt) = await addEvent(for: item, automatic: true),
-              let operation = operations.last
-        else { return nil }
-
-        // Something that writes to a calendar behind the user's back is only
-        // acceptable while it keeps saying that it did — and the banner is
-        // where undo lives, which is the other half of the same bargain. The
-        // operation identifier rides along: undo on THIS banner retracts
-        // THIS creation, not whatever happened to be saved last.
-        if Self.notifiesOnAutoCreate {
-            await EventNotifier.post(
-                eventTitle: detected.title,
-                start: receipt.start,
-                isAllDay: detected.isAllDay,
-                calendarTitle: receipt.calendarTitle,
-                operation: operation.operationID
-            )
-        }
-        return receipt
+        await EventNotifier.postOffer(
+            eventTitle: detected.title,
+            start: detected.start,
+            isAllDay: detected.isAllDay,
+            clipUUID: item.uuid
+        )
+        return detected
     }
 
-    /// Offer a batch of clips to the automatic path.
+    /// Offer a batch of clips. Returns the uuids an offer was posted for —
+    /// the observable half of a method whose output is a notification.
     ///
     /// The screenshot half of the wiring: a screenshot has no text when it is
     /// captured, so its appointment only exists once recognition has run, and
     /// `OCRCoordinator` reports the clips a batch produced text for. Bounded
     /// by that batch — this never queries history and never revisits a clip it
     /// has already answered for.
-    func autoCreateIfWanted(forClipsWith uuids: [UUID]) async {
-        guard Self.isAutoCreateEnabled, !uuids.isEmpty else { return }
+    @discardableResult
+    func offerIfWanted(forClipsWith uuids: [UUID]) async -> [UUID] {
+        guard Self.isOfferEnabled, !uuids.isEmpty else { return [] }
+        var offered: [UUID] = []
         for item in store.items(withUUIDs: uuids) {
-            await autoCreateIfWanted(for: item)
+            if await offerIfWanted(for: item) != nil {
+                offered.append(item.uuid)
+            }
         }
+        return offered
+    }
+
+    // MARK: - Answering an offer
+
+    /// The appointment detection would find for `uuid`'s clip, or nil when
+    /// the clip is gone or holds none.
+    ///
+    /// Used by the offer's Edit button, which needs the `DetectedEvent` —
+    /// to hand to a calendar app as an .ics — rather than a save.
+    func detectedEvent(forClipWith uuid: UUID) -> DetectedEvent? {
+        guard let item = store.item(withUUID: uuid) else { return nil }
+        return event(for: item, automatic: true)
+    }
+
+    /// Create the event an offer's Add button was pressed for.
+    ///
+    /// The clip is re-fetched by uuid — the banner may outlive the clip, and
+    /// this is a save, so it goes through `addEvent`'s dedupe, in-flight and
+    /// revision machinery like every other creation. A clip that vanished
+    /// behind its banner answers `.nothingToSchedule`.
+    ///
+    /// A success announces itself through the created-event banner when the
+    /// setting wants it: that banner is where Undo lives.
+    @discardableResult
+    func acceptOfferedEvent(forClipWith uuid: UUID) async -> Result<EventReceipt, CalendarError> {
+        log.notice("Offer accepted for clip \(uuid.uuidString, privacy: .private)")
+        guard let item = store.item(withUUID: uuid) else {
+            return finish(.failure(.nothingToSchedule))
+        }
+        let detected = event(for: item, automatic: true)
+        // `addEvent` already records a failure through `finish` — its result
+        // is passed through untouched rather than double-logged.
+        let result = await addEvent(for: item, automatic: true)
+        guard case .success(let receipt) = result else { return result }
+        EventNotifier.dismissOffer(forClipWith: uuid)
+        if Self.notifiesOnAutoCreate, let operation = operationID(forClipWith: uuid) {
+            await EventNotifier.post(
+                eventTitle: detected?.title ?? loc("Event"),
+                start: receipt.start,
+                isAllDay: detected?.isAllDay ?? false,
+                calendarTitle: receipt.calendarTitle,
+                operation: operation
+            )
+        }
+        return finish(.success(receipt))
     }
 
     /// The operation a successful `addEvent` recorded for `uuid` — the

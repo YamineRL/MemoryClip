@@ -68,6 +68,14 @@ final class EventKitSink: EventSink {
     /// failures while the flag says yes. `.denied`/`.restricted` therefore
     /// outrank it; the flag only ever wins over `.notDetermined`, the one
     /// status that lies.
+    /// Whether a save could succeed at all — refused access means the
+    /// offer's Add button would only ever fail, so the offer is not made.
+    /// `.notAsked` passes on purpose: the button is the user action the
+    /// first prompt is allowed to belong to.
+    nonisolated var canReachCalendar: Bool {
+        Self.access != .denied && Self.access != .restricted
+    }
+
     nonisolated var wouldPromptForAccess: Bool {
         switch EKEventStore.authorizationStatus(for: .event) {
         case .denied, .restricted:

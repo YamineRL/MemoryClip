@@ -42,6 +42,16 @@ protocol EventSink: Sendable {
     /// prompt, which is every sink but the EventKit one.
     var wouldPromptForAccess: Bool { get }
 
+    /// Whether a `save` could ever succeed. Asked by the offer path: an
+    /// offer whose only answer leads to a certain failure is a dead button,
+    /// so access that is refused outright — denied or restricted — means the
+    /// offer is not made. A never-asked state does NOT block: the offer's
+    /// Add button is a user action, and the first prompt is allowed to
+    /// belong to it.
+    ///
+    /// Defaulted to true: only the EventKit sink can be refused at all.
+    var canReachCalendar: Bool { get }
+
     /// Create `event` in the user's default calendar, as the creation
     /// `operation` names it.
     ///
@@ -64,4 +74,5 @@ protocol EventSink: Sendable {
 
 extension EventSink {
     var wouldPromptForAccess: Bool { false }
+    var canReachCalendar: Bool { true }
 }

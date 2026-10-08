@@ -29,13 +29,17 @@ private final class FakeEventSink: EventSink {
 
     var calendarTitle = "Work"
 
-    /// What the automatic path asks before it uses a sink at all. The real one
+    /// What the offer path asks before it offers at all. The real one
     /// answers from TCC; this one is set by the test that cares.
     ///
     /// `nonisolated(unsafe)` because the protocol requirement is not
     /// main-actor bound while this class is. Every test that touches it runs
     /// on the main actor, and nothing else reads it.
     nonisolated(unsafe) var wouldPromptForAccess = false
+
+    /// Whether a save could ever succeed — the gate on the offer. False
+    /// stands in for a denied or restricted grant.
+    nonisolated(unsafe) var canReachCalendar = true
 
     @MainActor
     func save(_ event: DetectedEvent, operation: UUID) async throws -> EventReceipt {
@@ -195,22 +199,18 @@ final class CalendarEventTests: XCTestCase {
     /// `isStrongSignal` is what says it is not an appointment.
     private static let bareDate = "Your subscription renews on August 20, 2026"
 
-    func testAStrongSignalClipSchedulesItself() async throws {
+    func testAStrongSignalClipIsOffered() async throws {
         UserDefaults.standard.set(true, forKey: CalendarSettingsKeys.autoCreate)
-        UserDefaults.standard.set(false, forKey: CalendarSettingsKeys.notifyOnAutoCreate)
         let store = try makeStore()
         let item = try insert(Self.invitation, into: store)
         let sink = FakeEventSink()
         let coordinator = CalendarCoordinator(store: store, sink: sink)
 
-        let receipt = await coordinator.autoCreateIfWanted(for: item)
+        let offered = await coordinator.offerIfWanted(for: item)
 
-        XCTAssertNotNil(receipt, "a timed invitation with a meeting link is what the setting is for")
-        XCTAssertEqual(sink.saved.count, 1)
-        XCTAssertEqual(
-            try XCTUnwrap(store.item(withUUID: item.uuid)).calendarEventID,
-            receipt?.eventIdentifier
-        )
+        XCTAssertNotNil(offered, "a timed invitation with a meeting link is what the setting is for")
+        XCTAssertTrue(sink.saved.isEmpty, "an offer is not a save — the sink is never reached")
+        XCTAssertNil(try XCTUnwrap(store.item(withUUID: item.uuid)).calendarEventID)
     }
 
     func testAWeakSignalClipIsLeftAlone() async throws {
@@ -223,27 +223,27 @@ final class CalendarEventTests: XCTestCase {
         // The date is real — the manual button would have scheduled it.
         XCTAssertNotNil(coordinator.event(for: item))
 
-        let receipt = await coordinator.autoCreateIfWanted(for: item)
+        let offered = await coordinator.offerIfWanted(for: item)
 
-        XCTAssertNil(receipt, "a bare date is a date, not an appointment")
+        XCTAssertNil(offered, "a bare date is a date, not an appointment")
         XCTAssertTrue(sink.saved.isEmpty)
         XCTAssertNil(try XCTUnwrap(store.item(withUUID: item.uuid)).calendarEventID)
     }
 
-    func testNothingIsCreatedWhileTheSettingIsOff() async throws {
+    func testNothingIsOfferedWhileTheSettingIsOff() async throws {
         UserDefaults.standard.set(false, forKey: CalendarSettingsKeys.autoCreate)
         let store = try makeStore()
         let item = try insert(Self.invitation, into: store)
         let sink = FakeEventSink()
         let coordinator = CalendarCoordinator(store: store, sink: sink)
 
-        let receipt = await coordinator.autoCreateIfWanted(for: item)
+        let offered = await coordinator.offerIfWanted(for: item)
 
-        XCTAssertNil(receipt)
+        XCTAssertNil(offered)
         XCTAssertTrue(sink.saved.isEmpty, "the sink must not be reached at all")
     }
 
-    func testAClipThatAlreadyHasAnEventIsNotScheduledTwice() async throws {
+    func testAClipThatAlreadyHasAnEventIsNotOfferedTwice() async throws {
         UserDefaults.standard.set(true, forKey: CalendarSettingsKeys.autoCreate)
         UserDefaults.standard.set(false, forKey: CalendarSettingsKeys.notifyOnAutoCreate)
         let store = try makeStore()
@@ -254,40 +254,38 @@ final class CalendarEventTests: XCTestCase {
         _ = await coordinator.addEvent(for: item)
         let refreshed = try XCTUnwrap(store.item(withUUID: item.uuid))
 
-        let receipt = await coordinator.autoCreateIfWanted(for: refreshed)
+        let offered = await coordinator.offerIfWanted(for: refreshed)
 
-        XCTAssertNil(receipt)
+        XCTAssertNil(offered)
         XCTAssertEqual(sink.saved.count, 1, "the appointment is in the calendar once")
     }
 
-    /// The first permission dialog has to come from something the user
-    /// pressed, so a sink that has never been asked declines the automatic
-    /// path and keeps working for the manual one.
-    func testTheFirstPermissionPromptIsLeftToTheButton() async throws {
+    /// A refused grant means Add could only ever fail, so the offer — a dead
+    /// button — is not made. A never-asked sink still gets the offer: the
+    /// first TCC prompt is allowed to belong to the button the user pressed.
+    func testARefusedSinkSuppressesTheOfferButAnUnaskedOneStillGetsIt() async throws {
         UserDefaults.standard.set(true, forKey: CalendarSettingsKeys.autoCreate)
-        UserDefaults.standard.set(false, forKey: CalendarSettingsKeys.notifyOnAutoCreate)
         let store = try makeStore()
         let item = try insert(Self.invitation, into: store)
         let sink = FakeEventSink()
-        sink.wouldPromptForAccess = true
         let coordinator = CalendarCoordinator(store: store, sink: sink)
 
-        let receipt = await coordinator.autoCreateIfWanted(for: item)
+        sink.canReachCalendar = false
+        let refused = await coordinator.offerIfWanted(for: item)
+        XCTAssertNil(refused, "denied access is a dead Add button — do not ask")
 
-        XCTAssertNil(receipt)
+        sink.canReachCalendar = true
+        sink.wouldPromptForAccess = true
+        let asked = await coordinator.offerIfWanted(for: item)
+        XCTAssertNotNil(asked, "never-asked can still be asked — by the button, not the capture")
         XCTAssertTrue(sink.saved.isEmpty)
-
-        guard case .success = await coordinator.addEvent(for: item) else {
-            return XCTFail("the button may prompt, so it must not be blocked by the same check")
-        }
     }
 
     func testABatchOnlyOffersTheClipsItNames() async throws {
         UserDefaults.standard.set(true, forKey: CalendarSettingsKeys.autoCreate)
-        UserDefaults.standard.set(false, forKey: CalendarSettingsKeys.notifyOnAutoCreate)
         let store = try makeStore()
         let named = try insert(Self.invitation, into: store)
-        let unnamed = try insert(
+        _ = try insert(
             """
             Retro
             August 21, 2026 at 11:00 AM – 11:30 AM
@@ -298,13 +296,59 @@ final class CalendarEventTests: XCTestCase {
         let sink = FakeEventSink()
         let coordinator = CalendarCoordinator(store: store, sink: sink)
 
-        await coordinator.autoCreateIfWanted(forClipsWith: [named.uuid])
+        let offered = await coordinator.offerIfWanted(forClipsWith: [named.uuid])
+
+        XCTAssertEqual(offered, [named.uuid])
+        XCTAssertTrue(sink.saved.isEmpty, "offers never touch the sink")
+    }
+
+    // MARK: - Accepting an offer
+
+    /// The offer's Add button — a save by clip uuid, through the same
+    /// machinery the panel's button uses.
+    func testAcceptingAnOfferCreatesTheEvent() async throws {
+        UserDefaults.standard.set(false, forKey: CalendarSettingsKeys.notifyOnAutoCreate)
+        let store = try makeStore()
+        let item = try insert(Self.invitation, into: store)
+        let sink = FakeEventSink()
+        let coordinator = CalendarCoordinator(store: store, sink: sink)
+
+        guard case .success(let receipt) = await coordinator.acceptOfferedEvent(forClipWith: item.uuid) else {
+            return XCTFail("the offer's yes should create the event")
+        }
 
         XCTAssertEqual(sink.saved.count, 1)
-        XCTAssertNotNil(try XCTUnwrap(store.item(withUUID: named.uuid)).calendarEventID)
+        XCTAssertEqual(
+            try XCTUnwrap(store.item(withUUID: item.uuid)).calendarEventID,
+            receipt.eventIdentifier
+        )
+    }
+
+    /// A banner can outlive the clip it offered. The answer is an error the
+    /// delegate can ignore, not a crash or a silent event.
+    func testAcceptingAnOfferForAGoneClipFails() async throws {
+        let store = try makeStore()
+        let coordinator = CalendarCoordinator(store: store, sink: FakeEventSink())
+
+        guard case .failure(let error) = await coordinator.acceptOfferedEvent(forClipWith: UUID()) else {
+            return XCTFail("no clip must not become an event")
+        }
+        XCTAssertEqual(error, .nothingToSchedule)
+    }
+
+    /// Edit's half: the offer hands the detection to whoever opens the .ics.
+    func testTheOfferedEventIsReadableForEditing() async throws {
+        let store = try makeStore()
+        let item = try insert(Self.invitation, into: store)
+        let coordinator = CalendarCoordinator(store: store, sink: FakeEventSink())
+
+        let detected = try XCTUnwrap(coordinator.detectedEvent(forClipWith: item.uuid))
+        XCTAssertEqual(detected.title, "Design review")
+        XCTAssertNotNil(detected.meetingURL)
+
         XCTAssertNil(
-            try XCTUnwrap(store.item(withUUID: unnamed.uuid)).calendarEventID,
-            "a clip the batch did not name is a clip recognition did not just finish"
+            coordinator.detectedEvent(forClipWith: UUID()),
+            "a clip that no longer exists has no offer to edit"
         )
     }
 
@@ -536,7 +580,7 @@ final class CalendarEventTests: XCTestCase {
         }
         CalendarSettingsKeys.registerDefaults()
 
-        XCTAssertFalse(CalendarCoordinator.isAutoCreateEnabled, "automatic creation ships off")
+        XCTAssertFalse(CalendarCoordinator.isOfferEnabled, "event suggestions ship off")
         XCTAssertTrue(CalendarCoordinator.notifiesOnAutoCreate)
         XCTAssertEqual(
             UserDefaults.standard.integer(forKey: CalendarSettingsKeys.eventDurationMinutes),
@@ -654,11 +698,29 @@ final class EventNotifierTests: XCTestCase {
         XCTAssertNotEqual(english, french, "the locale is not reaching the date style")
     }
 
+    /// The offer's banner asks rather than announces — it shares the event
+    /// line but the title is a question, because nothing exists yet.
+    func testTheOfferAsksRatherThanAnnouncing() {
+        let offer = EventNotifier.offerMessage(
+            eventTitle: "Design review",
+            start: start,
+            isAllDay: false,
+            locale: Locale(identifier: "en_GB")
+        )
+        XCTAssertEqual(offer.title, loc("Add this event to your calendar?"))
+        XCTAssertTrue(offer.body.contains("Design review"), offer.body)
+        XCTAssertFalse(offer.title.hasPrefix("Added"), "past tense claims a save that has not happened")
+    }
+
     func testTheActionsAreDistinctlyIdentified() {
         let identifiers = [
             EventNotifier.categoryIdentifier,
             EventNotifier.undoActionIdentifier,
-            EventNotifier.openActionIdentifier
+            EventNotifier.openActionIdentifier,
+            EventNotifier.offerCategoryIdentifier,
+            EventNotifier.addActionIdentifier,
+            EventNotifier.editActionIdentifier,
+            EventNotifier.declineActionIdentifier,
         ]
         XCTAssertEqual(Set(identifiers).count, identifiers.count, "two notification identifiers collide")
     }
