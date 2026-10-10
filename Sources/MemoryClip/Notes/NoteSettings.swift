@@ -29,6 +29,12 @@ enum NoteSettingsKeys {
     /// assets are not downloaded. Written by `NoteTranslation`, read by
     /// Settings — which is the only place that can start the download.
     static let translationPending = "noteTranslationPending"
+    /// Pending-download codes the user dismissed: the callout may be
+    /// cleared, but a language the user has been told about once should
+    /// not re-announce itself on every future screenshot. Ticking the
+    /// language in Settings lifts the dismissal — see
+    /// `NoteTranslation.undismissPendingDownloads(matching:)`.
+    static let translationDismissed = "noteTranslationDismissed"
 
     // Clip translation
     /// Whether a previewed text clip is translated into the user's own

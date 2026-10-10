@@ -1436,10 +1436,18 @@ private struct TranslationLanguagePicker: View {
             .modifier(TranslationDownloadTask(configuration: $configuration, onFinish: finish))
 
             if let failure {
-                SettingsCallout(text: failure, symbol: "exclamationmark.triangle.fill", tint: Color(nsColor: .systemOrange))
+                SettingsCallout(text: failure, symbol: "exclamationmark.triangle.fill", tint: Color(nsColor: .systemOrange)) {
+                    self.failure = nil
+                }
             }
             if let waiting = pendingDescription {
-                SettingsCallout(text: waiting, symbol: "questionmark.circle.fill", tint: Color(nsColor: .systemOrange))
+                SettingsCallout(text: waiting, symbol: "questionmark.circle.fill", tint: Color(nsColor: .systemOrange)) {
+                    // Answered, not postponed: the codes move to the
+                    // dismissed set, so a screenshot in one of these
+                    // languages does not bring the banner back.
+                    NoteTranslation.dismissPendingDownloads()
+                    pending = []
+                }
             }
         }
     }
@@ -1464,6 +1472,10 @@ private struct TranslationLanguagePicker: View {
             set: { isOn in
                 if isOn {
                     selected.insert(language.id)
+                    // Ticking is the user saying "I do want this one" —
+                    // so it is also the end of any earlier dismissal of
+                    // "a language like this was needed".
+                    NoteTranslation.undismissPendingDownloads(matching: language.id)
                     // Ticking a language that has no assets is a request for
                     // them: nobody picks a language in order to have it not
                     // work.

@@ -73,6 +73,7 @@
 "Choose File…" = "Choisir un fichier…";
 "Import" = "Importer";
 "Cancel" = "Annuler";
+"Dismiss" = "Ignorer";
 "OK" = "OK";
 "Welcome to MemoryClip" = "Bienvenue dans MemoryClip";
 "A menu-bar clipboard history for macOS." = "Un historique de presse-papiers pour macOS, dans la barre des menus.";

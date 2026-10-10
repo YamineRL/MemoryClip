@@ -473,6 +473,42 @@ final class NoteTranslationBoundsTests: XCTestCase {
         for code in ["a", "b", "c", "d", "e", "f"] { NoteTranslation.notePendingDownload(code) }
         XCTAssertEqual(NoteTranslation.pendingDownloads.count, NoteTranslation.pendingDownloadLimit)
     }
+
+    /// Dismiss means told-once: the pending list empties AND the same
+    /// language stays silent afterwards — otherwise a screenshot in it
+    /// would re-raise the banner the user just cleared. Ticking the
+    /// language lifts the dismissal, because that is the user saying the
+    /// download question matters again.
+    func testDismissedPendingDownloadsStayQuietUntilTicked() {
+        let pendingKey = NoteSettingsKeys.translationPending
+        let dismissedKey = NoteSettingsKeys.translationDismissed
+        let originalPending = UserDefaults.standard.stringArray(forKey: pendingKey)
+        let originalDismissed = UserDefaults.standard.stringArray(forKey: dismissedKey)
+        defer {
+            UserDefaults.standard.set(originalPending, forKey: pendingKey)
+            UserDefaults.standard.set(originalDismissed, forKey: dismissedKey)
+        }
+
+        NoteTranslation.pendingDownloads = []
+        NoteTranslation.dismissedDownloads = []
+
+        NoteTranslation.notePendingDownload("id")
+        NoteTranslation.notePendingDownload("ar")
+        NoteTranslation.dismissPendingDownloads()
+        XCTAssertEqual(NoteTranslation.pendingDownloads, [])
+
+        // Already-told languages stay silent; a new one still speaks.
+        NoteTranslation.notePendingDownload("id")
+        NoteTranslation.notePendingDownload("ar")
+        NoteTranslation.notePendingDownload("th")
+        XCTAssertEqual(NoteTranslation.pendingDownloads, ["th"])
+
+        // Ticking Arabic lifts its dismissal; Indonesian stays quiet.
+        NoteTranslation.undismissPendingDownloads(matching: "ar-Arab")
+        NoteTranslation.notePendingDownload("id")
+        NoteTranslation.notePendingDownload("ar")
+        XCTAssertEqual(NoteTranslation.pendingDownloads, ["th", "ar"])
+    }
 }
 
 // MARK: - The target

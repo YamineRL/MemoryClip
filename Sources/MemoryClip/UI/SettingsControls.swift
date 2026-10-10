@@ -86,6 +86,10 @@ struct SettingsCallout: View {
     // `.systemRed`, which macOS retunes per appearance, rather than the flat
     // `.red` that reads muddy on a dark form background.
     var tint: Color = Color(nsColor: .systemRed)
+    /// When set, a "Dismiss" answer rides the callout's trailing edge —
+    /// for information the user is allowed to be done with, as opposed to
+    /// errors that leave only once the thing they report is fixed.
+    var onDismiss: (() -> Void)?
 
     var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: Design.Space.snug) {
@@ -95,6 +99,11 @@ struct SettingsCallout: View {
             Text(text)
                 .fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: .infinity, alignment: .leading)
+            if let onDismiss {
+                Button(loc("Dismiss"), action: onDismiss)
+                    .buttonStyle(.borderless)
+                    .foregroundStyle(tint)
+            }
         }
         .font(.caption)
         .padding(.horizontal, Design.Space.roomy)
