@@ -1751,7 +1751,7 @@ struct PanelContentView: View {
             )
             descriptor.fetchLimit = 1
             descriptor.propertiesToFetch = [\.sourceAppName]
-            guard let next = try? modelContext.fetch(descriptor).first else { break }
+            guard let next = modelContext.fetchLogged(descriptor)?.first else { break }
             found.append(next.sourceAppName)
         }
         sourceAppNames = found
@@ -1780,7 +1780,7 @@ struct PanelContentView: View {
                 predicate: #Predicate<ClipItem> { $0.sourceAppName == needle }
             )
             descriptor.propertiesToFetch = [\.sourceAppName]
-            let count = (try? modelContext.fetchCount(descriptor)) ?? 0
+            let count = modelContext.fetchCountLogged(descriptor) ?? 0
             counts.append((name, count))
         }
         sourceAppCounts = counts
@@ -1835,12 +1835,12 @@ struct PanelContentView: View {
     /// saying what it has rather than guessing at what it has not.
     private func countMatches() -> Int? {
         let descriptor = FetchDescriptor<ClipItem>(predicate: filter.predicate)
-        guard let admitted = try? modelContext.fetchCount(descriptor) else { return nil }
+        guard let admitted = modelContext.fetchCountLogged(descriptor) else { return nil }
         guard filter.needsSwiftSideRefinement else { return admitted }
         guard admitted <= Self.countScanLimit else { return nil }
         var scan = descriptor
         scan.fetchLimit = Self.countScanLimit
-        guard let rows = try? modelContext.fetch(scan) else { return nil }
+        guard let rows = modelContext.fetchLogged(scan) else { return nil }
         return filter.refine(rows).count
     }
 
@@ -2567,7 +2567,7 @@ struct PanelContentView: View {
                 ForEach(PinboardColor.allCases, id: \.rawValue) { color in
                     Button {
                         board.colorName = color.rawValue
-                        try? modelContext.save()
+                        modelContext.saveLogged()
                     } label: {
                         if board.colorName == color.rawValue {
                             Label(color.label, systemImage: "checkmark.circle.fill")
@@ -2580,12 +2580,12 @@ struct PanelContentView: View {
             Divider()
             Button(loc("Move Earlier")) {
                 board.move(by: -1, in: modelContext)
-                try? modelContext.save()
+                modelContext.saveLogged()
             }
             .disabled(index == 0)
             Button(loc("Move Later")) {
                 board.move(by: 1, in: modelContext)
-                try? modelContext.save()
+                modelContext.saveLogged()
             }
             .disabled(index == pinboards.count - 1)
             Divider()
@@ -2677,7 +2677,7 @@ struct PanelContentView: View {
         case .cancel:
             break
         }
-        try? modelContext.save()
+        modelContext.saveLogged()
         pinboardPickerItem = nil
     }
 
@@ -2702,7 +2702,7 @@ struct PanelContentView: View {
     private func fileClip(_ uuid: UUID, to scope: PinboardScope) {
         var descriptor = FetchDescriptor<ClipItem>(predicate: #Predicate { $0.uuid == uuid })
         descriptor.fetchLimit = 1
-        guard let item = try? modelContext.fetch(descriptor).first else { return }
+        guard let item = modelContext.fetchLogged(descriptor)?.first else { return }
         file(item, to: scope)
     }
 
@@ -2720,7 +2720,7 @@ struct PanelContentView: View {
             item.file(into: board)
             announce(loc("Filed in %@", board.name))
         }
-        try? modelContext.save()
+        modelContext.saveLogged()
     }
 
     /// Commit or abandon the strip's name field.
@@ -2732,10 +2732,10 @@ struct PanelContentView: View {
         }
         if let board = editingPinboard {
             if board.rename(to: pinboardName, in: modelContext) {
-                try? modelContext.save()
+                modelContext.saveLogged()
             }
         } else if let board = Pinboard.create(named: pinboardName, in: modelContext) {
-            try? modelContext.save()
+            modelContext.saveLogged()
             announce(loc("Pinboard created, %@", board.name))
             // A new board is filed into immediately: the person who named it
             // is looking at it.
@@ -2757,7 +2757,7 @@ struct PanelContentView: View {
         let members = board.clips.count
         board.delete(in: modelContext)
         if filter.board == .board(board.uuid) { filter.board = .pinned }
-        try? modelContext.save()
+        modelContext.saveLogged()
         announce(loc("%@ deleted, %d clips returned to Pinned", name, members))
     }
 
@@ -2832,7 +2832,7 @@ struct PanelContentView: View {
                        let item = selectedItem {
                         let earlier = press.key == .leftArrow
                         item.move(within: board, by: earlier ? -1 : 1)
-                        try? modelContext.save()
+                        modelContext.saveLogged()
                         announce(earlier ? loc("Moved earlier") : loc("Moved later"))
                         return .handled
                     }
@@ -3358,8 +3358,8 @@ struct PanelContentView: View {
                         clip.pinboardOrder = nil
                     }
                 }
-                try? modelContext.delete(model: ClipItem.self)
-                try? modelContext.save()
+                modelContext.deleteLogged(model: ClipItem.self)
+                modelContext.saveLogged()
                 sourceAppNames = []
                 // Everything is gone, including any clip mid-edit.
                 editing = nil
@@ -3774,7 +3774,7 @@ struct PanelContentView: View {
                 // expiring secret drops its timer.
                 if item.isPinned { item.unpin() } else { item.togglePinned() }
             }
-            try? modelContext.save()
+            modelContext.saveLogged()
         case .pinboard:
             openPinboardPicker()
         case .delete:
@@ -3830,7 +3830,7 @@ struct PanelContentView: View {
         let previewGoes = previewItem.map { removed.contains($0.uuid) } ?? false
         selection.selectNeighbour(ofAll: removed, in: visibleIDs)
         for item in items { modelContext.delete(item) }
-        try? modelContext.save()
+        modelContext.saveLogged()
         // A clip deleted out from under its editor takes the session and
         // any stashed draft with it.
         if let session = editing, removed.contains(session.item.uuid) {

@@ -1704,3 +1704,62 @@ private extension URL {
             .appendingPathComponent(lastPathComponent + suffix)
     }
 }
+
+/// `try? context.save()` in a view is the same trap `ClipStore.save()` used
+/// to be: the UI shows the action done while nothing persisted, and a
+/// wedged store reads as an empty one. The store's own paths log; calls
+/// made straight on the context — pinning, filing, deleting, renaming —
+/// get the same treatment through these.
+extension ModelContext {
+    /// Persist, logging a failure instead of dropping it.
+    func saveLogged(_ file: StaticString = #fileID, _ line: UInt = #line) {
+        do {
+            try save()
+        } catch {
+            log.error("Store write at \(file):\(line) was not persisted: \(error.localizedDescription)")
+        }
+    }
+
+    /// Fetch, or nil with the failure logged — `try?`'s shape, minus its
+    /// silence. A nil here still reads as "no rows" to the caller, but the
+    /// failure at least reaches the log.
+    func fetchLogged<T>(
+        _ descriptor: FetchDescriptor<T>,
+        _ file: StaticString = #fileID,
+        _ line: UInt = #line
+    ) -> [T]? {
+        do {
+            return try fetch(descriptor)
+        } catch {
+            log.error("Store read at \(file):\(line) failed: \(error.localizedDescription)")
+            return nil
+        }
+    }
+
+    /// `fetchCount` with the same treatment as `fetchLogged`.
+    func fetchCountLogged<T>(
+        _ descriptor: FetchDescriptor<T>,
+        _ file: StaticString = #fileID,
+        _ line: UInt = #line
+    ) -> Int? {
+        do {
+            return try fetchCount(descriptor)
+        } catch {
+            log.error("Store count at \(file):\(line) failed: \(error.localizedDescription)")
+            return nil
+        }
+    }
+
+    /// Batch delete with the same treatment as `saveLogged`.
+    func deleteLogged<T: PersistentModel>(
+        model: T.Type,
+        _ file: StaticString = #fileID,
+        _ line: UInt = #line
+    ) {
+        do {
+            try delete(model: model)
+        } catch {
+            log.error("Store delete at \(file):\(line) failed: \(error.localizedDescription)")
+        }
+    }
+}

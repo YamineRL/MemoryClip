@@ -94,47 +94,31 @@ enum EventICSDocument {
     /// own zone: an all-day start is already the beginning of that day there,
     /// and rendering it in another zone could shift it one day backwards.
     private static func day(_ date: Date, in zone: TimeZone) -> String {
-        let formatter = dayFormatter
-        formatter.timeZone = zone
-        return formatter.string(from: date)
+        formatter("yyyyMMdd", in: zone).string(from: date)
     }
 
     /// `20260820T150000Z` — the UTC DATE-TIME form.
     private static func utc(_ date: Date) -> String {
-        utcFormatter.string(from: date)
+        formatter("yyyyMMdd'T'HHmmss'Z'", in: TimeZone(identifier: "UTC")!).string(from: date)
     }
 
     /// `20260820T150000` — the floating DATE-TIME form a `TZID` parameter
     /// gives meaning to.
     private static func local(_ date: Date, in zone: TimeZone) -> String {
-        let formatter = localFormatter
-        formatter.timeZone = zone
-        return formatter.string(from: date)
+        formatter("yyyyMMdd'T'HHmmss", in: zone).string(from: date)
     }
 
-    /// Formatters are lazily shared: building one per property costs far
-    /// more than the strings they produce.
-    private static let dayFormatter: DateFormatter = {
+    /// A formatter per call: DateFormatter's per-method thread safety does
+    /// not cover a shared instance mutated between calls, and this path runs
+    /// once per offer answer — construction cost is nothing next to safety
+    /// from any isolation a future caller brings.
+    private static func formatter(_ format: String, in zone: TimeZone) -> DateFormatter {
         let formatter = DateFormatter()
         formatter.calendar = Calendar(identifier: .gregorian)
-        formatter.dateFormat = "yyyyMMdd"
+        formatter.timeZone = zone
+        formatter.dateFormat = format
         return formatter
-    }()
-
-    private static let utcFormatter: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.calendar = Calendar(identifier: .gregorian)
-        formatter.timeZone = TimeZone(identifier: "UTC")
-        formatter.dateFormat = "yyyyMMdd'T'HHmmss'Z'"
-        return formatter
-    }()
-
-    private static let localFormatter: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.calendar = Calendar(identifier: .gregorian)
-        formatter.dateFormat = "yyyyMMdd'T'HHmmss"
-        return formatter
-    }()
+    }
 
     // MARK: - Text escaping
 

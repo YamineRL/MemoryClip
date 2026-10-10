@@ -827,11 +827,11 @@ struct ClipCardView: View {
         } else {
             item.togglePinned()
         }
-        try? modelContext.save()
+        modelContext.saveLogged()
     }
 
     private func deleteItem() {
         modelContext.delete(item)
-        try? modelContext.save()
+        modelContext.saveLogged()
     }
 }
