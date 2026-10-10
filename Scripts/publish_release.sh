@@ -14,6 +14,10 @@ set -euo pipefail
 #   PRERELEASE=1 ./Scripts/publish_release.sh # mark it a pre-release
 #   SKIP_CASK=1 ./Scripts/publish_release.sh  # leave the Homebrew cask alone
 #
+# Before running: write Scripts/release-notes/<version>.md and leave it
+# UNCOMMITTED. The script commits it after the Homebrew cask bump, so the
+# newest commit on the branch is the release notes, not plumbing.
+#
 # Releases are full releases by default. A pre-release is hidden from the
 # repository header and is never served as "latest", so shipping one by
 # default meant every published build looked provisional.
@@ -31,12 +35,35 @@ die() {
 command -v gh >/dev/null 2>&1 || die "the GitHub CLI (gh) is required: brew install gh"
 gh auth status >/dev/null 2>&1 || die "gh is not authenticated — run: gh auth login"
 
+# The version comes from the bundle source, never hardcoded. It is needed up
+# front because the release-notes file is named after it.
+VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' \
+    Resources/Info.plist 2>/dev/null || true)"
+[ -n "$VERSION" ] || die "could not read CFBundleShortVersionString from Resources/Info.plist"
+
+TAG="${1:-v$VERSION}"
+
+# The release notes are the release body, so the file must exist — and it must
+# NOT be committed yet: the script commits it after the cask bump so the newest
+# commit on the branch is the notes the next person reads, not plumbing. The
+# escape hatch is an existing release: re-running publish to fix assets is fine
+# with the notes already committed.
+CHANGES_REL="Scripts/release-notes/$VERSION.md"
+CHANGES_FILE="$ROOT/$CHANGES_REL"
+[ -f "$CHANGES_FILE" ] \
+    || die "no release notes at $CHANGES_REL — write them first; publish commits them after the cask"
+if [ -n "$(git log -1 --format=%H -- "$CHANGES_REL")" ] \
+    && ! gh release view "$TAG" >/dev/null 2>&1; then
+    die "$CHANGES_REL is already committed — leave it uncommitted; publish commits it last so the release ends on the notes"
+fi
+
 # --- 1. Refuse to publish anything but a clean, pushed tree. ------------------
 # A release asset that does not correspond to a commit anyone else can fetch is
-# unreproducible, so this is a hard stop rather than a warning.
+# unreproducible, so this is a hard stop rather than a warning. The notes file
+# is the single allowed exception — it ships uncommitted on purpose (above).
 # Assigned first, not inlined into the test: inside `[ -z "$(...)" ]` a git that
 # fails prints nothing, and an empty answer reads as a clean tree.
-DIRT="$(git status --porcelain)"
+DIRT="$(git status --porcelain -- . ":(exclude)$CHANGES_REL")"
 [ -z "$DIRT" ] || die "working tree is dirty — commit or stash first"
 
 BRANCH="$(git rev-parse --abbrev-ref HEAD)"
@@ -49,9 +76,10 @@ echo "==> Building disk image"
 "$ROOT/Scripts/make_dmg.sh"
 
 APP="$ROOT/dist/MemoryClip.app"
-VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' \
+APP_VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' \
     "$APP/Contents/Info.plist" 2>/dev/null || true)"
-[ -n "$VERSION" ] || die "could not read CFBundleShortVersionString from $APP/Contents/Info.plist"
+[ "$APP_VERSION" = "$VERSION" ] \
+    || die "the built app reports $APP_VERSION, expected $VERSION — stale dist/ or a bad plist"
 
 DMG="$ROOT/dist/MemoryClip-$VERSION.dmg"
 [ -f "$DMG" ] || die "$DMG was not produced by Scripts/make_dmg.sh"
@@ -66,7 +94,6 @@ rm -f "$ZIP"
 ditto -c -k --keepParent "$APP" "$ZIP" || die "could not zip $APP"
 [ -f "$ZIP" ] || die "ditto reported success but $ZIP does not exist"
 
-TAG="${1:-v$VERSION}"
 DMG_SHA="$(shasum -a 256 "$DMG" | cut -d' ' -f1)"
 ZIP_SHA="$(shasum -a 256 "$ZIP" | cut -d' ' -f1)"
 echo "==> $TAG"
@@ -76,13 +103,11 @@ echo "    $(basename "$ZIP")  sha256 $ZIP_SHA"
 # --- 3. Create or update the release. ----------------------------------------
 NOTES_FILE="$(mktemp)"
 trap 'rm -f "$NOTES_FILE"' EXIT
-# A hand-written changelog for this version, if there is one. Kept beside the
-# script rather than generated from git log: a release note is written for the
-# people installing the app, and a commit subject is written for the people
-# reading the diff.
-CHANGES=""
-CHANGES_FILE="$ROOT/Scripts/release-notes/$VERSION.md"
-[ -f "$CHANGES_FILE" ] && CHANGES="$(cat "$CHANGES_FILE")
+# A hand-written changelog for this version. Kept beside the script rather
+# than generated from git log: a release note is written for the people
+# installing the app, and a commit subject is written for the people reading
+# the diff. Its existence was enforced up front — it is the release body.
+CHANGES="$(cat "$CHANGES_FILE")
 
 "
 
@@ -155,6 +180,20 @@ else
     else
         echo "    cask already at $VERSION"
     fi
+fi
+
+# --- 5. Commit the release notes last. ----------------------------------------
+# A release should end on the notes the next person reads, not on plumbing —
+# so the cask bump goes out first and this commit lands on top. The file was
+# required to be on disk and uncommitted at the start (section 1).
+if [ "${DRAFT:-0}" = "1" ]; then
+    : # a draft is a rehearsal — leave the notes uncommitted for the real run
+elif [ -n "$(git status --porcelain -- "$CHANGES_REL")" ]; then
+    git add -- "$CHANGES_REL"
+    git commit --quiet -m "Add the $VERSION release notes"
+    git push --quiet origin "$BRANCH" \
+        || die "the release notes were committed but could not be pushed — push $BRANCH by hand"
+    echo "==> Committed and pushed the release notes"
 fi
 
 echo "OK: $(gh release view "$TAG" --json url --jq .url)"
