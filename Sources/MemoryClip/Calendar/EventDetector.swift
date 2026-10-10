@@ -121,7 +121,7 @@ enum EventDetector {
         // Left nil unless the text named a zone: `timeZone` means "the text
         // said so", which is what the sink needs in order to decide whether
         // to override the calendar's own zone.
-        let zone = dateMatch.timeZone
+        var zone = dateMatch.timeZone
 
         // A labelled invitation writes the clock time on its own row —
         // "TIME   Doors open : 6:00 p.m." — which the detector reports as a
@@ -137,8 +137,14 @@ enum EventDetector {
                    && namesAClockTime(subject.substring(with: $0.range))
            }),
            let clock = timed.date {
-            let zoned = resolvedCalendar(in: zone, base: calendar)
-            let clockParts = zoned.dateComponents([.hour, .minute, .second], from: clock)
+            // The hour has to be read back in the frame the detector used —
+            // the machine's own zone, or the zone the match itself names —
+            // not in the event's zone: "6:00 p.m." resolved on a UTC host
+            // would otherwise come back as 20:00 in Paris.
+            var source = Calendar.autoupdatingCurrent
+            if let timedZone = timed.timeZone { source.timeZone = timedZone }
+            let clockParts = source.dateComponents([.hour, .minute, .second], from: clock)
+            let zoned = resolvedCalendar(in: zone ?? timed.timeZone, base: calendar)
             if let combined = zoned.date(
                 bySettingHour: clockParts.hour ?? 0,
                 minute: clockParts.minute ?? 0,
@@ -148,6 +154,9 @@ enum EventDetector {
                 start = combined
                 duration = timed.duration
                 hasClockTime = true
+                // "Oct 30, doors 6pm PST": the time's own zone claim stands
+                // when the date brought none of its own.
+                zone = zone ?? timed.timeZone
             }
         }
 
