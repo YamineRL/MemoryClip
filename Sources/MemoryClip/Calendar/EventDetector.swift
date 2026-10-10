@@ -107,14 +107,49 @@ enum EventDetector {
         let matches = detector.matches(in: scanned, range: whole)
 
         guard let dateMatch = matches.first(where: { $0.resultType == .date }),
-              let start = dateMatch.date
+              let detectedStart = dateMatch.date
         else { return nil }
 
         // Whether a clock time was actually written down, as opposed to
         // supplied by the detector. A date with no time comes back at noon,
         // so the resolved `Date` cannot answer this — only the text can.
         let named = subject.substring(with: dateMatch.range)
-        let hasClockTime = namesAClockTime(named)
+        var hasClockTime = namesAClockTime(named)
+        var start = detectedStart
+        var duration = dateMatch.duration
+
+        // Left nil unless the text named a zone: `timeZone` means "the text
+        // said so", which is what the sink needs in order to decide whether
+        // to override the calendar's own zone.
+        let zone = dateMatch.timeZone
+
+        // A labelled invitation writes the clock time on its own row —
+        // "TIME   Doors open : 6:00 p.m." — which the detector reports as a
+        // SECOND date match, not part of the first. When the primary match
+        // names only a day, adopt the nearest timed match's clock, under
+        // the same proximity window every other corroborating detail must
+        // live in: a time too far away to belong to the date stays out.
+        if !hasClockTime,
+           let timed = matches.first(where: {
+               $0.resultType == .date
+                   && $0.range.location != dateMatch.range.location
+                   && $0.range.isNear(dateMatch.range, within: detailProximity)
+                   && namesAClockTime(subject.substring(with: $0.range))
+           }),
+           let clock = timed.date {
+            let zoned = resolvedCalendar(in: zone, base: calendar)
+            let clockParts = zoned.dateComponents([.hour, .minute, .second], from: clock)
+            if let combined = zoned.date(
+                bySettingHour: clockParts.hour ?? 0,
+                minute: clockParts.minute ?? 0,
+                second: 0,
+                of: start
+            ) {
+                start = combined
+                duration = timed.duration
+                hasClockTime = true
+            }
+        }
 
         // Corroboration counts only when it lives next to the date —
         // `detailProximity` above has the reasoning. A detail that belongs
@@ -131,12 +166,10 @@ enum EventDetector {
         // Left nil unless the text named a zone: `timeZone` means "the text
         // said so", which is what the sink needs in order to decide whether to
         // override the calendar's own zone.
-        let zone = dateMatch.timeZone
-
         let title = titleLine(in: subject, avoiding: matches) ?? fallbackTitle
         let span = span(
             from: start,
-            duration: dateMatch.duration,
+            duration: duration,
             hasClockTime: hasClockTime,
             defaultDuration: defaultDuration,
             calendar: resolvedCalendar(in: zone, base: calendar)
@@ -250,8 +283,14 @@ enum EventDetector {
         let furniture = CharacterSet(charactersIn: "-–—:,;·|@()[]{}<>\"'")
             .union(.whitespacesAndNewlines)
         let trimmed = stripLeadingLabel(line).trimmingCharacters(in: furniture)
-        let tidied = stripTrailingConnectors(trimmed)
+        let unlabelled = stripLeadingShoutedLabel(trimmed).trimmingCharacters(in: furniture)
+        let tidied = stripTrailingConnectors(unlabelled)
         guard tidied.count >= 3, tidied.contains(where: \.isLetter) else { return nil }
+        // A line that survives only as a label — "DATE" beside the struck-
+        // out date, "EVENT DETAILS" heading the block — named the field,
+        // not the event, and yields to the caller's fallback.
+        guard !fieldLabels.contains(tidied.lowercased()),
+              !sectionHeaders.contains(tidied.lowercased()) else { return nil }
         return String(tidied.prefix(maxTitleCharacters))
     }
 
@@ -297,6 +336,18 @@ enum EventDetector {
         "objet", "titre", "quand", "où", "ou", "lieu", "heure", "réunion", "reunion"
     ]
 
+    /// Whole-line section headers — the words a copied invitation uses to
+    /// introduce its details block rather than to name the event. Matched
+    /// against the full stripped line only, so "Event details for the Q3
+    /// offsite" survives as a title while a bare "EVENT DETAILS" does not.
+    private static let sectionHeaders: Set<String> = [
+        "event details", "event information", "event info", "details",
+        "schedule", "agenda", "programme", "program",
+        "when & where", "when and where",
+        "détails de l'événement", "détails de l'evenement", "détails",
+        "informations", "infos pratiques", "quand et où"
+    ]
+
     private static func stripLeadingLabel(_ line: String) -> String {
         guard let colon = line.firstIndex(of: ":") else { return line }
         let label = line[line.startIndex..<colon]
@@ -305,6 +356,24 @@ enum EventDetector {
         guard fieldLabels.contains(label) else { return line }
         let rest = line[line.index(after: colon)...]
         return rest.contains(where: \.isLetter) ? String(rest) : line
+    }
+
+    /// A field label shouted in capitals rather than followed by a colon —
+    /// "TIME   6:00 p.m." on a details card, where the label is layout
+    /// furniture rather than part of the name. The all-caps requirement is
+    /// what makes dropping it safe: "Date Night" keeps its first word
+    /// because "Date" is not shouted.
+    private static func stripLeadingShoutedLabel(_ line: String) -> String {
+        let words = line.split(separator: " ", maxSplits: 1, omittingEmptySubsequences: true)
+        guard words.count == 2 else { return line }
+        let first = String(words[0])
+        let rest = String(words[1])
+        let letters = first.unicodeScalars.filter { CharacterSet.letters.contains($0) }
+        guard letters.count >= 2,
+              first == first.uppercased(),
+              fieldLabels.contains(first.lowercased()),
+              rest.contains(where: \.isLetter) else { return line }
+        return rest
     }
 
     /// Calendars show far less than this, and an EventKit title is free-form —

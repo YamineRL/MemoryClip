@@ -172,6 +172,19 @@ final class CalendarCoordinator {
             }
             operations.append(EventOperation(operationID: operation, clipUUID: uuid))
             log.notice("Added a clip to the calendar (\(receipt.calendarTitle, privacy: .private))")
+            // A manual add is the user's own gesture and always announces
+            // itself: the banner is where Open-in-Calendar and Undo live,
+            // and "added" must never be a claim the user cannot check.
+            if !automatic {
+                await EventNotifier.post(
+                    eventTitle: detected.title,
+                    start: receipt.start,
+                    isAllDay: detected.isAllDay,
+                    calendarTitle: receipt.calendarTitle,
+                    location: detected.location,
+                    operation: operation
+                )
+            }
             return finish(.success(receipt))
         } catch let error as CalendarError {
             return finish(.failure(error))
@@ -229,6 +242,7 @@ final class CalendarCoordinator {
             eventTitle: detected.title,
             start: detected.start,
             isAllDay: detected.isAllDay,
+            location: detected.location,
             clipUUID: item.uuid
         )
         return detected
@@ -293,6 +307,7 @@ final class CalendarCoordinator {
                 start: receipt.start,
                 isAllDay: detected?.isAllDay ?? false,
                 calendarTitle: receipt.calendarTitle,
+                location: detected?.location,
                 operation: operation
             )
         }

@@ -105,6 +105,7 @@ enum EventNotifier {
         start: Date,
         isAllDay: Bool,
         calendarTitle: String,
+        location: String? = nil,
         locale: Locale = L10n.locale
     ) -> Message {
         let when = isAllDay
@@ -112,7 +113,7 @@ enum EventNotifier {
             : start.formatted(Date.FormatStyle(date: .abbreviated, time: .shortened).locale(locale))
         return Message(
             title: loc("Added to your %@ calendar", calendarTitle),
-            body: loc("%@ — %@", eventTitle, when)
+            body: body(eventTitle: eventTitle, when: when, location: location)
         )
     }
 
@@ -123,6 +124,7 @@ enum EventNotifier {
         eventTitle: String,
         start: Date,
         isAllDay: Bool,
+        location: String? = nil,
         locale: Locale = L10n.locale
     ) -> Message {
         let when = isAllDay
@@ -130,8 +132,19 @@ enum EventNotifier {
             : start.formatted(Date.FormatStyle(date: .abbreviated, time: .shortened).locale(locale))
         return Message(
             title: loc("Add this event to your calendar?"),
-            body: loc("%@ — %@", eventTitle, when)
+            body: body(eventTitle: eventTitle, when: when, location: location)
         )
+    }
+
+    /// "Title — when", plus the place on its own line when detection found
+    /// one — a place is the field detection gets wrong most visibly, so it
+    /// belongs in anything the user reviews the event through.
+    private static func body(eventTitle: String, when: String, location: String?) -> String {
+        var text = loc("%@ — %@", eventTitle, when)
+        if let location {
+            text += "\n" + loc("Location: %@", location)
+        }
+        return text
     }
 
     // MARK: - Delivery
@@ -153,6 +166,7 @@ enum EventNotifier {
         start: Date,
         isAllDay: Bool,
         calendarTitle: String,
+        location: String? = nil,
         operation: UUID
     ) async {
         guard isAvailable else { return }
@@ -163,7 +177,8 @@ enum EventNotifier {
             eventTitle: eventTitle,
             start: start,
             isAllDay: isAllDay,
-            calendarTitle: calendarTitle
+            calendarTitle: calendarTitle,
+            location: location
         )
         let content = UNMutableNotificationContent()
         content.title = text.title
@@ -206,13 +221,19 @@ enum EventNotifier {
         eventTitle: String,
         start: Date,
         isAllDay: Bool,
+        location: String? = nil,
         clipUUID: UUID
     ) async {
         guard isAvailable else { return }
         let center = UNUserNotificationCenter.current()
         guard await isAuthorized(center) else { return }
 
-        let text = offerMessage(eventTitle: eventTitle, start: start, isAllDay: isAllDay)
+        let text = offerMessage(
+            eventTitle: eventTitle,
+            start: start,
+            isAllDay: isAllDay,
+            location: location
+        )
         let content = UNMutableNotificationContent()
         content.title = text.title
         content.body = text.body
