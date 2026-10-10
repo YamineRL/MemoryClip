@@ -111,7 +111,7 @@ final class AppNotificationDelegate: NSObject, UNUserNotificationCenterDelegate 
             // default calendar app — editable before it is anything, and
             // nothing at all if it is discarded.
             if let clipUUID, let detected = calendarCoordinator.detectedEvent(forClipWith: clipUUID) {
-                Self.openForEditing(detected, uid: clipUUID.uuidString)
+                EventICSDocument.openDraft(for: detected, uid: clipUUID.uuidString)
             }
         case EventNotifier.declineActionIdentifier:
             // Not Now, said out loud: the question is answered, so the
@@ -147,22 +147,6 @@ final class AppNotificationDelegate: NSObject, UNUserNotificationCenterDelegate 
         }
     }
 
-    /// Write the offer's event as an .ics and open it in the default handler.
-    ///
-    /// Calendar.app shows an "add this event" inspector where every field is
-    /// editable before anything is committed — the modify-first flow EventKit
-    /// cannot give, since its events are already saved when written.
-    /// A failure to write the draft is logged, not thrown: the user can
-    /// still answer the same offer with Add.
-    private static func openForEditing(_ event: DetectedEvent, uid: String) {
-        do {
-            let url = try EventICSDocument.writeTemporarily(for: event, uid: uid)
-            NSWorkspace.shared.open(url)
-        } catch {
-            log.error("Calendar draft could not be written: \(error.localizedDescription, privacy: .public)")
-        }
-    }
-
     /// The offer's body tap, raised as a real dialog.
     ///
     /// Banner-style notifications — the style macOS defaults to — show no
@@ -179,7 +163,8 @@ final class AppNotificationDelegate: NSObject, UNUserNotificationCenterDelegate 
         let text = EventNotifier.offerMessage(
             eventTitle: detected.title,
             start: detected.start,
-            isAllDay: detected.isAllDay
+            isAllDay: detected.isAllDay,
+            location: detected.location
         )
         let alert = NSAlert()
         alert.alertStyle = .informational
@@ -193,7 +178,7 @@ final class AppNotificationDelegate: NSObject, UNUserNotificationCenterDelegate 
         case .alertFirstButtonReturn:
             Task { _ = await calendarCoordinator.acceptOfferedEvent(forClipWith: uuid) }
         case .alertSecondButtonReturn:
-            Self.openForEditing(detected, uid: uuid.uuidString)
+            EventICSDocument.openDraft(for: detected, uid: uuid.uuidString)
         default:
             break
         }

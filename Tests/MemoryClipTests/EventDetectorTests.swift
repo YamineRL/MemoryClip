@@ -286,6 +286,75 @@ final class EventDetectorTests: XCTestCase {
         XCTAssertEqual(event?.meetingURL?.host(), "meet.google.com")
     }
 
+    // MARK: - Labelled layouts
+
+    /// The layout a copied invitation actually has: the clock time sits on
+    /// its own labelled row rather than inside the date, so the detector
+    /// reports it as a second match. A day-only primary match must adopt
+    /// a nearby timed match instead of widening to a whole day — and the
+    /// section header must not become the title.
+    func testALabelledDetailsBlockKeepsItsTimeAndNotItsHeader() {
+        let event = detect("""
+        EVENT DETAILS
+        DATE        Friday, 30 October 2026
+        TIME        Doors open : 6:00 p.m.
+        LOCATION    Grand-Rue 11, 1204 Geneva
+        """)
+        XCTAssertEqual(event?.isAllDay, false,
+                       "a clock time on the adjacent labelled line is the event's time")
+        let parts = calendar.dateComponents(
+            [.year, .month, .day, .hour],
+            from: event?.start ?? .distantPast
+        )
+        XCTAssertEqual(parts.year, 2026)
+        XCTAssertEqual(parts.month, 10)
+        XCTAssertEqual(parts.day, 30)
+        XCTAssertEqual(parts.hour, 18)
+        XCTAssertNotEqual(event?.title, "EVENT DETAILS")
+        XCTAssertNotEqual(event?.title, "DATE")
+    }
+
+    /// The same proximity rule every other detail already obeys: a clock
+    /// time paragraphs away from the date is some other part of the text's,
+    /// and the date stays a whole day.
+    func testADistantTimeDoesNotJoinTheDate() {
+        let padding = String(repeating: "unrelated chatter. ", count: 30)
+        let event = detect("""
+        All hands on August 20, 2026
+        \(padding)
+        doors at 6:00 PM
+        """)
+        XCTAssertEqual(event?.isAllDay, true,
+                       "a time far from the date must not be adopted")
+    }
+
+    /// A line that survives only as a header — "EVENT DETAILS" above the
+    /// details, "DATE" beside the struck-out date — named the field, not
+    /// the event, and yields to the caller's fallback.
+    func testASectionHeaderIsNotATitle() {
+        let event = detect("""
+        EVENT DETAILS
+        Charity gala — October 30, 2026 at 7:00 PM
+        """)
+        XCTAssertEqual(event?.title, "Charity gala")
+    }
+
+    func testABareFieldLabelIsNotATitle() {
+        let event = detect("""
+        DATE
+        Charity gala — October 30, 2026 at 7:00 PM
+        """)
+        XCTAssertEqual(event?.title, "Charity gala")
+    }
+
+    /// The shouted-label strip is keyed on capitals precisely so a title
+    /// beginning with a label-shaped word survives: "Date Night" is a
+    /// name, "DATE" alone is furniture.
+    func testATitleCasedFieldWordIsKept() {
+        let event = detect("Date Night\nOctober 30, 2026 at 7:00 PM")
+        XCTAssertEqual(event?.title, "Date Night")
+    }
+
     // MARK: - Clock times
 
     func testClockTimeForms() {

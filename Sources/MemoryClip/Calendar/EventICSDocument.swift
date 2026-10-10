@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 
 /// A `DetectedEvent` rendered as an iCalendar (.ics) document.
@@ -56,6 +57,24 @@ enum EventICSDocument {
             encoding: .utf8
         )
         return url
+    }
+
+    /// Write the draft and open it in the default .ics handler.
+    ///
+    /// Calendar.app shows an "add this event" inspector where every field
+    /// is editable before anything is committed — the modify-first flow
+    /// EventKit cannot give, since its events are already saved when
+    /// written. Shared by the offer's Edit button and the panel's review
+    /// dialog. A failure to write the draft is logged, not thrown: the
+    /// user can still answer with Add.
+    @MainActor
+    static func openDraft(for event: DetectedEvent, uid: String) {
+        do {
+            let url = try writeTemporarily(for: event, uid: uid)
+            NSWorkspace.shared.open(url)
+        } catch {
+            log.error("Calendar draft could not be written: \(error.localizedDescription, privacy: .public)")
+        }
     }
 
     // MARK: - Dates

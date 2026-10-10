@@ -455,6 +455,7 @@
 "macOS asks once, the first time an event is added. MemoryClip asks only for permission to add events: it cannot read your calendar, and so cannot offer you a list to pick from. Events go to whichever calendar you have set as the default for new events in Calendar." = "macOS asks once, the first time an event is added. MemoryClip asks only for permission to add events: it cannot read your calendar, and so cannot offer you a list to pick from. Events go to whichever calendar you have set as the default for new events in Calendar.";
 "Added to your %@ calendar" = "Added to your %@ calendar";
 "Add this event to your calendar?" = "Add this event to your calendar?";
+"Location: %@" = "Location: %@";
 "Not Now" = "Not Now";
 "%@ — %@" = "%@ — %@";
 "Open in Calendar" = "Open in Calendar";

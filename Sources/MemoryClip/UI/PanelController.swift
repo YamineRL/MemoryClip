@@ -593,15 +593,63 @@ final class PanelController: NSObject, NSWindowDelegate {
     /// Awaited off this call the way the note export is — it may have to ask
     /// for calendar permission, which blocks until the user answers — so the
     /// panel stays live while it happens. Only failure interrupts: a clip that
-    /// got its event says so itself, in the card's stat line.
+    /// got its event says so itself, in the card's stat line and on the
+    /// created-event banner the coordinator posts for every manual add.
     private func addToCalendar(for item: ClipItem) {
         log.notice("Add to calendar invoked from the panel for clip \(item.uuid.uuidString, privacy: .private)")
+        // The suggestions setting doubles as "let me look first": while it
+        // is on, even the explicit button opens the same Add / Edit… /
+        // Not Now review an offer's body-tap raises — the gesture names the
+        // clip, the setting says nothing writes unseen. A clip whose text
+        // yields nothing falls through to addEvent's own failure alert.
+        if CalendarCoordinator.isOfferEnabled,
+           let detected = calendarCoordinator.event(for: item) {
+            presentCalendarReview(detected, for: item)
+            return
+        }
         Task { @MainActor [weak self] in
             guard let self else { return }
             let result = await self.calendarCoordinator.addEvent(for: item)
             if case .failure(let error) = result {
                 self.presentCalendarFailure(error)
             }
+        }
+    }
+
+    /// The review the explicit add becomes while suggestions are on.
+    ///
+    /// Shows what detection made of THIS clip — title, day, place — under
+    /// the three answers the offer carries: Add writes the event (and the
+    /// coordinator announces it like every manual add), Edit… hands it to
+    /// Calendar.app as a draft .ics, Not Now leaves nothing.
+    private func presentCalendarReview(_ detected: DetectedEvent, for item: ClipItem) {
+        let text = EventNotifier.offerMessage(
+            eventTitle: detected.title,
+            start: detected.start,
+            isAllDay: detected.isAllDay,
+            location: detected.location
+        )
+        let alert = NSAlert()
+        alert.alertStyle = .informational
+        alert.messageText = text.title
+        alert.informativeText = text.body
+        alert.addButton(withTitle: loc("Add"))
+        alert.addButton(withTitle: loc("Edit…"))
+        alert.addButton(withTitle: loc("Not Now"))
+        NSApp.activate()
+        switch alert.runModal() {
+        case .alertFirstButtonReturn:
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                let result = await self.calendarCoordinator.addEvent(for: item)
+                if case .failure(let error) = result {
+                    self.presentCalendarFailure(error)
+                }
+            }
+        case .alertSecondButtonReturn:
+            EventICSDocument.openDraft(for: detected, uid: item.uuid.uuidString)
+        default:
+            break
         }
     }
 
