@@ -156,6 +156,39 @@ final class ClipIntentServiceTests: XCTestCase {
         XCTAssertFalse(wrote)
     }
 
+    // MARK: Withheld rows
+
+    /// The seam the feature list calls `isShareable`: a secret row is
+    /// invisible to every read an intent can make — search cannot see it,
+    /// latest skips it for the next real clip, resolve and copy answer
+    /// "not there", and its existence, timestamp and source app never
+    /// leave the store through Shortcuts or Spotlight.
+    func testASecretClipIsInvisibleToIntents() async throws {
+        let ordinary = insert(ClipItem(kind: .text, text: "ordinary text",
+                                       contentHash: "o:1",
+                                       createdAt: Date(timeIntervalSinceNow: -100)))
+        let secret = insert(ClipItem(
+            kind: .text,
+            contentHash: "s:1",
+            sourceAppName: "1Password",
+            isSecret: true,
+            secretMasked: "••••••"
+        ))
+
+        let found = try await service.search(query: "", limit: 10).map(\.id)
+        XCTAssertEqual(found, [ordinary.uuid], "a secret row must not come back from search")
+        let newest = try await service.latest(kind: .any)
+        XCTAssertEqual(newest?.id, ordinary.uuid, "a newer secret must not win latest")
+        let resolved = try await service.resolve(secret.uuid)
+        XCTAssertNil(resolved)
+        let copied = try await service.copy(uuid: secret.uuid)
+        XCTAssertFalse(copied)
+        // The newest text row is the secret; the file that comes back is the
+        // ordinary clip's — withheld, not blocking.
+        let file = try await service.latestFile(kind: .text)
+        XCTAssertNotNil(file)
+    }
+
     // MARK: Entities
 
     /// The entity never carries an image's absent text, a text clip's

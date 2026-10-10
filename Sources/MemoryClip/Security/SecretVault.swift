@@ -143,8 +143,15 @@ final class SecretVault: @unchecked Sendable {
             return key
         }
         let key = SymmetricKey(size: .bits256)
-        try? SecureEnclaveSealer.ensureDirectory(directory)
-        try? SecureEnclaveSealer.writeOwnerOnly(key.withUnsafeBytes { Data($0) }, to: url)
+        // A write that fails leaves the key per-session: this session's
+        // hashes work, but nothing stored can be re-derived after relaunch —
+        // dedup silently restarts from scratch. That has to be visible.
+        do {
+            try SecureEnclaveSealer.ensureDirectory(directory)
+            try SecureEnclaveSealer.writeOwnerOnly(key.withUnsafeBytes { Data($0) }, to: url)
+        } catch {
+            log.error("Dedup key could not be persisted; secret hashes are per-session this run: \(error.localizedDescription)")
+        }
         dedupKeyCache = key
         return key
     }
@@ -167,7 +174,14 @@ final class SecretVault: @unchecked Sendable {
         let line = hashLocked(plaintext, for: .allowlist)
         guard !allowlistEntries().contains(line) else { return }
         let content = (allowlistContents() ?? "") + line + "\n"
-        try? SecureEnclaveSealer.writeOwnerOnly(Data(content.utf8), to: allowlistURL)
+        // A verdict that does not persist is forgotten at relaunch: the same
+        // clip asks to be judged secret again. Log it rather than let a full
+        // disk read as the user being ignored.
+        do {
+            try SecureEnclaveSealer.writeOwnerOnly(Data(content.utf8), to: allowlistURL)
+        } catch {
+            log.error("Allow-list write failed; this verdict lasts only until relaunch: \(error.localizedDescription)")
+        }
         allowlistCache = nil
     }
 
@@ -184,7 +198,17 @@ final class SecretVault: @unchecked Sendable {
     func resetAllowlist() {
         lock.lock()
         defer { lock.unlock() }
-        try? FileManager.default.removeItem(at: allowlistURL)
+        // A "Reset" that cannot delete the file keeps every old verdict —
+        // a silent no-op on a destructive action is worse than a loud one.
+        // An absent file is already the reset state, so only a surviving
+        // file is worth reporting.
+        do {
+            try FileManager.default.removeItem(at: allowlistURL)
+        } catch {
+            if FileManager.default.fileExists(atPath: allowlistURL.path) {
+                log.error("Allow-list reset failed; old verdicts still apply: \(error.localizedDescription)")
+            }
+        }
         allowlistCache = nil
     }
 

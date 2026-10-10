@@ -170,7 +170,14 @@ final class SecureEnclaveSealer: SecretSealer, @unchecked Sendable {
     static func ensureDirectory(_ directory: URL) throws {
         let fileManager = FileManager.default
         if fileManager.fileExists(atPath: directory.path) {
-            try? fileManager.setAttributes([.posixPermissions: 0o700], ofItemAtPath: directory.path)
+            // A tightening that fails leaves a pre-existing directory wider
+            // than 0700 while the app proceeds — the key file itself is
+            // still 0600, but the layer that failed should not be silent.
+            do {
+                try fileManager.setAttributes([.posixPermissions: 0o700], ofItemAtPath: directory.path)
+            } catch {
+                log.error("Could not tighten \(directory.lastPathComponent) to owner-only: \(error.localizedDescription)")
+            }
         } else {
             try fileManager.createDirectory(
                 at: directory,

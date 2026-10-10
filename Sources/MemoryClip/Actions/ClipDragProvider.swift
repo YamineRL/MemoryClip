@@ -26,11 +26,15 @@ enum ClipDragProvider {
     static func itemProvider(for item: ClipItem) -> NSItemProvider? {
         guard let payload = PasteService.payload(for: item, plainOnly: false) else { return nil }
         let provider = provider(for: payload)
+        // The closure is @Sendable and runs on AppKit's pick of thread at
+        // drop time; a ClipItem is not Sendable, and one deleted mid-drag is
+        // not safe to touch at all. The uuid — a value type — crosses fine.
+        let uuid = item.uuid
         provider?.registerDataRepresentation(
             forTypeIdentifier: clipTypeIdentifier,
             visibility: .ownProcess
         ) { completion in
-            completion(Data(item.uuid.uuidString.utf8), nil)
+            completion(Data(uuid.uuidString.utf8), nil)
             return nil
         }
         return provider

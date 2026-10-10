@@ -359,12 +359,38 @@ enum NoteTranslation {
     static let pendingDownloadLimit = 5
 
     static func notePendingDownload(_ identifier: String) {
-        guard !identifier.isEmpty else { return }
+        guard !identifier.isEmpty, !dismissedDownloads.contains(identifier) else { return }
         pendingDownloads = pendingDownloads + [identifier]
     }
 
     static func clearPendingDownload(_ identifier: String) {
         pendingDownloads = pendingDownloads.filter { $0 != identifier }
+    }
+
+    /// Codes the callout's Dismiss answer puts here: told once, not told
+    /// again — otherwise every screenshot in a language the user has
+    /// already declined would re-raise the same banner.
+    static var dismissedDownloads: Set<String> {
+        get { Set(UserDefaults.standard.stringArray(forKey: NoteSettingsKeys.translationDismissed) ?? []) }
+        set { UserDefaults.standard.set(Array(newValue), forKey: NoteSettingsKeys.translationDismissed) }
+    }
+
+    /// Clear every pending language and stop announcing these ones.
+    static func dismissPendingDownloads() {
+        dismissedDownloads.formUnion(pendingDownloads)
+        pendingDownloads = []
+    }
+
+    /// The dismissal ends where care resumes: a user who ticks a language
+    /// in Settings wants it working, which is exactly what the pending
+    /// list exists to report. `detected` codes matching the ticked
+    /// `selection` come out of the dismissed set — see
+    /// `TranslationCatalog.matches` for the code↔row spelling the two
+    /// sides write.
+    static func undismissPendingDownloads(matching selection: String) {
+        dismissedDownloads = dismissedDownloads.filter { code in
+            !TranslationCatalog.matches(selection: selection, detected: code)
+        }
     }
 }
 

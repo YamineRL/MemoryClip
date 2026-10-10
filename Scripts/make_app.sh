@@ -65,13 +65,19 @@ cp "$ICON" "$APP/Contents/Resources/AppIcon.icns"
 # this bundle rather than the repository.
 cp "LICENSE" "$APP/Contents/Resources/LICENSE"
 
-# The string catalogue: Bundle.module resolves against Contents/Resources.
-BUNDLE="$(dirname "$BIN")/MemoryClip_MemoryClip.bundle"
-if [ ! -d "$BUNDLE" ]; then
-    echo "error: $BUNDLE not found; the localization catalogue would be missing" >&2
+# The string catalogues: Bundle.module resolves against Contents/Resources,
+# for this module and for every package with resources — a missing bundle is
+# a fatalError the first time that package localizes a string (Recorder in
+# KeyboardShortcuts does it in its initializer, so the Shortcuts settings
+# pane cannot open without KeyboardShortcuts_KeyboardShortcuts.bundle).
+for bundle in "$(dirname "$BIN")"/*_*.bundle; do
+    [ -d "$bundle" ] || continue
+    cp -R "$bundle" "$APP/Contents/Resources/"
+done
+if [ ! -d "$APP/Contents/Resources/MemoryClip_MemoryClip.bundle" ]; then
+    echo "error: MemoryClip_MemoryClip.bundle not found; the localization catalogue would be missing" >&2
     exit 1
 fi
-cp -R "$BUNDLE" "$APP/Contents/Resources/"
 
 # InfoPlist.strings, for the permission prompts macOS reads out of Info.plist.
 for lproj in Resources/*.lproj; do

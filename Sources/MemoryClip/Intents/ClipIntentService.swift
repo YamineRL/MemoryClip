@@ -63,14 +63,13 @@ final class ClipIntentService {
 
     /// Whether an intent may hand this clip's content out in clear.
     ///
-    /// A named seam, not dead code: the `isSecret` column is feat/secrets'
-    /// schema and does not exist on this branch, so nothing is withheld
-    /// yet. The integration branch turns this into `!clip.isSecret`, which
-    /// is why every read below funnels through it — secret rows are then
-    /// invisible to `latest`, come back from `search` carrying no
-    /// plaintext, and cannot be resolved for a copy.
+    /// A named seam, not dead code: every read below funnels through it, so
+    /// secret rows are invisible to `latest`, come back from `search`
+    /// carrying no plaintext, and cannot be resolved for a copy. The row's
+    /// ciphertext stays sealed for the panel alone — an intent answer is a
+    /// place a mask, not a plaintext, would travel.
     func isShareable(_ clip: ClipItem) -> Bool {
-        true
+        !clip.isSecret
     }
 
     /// The lock gate PRD 03 puts in front of everything but Open

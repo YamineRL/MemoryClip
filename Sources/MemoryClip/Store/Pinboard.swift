@@ -178,9 +178,9 @@ extension Pinboard {
     /// context's un-saved inserts are folded in: `create` and the import
     /// merge must both see the board a caller just made but has not stored.
     static func all(in context: ModelContext) -> [Pinboard] {
-        var boards = (try? context.fetch(
+        var boards = context.fetchLogged(
             FetchDescriptor<Pinboard>(sortBy: [SortDescriptor(\Pinboard.order)])
-        )) ?? []
+        ) ?? []
         // The mirror image on the way out: a row deleted but not yet saved
         // still answers a fetch, and a dead board must not keep answering
         // `named(_:)` or holding a chip spot for the rest of the statement.
