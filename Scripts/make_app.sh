@@ -174,4 +174,8 @@ echo "==> Wrote $APP/Contents/Resources/Metadata.appintents"
 # Ad-hoc signature: no Developer ID, no notarisation (local/personal use).
 codesign --force --sign - "$APP"
 
+# Self-contained check: every resource the app can ask for at runtime is
+# inside it — the missing-keyboard-shortcuts-bundle class of bug.
+./Scripts/verify_app.sh "$APP" "$(dirname "$BIN")"
+
 echo "OK: built $APP"
