@@ -226,6 +226,11 @@ final class ClipItem {
         set { kindRaw = newValue.rawValue }
     }
 
+    /// True while OCR has yet to attempt this clip; matches `ClipStore.pendingOCR`.
+    var isAwaitingOCR: Bool {
+        (isScreenshot || kind == .image) && !ocrAttempted
+    }
+
     init(
         uuid: UUID = UUID(),
         kind: ClipKind,

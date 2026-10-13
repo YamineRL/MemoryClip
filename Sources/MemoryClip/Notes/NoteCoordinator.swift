@@ -436,8 +436,18 @@ final class NoteCoordinator {
     func exportNote(for item: ClipItem) async -> Result<NoteReceipt, NoteError> {
         guard !item.isSecret else { return finish(.failure(.nothingToWrite)) }
         let uuid = item.uuid
-        let revision = item.contentRevision
-        if !item.refineAttempted, Self.isRefinementEnabled, let job = Self.job(for: item) {
+
+        // Wait (bounded) for OCR on a clip it has not reached yet.
+        if item.isAwaitingOCR, OCRCoordinator.isEnabled {
+            await waitForRecognition(of: uuid)
+        }
+
+        // Re-fetch: the clip may have changed during the wait.
+        guard let ready = store.item(withUUID: uuid), !ready.isSecret else {
+            return finish(.failure(.nothingToWrite))
+        }
+        let revision = ready.contentRevision
+        if !ready.refineAttempted, Self.isRefinementEnabled, let job = Self.job(for: ready) {
             let processed = await process(job)
             store.applyRefinement(
                 title: processed.refined.title,
@@ -475,6 +485,15 @@ final class NoteCoordinator {
             return finish(.failure(error))
         } catch {
             return finish(.failure(.writeFailed(error.localizedDescription)))
+        }
+    }
+
+    /// Waits up to two minutes for OCR to attempt `uuid`.
+    private func waitForRecognition(of uuid: UUID) async {
+        for _ in 0..<240 where !Task.isCancelled {
+            guard let current = store.item(withUUID: uuid),
+                  current.isAwaitingOCR else { return }
+            try? await Task.sleep(for: .milliseconds(500))
         }
     }
 

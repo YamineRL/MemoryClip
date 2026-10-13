@@ -3978,7 +3978,9 @@ struct PanelContentView: View {
     /// or a screenshot Vision could not read simply does nothing — better
     /// than starting an export that can only end in a failure alert.
     private func saveSelectedNote() {
-        guard let item = selectedItem, ClipDisplay.canSaveNote(item) else { return }
+        // Also allowed while OCR is pending; the export waits for it.
+        guard let item = selectedItem,
+              ClipDisplay.canSaveNote(item) || (item.isAwaitingOCR && !item.isSecret) else { return }
         actions.saveNote(item)
     }
 

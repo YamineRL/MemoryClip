@@ -65,12 +65,14 @@ final class NotePipelineTests: XCTestCase {
         // run: the pipeline should be exercised in the layout it actually
         // ships in, which is notes filed by date.
         UserDefaults.standard.set(true, forKey: NoteSettingsKeys.vaultDateFolders)
+        UserDefaults.standard.set(false, forKey: OCRCoordinator.enabledKey)
         FolderBookmark.store(vault, key: NoteSettingsKeys.vaultBookmark)
     }
 
     override func tearDownWithError() throws {
         FolderBookmark.clear(key: NoteSettingsKeys.vaultBookmark)
         UserDefaults.standard.set(false, forKey: NoteSettingsKeys.autoNoteEnabled)
+        UserDefaults.standard.set(false, forKey: OCRCoordinator.enabledKey)
         try? FileManager.default.removeItem(at: root)
     }
 
@@ -190,13 +192,49 @@ final class NotePipelineTests: XCTestCase {
         let screenshot = try writeScreenshot(named: "Screenshot 4.png")
         let store = try ClipStore(inMemory: true)
         let item = try XCTUnwrap(store.insertScreenshot(at: screenshot))
-        // Recognition found nothing legible.
+        // Recognition ran and found nothing legible.
+        store.applyOCR(nil, toClipWith: item.uuid, revision: 0)
 
         let coordinator = NoteCoordinator(store: store, refiner: StubRefiner())
         let result = await coordinator.exportNote(for: item)
 
         guard case .failure(let error) = result else {
             return XCTFail("an empty clip must not produce an empty note")
+        }
+        XCTAssertEqual(error, .nothingToWrite)
+        XCTAssertTrue(try noteFiles().isEmpty)
+    }
+
+    func testAPendingScreenshotWaitsForRecognitionsVerdict() async throws {
+        UserDefaults.standard.set(true, forKey: OCRCoordinator.enabledKey)
+        let screenshot = try writeScreenshot(named: "Screenshot 6.png")
+        let store = try ClipStore(inMemory: true)
+        let item = try XCTUnwrap(store.insertScreenshot(at: screenshot))
+
+        let coordinator = NoteCoordinator(store: store, refiner: StubRefiner())
+        // The export holds until OCR reports.
+        let pending = Task { await coordinator.exportNote(for: item) }
+        try await Task.sleep(for: .milliseconds(300))
+        store.applyOCR("recognised text worth keeping as a note", toClipWith: item.uuid, revision: 0)
+        let result = await pending.value
+
+        guard case .success = result else {
+            return XCTFail("once the verdict lands the note must write: \(result)")
+        }
+        XCTAssertFalse(try noteFiles().isEmpty)
+    }
+
+    func testAPendingScreenshotWithRecognitionOffRefusesFast() async throws {
+        let screenshot = try writeScreenshot(named: "Screenshot 7.png")
+        let store = try ClipStore(inMemory: true)
+        let item = try XCTUnwrap(store.insertScreenshot(at: screenshot))
+        // OCR is off (setUp), so the export refuses without waiting.
+
+        let coordinator = NoteCoordinator(store: store, refiner: StubRefiner())
+        let result = await coordinator.exportNote(for: item)
+
+        guard case .failure(let error) = result else {
+            return XCTFail("expected a refusal, got \(result)")
         }
         XCTAssertEqual(error, .nothingToWrite)
         XCTAssertTrue(try noteFiles().isEmpty)
