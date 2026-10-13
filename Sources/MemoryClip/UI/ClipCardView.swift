@@ -694,7 +694,8 @@ struct ClipCardView: View {
     /// Shared with the panel's ⌘S / `n` keys, which have to offer the action
     /// on exactly the clips this menu does.
     private var canSaveNote: Bool {
-        ClipDisplay.canSaveNote(item)
+        // Also offered while OCR is pending; the export waits for it.
+        ClipDisplay.canSaveNote(item) || (item.isAwaitingOCR && !item.isSecret)
     }
 
     /// Whether this clip may be edited in place.
