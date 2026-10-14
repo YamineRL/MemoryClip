@@ -253,7 +253,12 @@ footer a { margin: 0 10px; }
       <div class="card">
         <div class="icon">📋</div>
         <h3>A searchable history</h3>
-        <p>Press <kbd>⇧⌘V</kbd> anywhere and every recent copy is there — text, links, images, files, colours. Type to find one, press Return to paste it.</p>
+        <p>Press <kbd>⇧⌘V</kbd> anywhere and every recent copy is there — text, links, images, files, colours. Type a sentence to find one, <kbd>Return</kbd> to paste it. A <code>key:value</code> operator narrows to when (<code>after:7d</code>) or where (<code>app:Safari</code>) it came from.</p>
+      </div>
+      <div class="card">
+        <div class="icon">📌</div>
+        <h3>Pinboards for the keepers</h3>
+        <p>Named sets — addresses, canned replies, commands — as chips over the clips. <kbd>⌘P</kbd> files one under a board, and inside a board clips keep the order you put them in.</p>
       </div>
       <div class="card">
         <div class="icon">🔍</div>
@@ -263,12 +268,12 @@ footer a { margin: 0 10px; }
       <div class="card">
         <div class="icon">🌍</div>
         <h3>Translates as you look</h3>
-        <p>Copy something in a language you don't read — or screenshot it — and the preview shows it in one you do.</p>
+        <p>Copy something in a language you don't read — or screenshot it — and the preview shows it in one you do, a <kbd>⌘T</kbd> away from the original.</p>
       </div>
       <div class="card">
         <div class="icon">📝</div>
         <h3>Turns a screenshot into a note</h3>
-        <p>One key sends it to Obsidian, a folder of Markdown files, Apple Notes or a Shortcut — with the picture and the text it found.</p>
+        <p>One key sends it to Obsidian, a folder of Markdown files, Apple Notes or a Shortcut — with the picture and the text it found, filed by the day you captured it.</p>
       </div>
       <div class="card">
         <div class="icon">🔒</div>
@@ -276,9 +281,19 @@ footer a { margin: 0 10px; }
         <p>No sync, no accounts, no analytics. Everything runs on your machine, including the language models. The one network call it can make is an update check you switch on yourself.</p>
       </div>
       <div class="card">
+        <div class="icon">🗝️</div>
+        <h3>Keeps your keys encrypted</h3>
+        <p>Copy an API key, a token or a one-time code and it is sealed with a key that lives in this Mac's Secure Enclave. The history shows a mask; the value asks for Touch ID before it is shown or pasted.</p>
+      </div>
+      <div class="card">
+        <div class="icon">🔗</div>
+        <h3>Cleans the links you copy</h3>
+        <p>Tracking parameters — <code>fbclid</code>, <code>gclid</code> and friends — are stripped on the way in, and the cleaned link goes straight back on the clipboard. Your next ⌘V pastes it without opening the panel.</p>
+      </div>
+      <div class="card">
         <div class="icon">📅</div>
-        <h3>Puts a date in your calendar</h3>
-        <p>Copy an invitation, or screenshot one, and <kbd>⌘E</kbd> makes it an event — the time, the Zoom link, the address. It can do it on its own for the ones that are plainly appointments.</p>
+        <h3>Offers a date as an event</h3>
+        <p>Copy an invitation, or screenshot one, and <kbd>⌘E</kbd> makes it an event — the time, the Zoom link, the address. With suggestions on, an appointment-shaped clip is <em>offered</em>: Add, Edit…, or Not Now, and nothing is written until you say so.</p>
       </div>
     </div>
   </div>
@@ -289,12 +304,12 @@ footer a { margin: 0 10px; }
     <h2>A look at it</h2>
     <p class="lede">The panel opens over whatever you're doing and closes the moment you're done.</p>
     <figure>
-      <div class="shot"><img src="screenshots/panel.svg" alt="The MemoryClip panel floating over the desktop: a search field, filter chips, and a row of clip cards each showing a keyboard shortcut"></div>
+      <div class="shot"><img src="screenshots/panel.svg" alt="The MemoryClip panel floating over the desktop: a search field, filter chips, a pinboard strip, and a row of clip cards each showing a keyboard shortcut"></div>
       <figcaption>Press ⇧⌘V from any app. Newest first, already focused. ⌘S saves one as a note.</figcaption>
     </figure>
     <figure>
-      <div class="shot"><img src="screenshots/preview.svg" alt="The panel with the preview pane open under the clip strip, showing a Chinese clip with its English translation above it"></div>
-      <figcaption>Space opens a preview. A clip in another language carries its translation on top.</figcaption>
+      <div class="shot"><img src="screenshots/preview.svg" alt="The panel with the preview pane open under the clip strip, showing a Chinese clip with its English translation on a tab beside the original"></div>
+      <figcaption>Space opens a preview. A clip in another language carries its translation a ⌘T away.</figcaption>
     </figure>
   </div>
 </section>
@@ -361,13 +376,16 @@ brew trust yaminerl/memoryclip &amp;&amp; brew install --cask memoryclip</code><
           <tr><td><kbd>⇧Return</kbd></td><td>Paste it as plain text, dropping fonts and colours</td></tr>
           <tr><td><kbd>⌘1</kbd>–<kbd>⌘9</kbd></td><td>Paste any of the first nine directly</td></tr>
           <tr><td><kbd>⌘C</kbd></td><td>Copy the selected clip, leaving the panel open</td></tr>
+          <tr><td><kbd>⌘I</kbd></td><td>Edit the clip in the preview pane</td></tr>
           <tr><td><kbd>Space</kbd></td><td>Preview the clip; again on a picture for full size</td></tr>
+          <tr><td><kbd>⌘T</kbd></td><td>Flip the preview between the original and its translation</td></tr>
           <tr><td><kbd>⌘S</kbd></td><td>Save the clip as a note</td></tr>
           <tr><td><kbd>⌘E</kbd></td><td>Add the clip to your calendar, if it names a date</td></tr>
           <tr><td><kbd>Esc</kbd></td><td>Back out, one layer at a time</td></tr>
         </tbody>
       </table>
     </div>
+    <p style="margin-top:28px;color:var(--ink-soft)">Shortcuts and Spotlight can reach the history too: four App Intents — <strong>Search Clips</strong>, <strong>Get Latest Clip</strong>, <strong>Copy Clip</strong> and <strong>Open MemoryClip</strong> — so an automation can grab what you copied without you touching the panel. All four are read-only, and secret clips are invisible to them.</p>
   </div>
 </section>
 
@@ -382,7 +400,7 @@ brew trust yaminerl/memoryclip &amp;&amp; brew install --cask memoryclip</code><
       </div>
       <div class="card">
         <h3>It skips your passwords</h3>
-        <p>Copies marked confidential by password managers are ignored, and card numbers are filtered out of what it reads. You can lock the whole history behind Touch ID.</p>
+        <p>Copies marked confidential by password managers are ignored, and card numbers are filtered out of what it reads. An API key or a one-time code is recognised and kept encrypted — sealed with a key in the Secure Enclave that never leaves this Mac — and asking for one back needs Touch ID. You can lock the whole history behind Touch ID, too.</p>
       </div>
       <div class="card">
         <h3>It asks for almost nothing</h3>
@@ -390,7 +408,7 @@ brew trust yaminerl/memoryclip &amp;&amp; brew install --cask memoryclip</code><
       </div>
       <div class="card">
         <h3>It forgets on a schedule</h3>
-        <p>The newest 5,000 clips are kept and anything older than 90 days is swept away. Both numbers are yours to change, up to Unlimited and a year, and Clear All History is one menu item.</p>
+        <p>The newest 5,000 clips are kept and anything older than 90 days is swept away. Both numbers are yours to change, up to Unlimited and a year, and Clear All History is one menu item. Pinned clips are exempt from the sweep.</p>
       </div>
     </div>
   </div>
