@@ -18,7 +18,9 @@ A local-first menu-bar clipboard manager for macOS: keyboard-first history of ev
 you copy. It also notices your screenshots, reads the text out of them — 30 languages,
 translated into your own when it is not one you read — and turns one into a note in
 **[Obsidian](https://obsidian.md)**, any other folder of Markdown, Apple Notes, or a
-Shortcut.
+Shortcut. Copied links arrive with their tracking parameters stripped, API keys and
+one-time codes are kept encrypted behind the Secure Enclave, and an invitation can
+become a calendar event — offered for your approval rather than written silently.
 
 **No network calls unless you ask for one**: no sync, no analytics, no accounts. Clips
 live in a local SwiftData store, and the models that read, tidy and translate run here too.
@@ -32,16 +34,16 @@ Requires macOS 26 on Apple silicon.
 
 <table>
   <tr>
-    <td colspan="2"><img src="docs/screenshots/panel.svg" alt="The clipboard panel: search field, filter chips and a row of clip cards with keyboard shortcuts"></td>
+    <td colspan="2"><img src="docs/screenshots/panel.svg" alt="The clipboard panel: search field, filter chips, a pinboard strip and a row of clip cards with keyboard shortcuts"></td>
   </tr>
   <tr>
     <td colspan="2" align="center"><em>The panel — <strong>⇧⌘V</strong> from anywhere.</em></td>
   </tr>
   <tr>
-    <td colspan="2"><img src="docs/screenshots/preview.svg" alt="The panel with the preview pane open under the clip strip: a Chinese clip, with its English translation above it"></td>
+    <td colspan="2"><img src="docs/screenshots/preview.svg" alt="The panel with the preview pane open under the clip strip: a Chinese clip, with its English translation on a tab beside the original"></td>
   </tr>
   <tr>
-    <td colspan="2" align="center"><em>Preview pane — <code>Space</code> to open, again for Quick Look.</em></td>
+    <td colspan="2" align="center"><em>Preview pane — <code>Space</code> to open, again for Quick Look, <code>⌘T</code> to flip the translation.</em></td>
   </tr>
   <tr>
     <td width="50%" align="center"><img src="docs/screenshots/menu-bar.svg" alt="The menu-bar dropdown listing recent clips and app commands"></td>
@@ -117,6 +119,7 @@ irreversible one kept a separator away from the item people actually come to cli
 | `⌘S` | Save the selected clip as a note, if it carries any text |
 | `⌘E` | Add the selected clip to the calendar, if it names a date |
 | `⌘I` | Edit the selected clip in the preview pane |
+| `⌘T` | Flip the preview between the original and its translation |
 | `⌘P` | File the selected clip under a pinboard |
 | `⌥←` `⌥→` | Move between **All**, **Pinned** and the pinboards |
 | `⌃1`–`⌃9` | Jump to the pinboard at that strip position |
@@ -165,14 +168,16 @@ and a value with spaces takes quotes (`app:"Google Chrome"`):
 | Operator | Narrows to | Values |
 | --- | --- | --- |
 | `app:` | clips from an app, matched by name prefix | `app:saf` reaches Safari |
-| `is:` | a state | `pinned`, `screenshot`, `noted`, `event`, `translated` |
+| `is:` | a state | `pinned`, `screenshot`, `noted`, `event`, `translated`, `secret` |
+| `in:` | a pinboard, matched by name prefix (`in:pinned` is Pinned) | your boards' names |
 | `type:` | a clip kind | `text`, `image`, `link`, `file`, `color` |
 | `after:` | copied on or after | `today`, `yesterday`, `2026-09-01`, `7d`, `2w`, `3m` |
 | `before:` | copied before | the same values |
 | `on:` | copied on one day | the same values |
 
-Typing a key and `:` offers the values it knows, source apps most-used first, with
-`↓`/`↑` to choose and `Return` or `Tab` to accept; `Esc` closes the list. A lone `?` in
+Typing a key and `:` offers the values it knows — source apps most-used first, pinboards
+in strip order — with `↓`/`↑` to choose and `Return` or `Tab` to accept; `Esc` closes the
+list. A lone `?` in
 the field shows this whole table as a cheat-sheet, a click on a previewed clip's app name
 filters to it (`app:"Name"`), and an empty result names its constraints in words with a
 **Clear filters** button that keeps the words and drops the operators.
@@ -185,6 +190,15 @@ order. Colours convert between hex, `rgb()` and `hsl()`; a Unix timestamp become
 and back; and a clip can be dragged straight out of the panel into any app, a screenshot
 travelling as the file it already is rather than as a copy of its bytes.
 
+**Links arrive cleaned.** A copied URL sheds its tracking parameters on the way in —
+`fbclid`, `gclid`, `igshid` and the rest are dropped on every host, `si` only where
+YouTube or Spotify is the one issuing it — and the cleaned link goes straight back on
+the clipboard, so your next ⌘V pastes it without opening the panel at all. The same link
+copied with two different identifiers deduplicates to one clip. The preview names what
+was removed (`Cleaned · removed igsh`), and **Settings → Privacy → Links** can switch
+the whole thing off, stop it shedding `utm_*` campaign parameters, or spare particular
+hosts you want to keep whole.
+
 **Pinboards** turn the one flat pin list into named sets: addresses, canned replies,
 commands, signatures. A strip under the search field holds **All**, **Pinned** and one
 chip per board, with `+` at the end to name a new one. Pinning keeps a clip in Pinned;
@@ -196,13 +210,21 @@ put them in (`⌥⇧←` and `⌥⇧→` slide the selected clip along it), and 
 board you are looking at. Boards ride along in a JSON export and come back on import.
 
 **Translation** — off by default, **Settings → Translation → Clip preview**. Copy
-something in a language you do not read and the preview shows it in one you do, above the
+something in a language you do not read and the preview shows it in one you do, beside the
 text as it was copied; a screenshot or an image is translated from the text recognised
 inside it. The target starts as whatever language this Mac is set to read. It happens when
 you open the preview rather than when you copy — a clipboard is mostly things nobody looks
 at twice — which costs a second or two the first time and nothing afterwards, since the
 answer is kept on the clip. The work outlives the panel, so clicking away mid-translation
 loses nothing.
+
+The two texts sit on **Original** and **Translation** tabs in the pane — the second
+named for the language it holds — and **⌘T** flips
+between them. When a translation finishes arriving, the pane switches to it once — unless
+you had already picked a tab for this clip, or you last picked the original, in which case
+it stays exactly where you put it. Your pick is remembered for the rest of the session, so
+the next clip in that language opens the way you prefer, and the language pair
+("Chinese, Simplified → English") rides along beside the tabs.
 
 **Vim navigation** — off by default, **Settings → Panel**. Properly modal, the mode shown
 in the search bar. In NORMAL:
@@ -259,8 +281,9 @@ history and Spotlight can run them directly:
 
 If the app lock (Touch ID) is on, every intent but Open asks for it first — Open leaves
 it to the panel, which gates itself like the hotkey does. All four are read-only: no
-intent edits or deletes history. (Once secrets land, they are never handed out in
-clear: they are skipped entirely or returned with only their masked label.)
+intent edits or deletes history, and secret clips are invisible to them — a secret never
+appears in an answer, not even as a masked row, so neither Shortcuts nor Spotlight can
+learn that one exists.
 
 ## Screenshots into notes
 
@@ -305,7 +328,9 @@ Three destinations, in **Settings → Notes**:
 | **Shortcut** | Runs a Shortcut with the note as its input, so Bear, Things, DEVONthink or anything else Shortcuts reaches can be the destination. | A Shortcut name |
 
 Notes are written when you ask, or automatically above a text threshold if you turn on
-**Write a note for every screenshot**. A clip that has one reads `Screenshot · noted` and
+**Write a note for every screenshot**. Asking on a screenshot whose text has not been
+recognised yet waits for the recognition rather than failing — the note is written as
+soon as the words are there. A clip that has one reads `Screenshot · noted` and
 offers **Update Note**, which rewrites the same file — even one you moved or renamed
 inside your vault.
 
@@ -404,15 +429,20 @@ video-call link (Zoom, Meet, Teams, Webex and the rest) and a postal address —
 the title from the line above the details, which is where an invitation puts its subject.
 A date with no clock time becomes an all-day event rather than an hour at noon.
 
-Turn on **Add events automatically** in **Settings → Calendar** and a clip that is plainly
-an appointment is filed without being asked. *Plainly* is the whole of it: the text has to
-name a time of day **and** carry either a meeting link or an address. A bare date does not
-qualify, and that is deliberate — "Q3 ends September 30" is a date, a receipt has a date,
-an article has a date, and a clipboard manager that turned every one of them into a
-calendar entry would be something you switch off rather than something you rely on.
-Everything weaker still gets the button.
+Turn on **Suggest calendar events** in **Settings → Calendar** and a clip that is plainly
+an appointment is **offered** rather than written: a notification carrying the title, the
+day and the place it detected, with **Add**, **Edit…** and **Not Now**. *Add* creates the
+event; *Edit…* opens it as a draft in Calendar, where you can fix the title or move it
+before it exists; *Not Now* leaves nothing behind. While the setting is on, the panel's
+own **⌘E** opens the same review — you see what was detected before anything is written.
+*Plainly* is the whole of it: the text has to name a time of day **and** carry either a
+meeting link or an address. A bare date does not qualify, and that is deliberate — "Q3
+ends September 30" is a date, a receipt has a date, an article has a date, and a clipboard
+manager that turned every one of them into a calendar entry would be something you switch
+off rather than something you rely on. Everything weaker still gets the button.
 
-An automatic event announces itself with a notification carrying **Undo**, which takes it
+Every added event — however it was added — announces itself with a notification carrying
+**Open in Calendar**, which lands on the event's own day, and **Undo**, which takes it
 back out again. Either way the clip row reads `· in calendar`.
 
 ## Privacy and security
@@ -509,9 +539,9 @@ where you left it.
 | Clipboard | **History** | History cap (to Unlimited), retention window, disk use on this Mac, export |
 | Clipboard | **Screenshots** | Screenshot capture, the folder to watch |
 | Clipboard | **Panel** | Image OCR, vim navigation |
-| Clipboard | **Privacy** | Touch ID lock, sensitive-content filtering, permission notes |
+| Clipboard | **Privacy** | Touch ID lock, sensitive-content filtering, secrets, link cleaning, excluded apps, permission notes |
 | Clip actions | **Notes** | The on-device model, note destination, automatic notes |
-| Clip actions | **Calendar** | Automatic events, their notification, how long an event runs |
+| Clip actions | **Calendar** | Event suggestions, their notification, how long an event runs |
 | Clip actions | **Translation** | Both translators — the languages notes are read in, and the preview's own switch and target |
 | — | **About** | Version, privacy summary, replay the welcome tour |
 
@@ -526,7 +556,7 @@ notes and the panel's preview alike, which is why its two halves are headed **No
 ./Scripts/make_app.sh    # release build + dist/MemoryClip.app (ad-hoc signed)
 ./Scripts/make_dmg.sh    # the above, plus dist/MemoryClip-<version>.dmg
 swift build && swift run # debug build, run from it
-swift test               # 1064 unit tests (benchmarks skipped)
+swift test               # 1408 unit tests (benchmarks skipped)
 ```
 
 `make_app.sh` regenerates `Resources/AppIcon.icns` if it is missing, so
@@ -561,9 +591,11 @@ app, the DMG name, the tag and the cask all follow.
 ```
 Sources/MemoryClip/
 ├── App/        AppKit entry, AppDelegate wiring, HotKeys, appearance, logging
-├── Capture/    PasteboardWatcher, ContentParser, SensitiveFilter, ExcludedApps,
-│               TextDetector, ScreenshotDetector + ScreenshotWatcher
-├── Store/      ClipItem (SwiftData), ClipStore (insert/dedup/fetch, cap, retention)
+├── Capture/    PasteboardWatcher, ContentParser, SensitiveFilter, SecretDetector,
+│               ExcludedApps, TextDetector, ScreenshotDetector + ScreenshotWatcher
+├── Store/      ClipItem (SwiftData), ClipStore (insert/dedup/fetch, cap, retention),
+│               Pinboard
+├── Links/      LinkCleaner + LinkRules (tracking-parameter stripping), LinkSettings
 ├── Actions/    PasteService, ClipDragProvider, TransformService, CalcEvaluator,
 │               QRService, ExportService, OCRService + OCRCoordinator
 ├── Calendar/   EventDetector + DetectedEvent, EventSink + EventKitSink,
@@ -571,7 +603,10 @@ Sources/MemoryClip/
 ├── Notes/      NoteRefiner + FoundationModelsRefiner, NoteTranslator + AppleTranslator,
 │               ClipTranslation (the preview's own), NoteComposer,
 │               NoteSink (Markdown / Notes / Shortcut), NoteCoordinator
-├── Security/   AppLockService (Touch ID gate)
+├── Intents/    App Intents for Shortcuts and Spotlight (Search, Latest, Copy, Open)
+├── Security/   AppLockService (Touch ID gate), SecretsService + SecretVault +
+│               SecretSealer (Secure Enclave), PermissionProbe + PermissionRecovery
+├── Updates/    UpdateChecker + UpdateFeed + UpdateNotifier (the optional daily check)
 ├── UI/         PanelController + PanelView, ClipCardView, PreviewView, VimNavigator,
 │               HeldKeyPacer, QuickLook, StatusController, SettingsWindow,
 │               Onboarding, DesignSystem
