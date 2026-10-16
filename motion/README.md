@@ -1,4 +1,4 @@
-# motion — drawn demos of the panel
+# motion: drawn demos of the panel
 
 The GIFs in the README and the videos on the site are not screen recordings. Each is
 an HTML page that draws the panel with the app's own measurements and colours, and
@@ -7,7 +7,7 @@ filming someone's clipboard; this one has nothing on it but [`fixtures.json`](fi
 
 ```
 motion/
-├── fixtures.json        every string any scene shows — clips, times, search text
+├── fixtures.json        every string any scene shows: clips, times, search text
 ├── kit/kit.css          the panel: tokens, cards, preview pane, keycaps, toasts
 ├── kit/kit.js           buildPanel(), makeCard(), easing, typed(), Motion.at()
 ├── kit/node.mjs         static server + headless browser, shared by the scripts
@@ -26,7 +26,7 @@ its default path; point `BROWSER` at another binary (Chrome, Chromium, Edge) to 
 
 ```sh
 cd motion
-npm install                 # puppeteer-core only — it drives the browser you have
+npm install                 # puppeteer-core only; it drives the browser you have
 node render.mjs             # every scene → out/
 node render.mjs hero search # just those
 node check-fixtures.mjs     # must print PASS
@@ -40,7 +40,7 @@ frames on any machine, at any speed.
 | Flag | Default | |
 | --- | --- | --- |
 | `--fps` | `30` | frames per second sampled from the scene |
-| `--scale` | `2` | device pixel ratio — Retina-sharp frames, so text stays readable |
+| `--scale` | `2` | device pixel ratio: Retina-sharp frames, so text stays readable |
 | `--formats` | `gif,mp4,webm` | which deliveries to encode from the master |
 | `--gif-width` / `--gif-fps` | `1600` / `15` | 2x the ~800 px the README shows it at; the videos are not downscaled |
 | `--out` | `out/` | where everything lands |
@@ -54,7 +54,7 @@ node render.mjs --fps 60 --formats mp4
 Every render writes `out/<scene>.master.mkv` first: lossless RGB (`libx264rgb -crf 0`),
 which Final Cut, Premiere, DaVinci Resolve and After Effects all import. At
 `--fps 60` that is a 2400 px wide, 60 fps source with no compression
-artefacts — cut it, grade it, slow it down. The MP4 next to it is for a quick look.
+artefacts: cut it, grade it, slow it down. The MP4 next to it is for a quick look.
 Masters are big and stay out of git (`out/` is ignored).
 
 For a different frame, change the scene's height (`Motion.size(…)`) or the viewport
