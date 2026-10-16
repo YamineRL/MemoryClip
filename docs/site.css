@@ -111,6 +111,17 @@ p { margin: 0 0 12px; }
   box-shadow: var(--shadow); overflow: hidden;
 }
 .frame video, .frame img { width: 100%; border-radius: 9px; aspect-ratio: 1200 / 720; object-fit: cover; background: #1c2a4a; }
+.film { position: relative; }
+.frame .film video { aspect-ratio: 16 / 9; }
+.play {
+  position: absolute; inset: 0; margin: auto; width: 112px; height: 112px; border: 0; cursor: pointer;
+  border-radius: 26px; background: linear-gradient(#6775f1, #4148c6); color: #fff;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.25), 0 18px 40px rgba(20,24,90,.45);
+  display: grid; place-items: center; transition: transform .2s;
+}
+.play:hover { transform: scale(1.06); }
+.play svg { width: 50px; height: 50px; fill: currentColor; margin-left: 4px; }
+.play[hidden] { display: none; }
 .caption { display: flex; justify-content: space-between; align-items: center; gap: 16px; padding: 14px 4px 2px; color: var(--muted); font-size: 14px; }
 
 /* ---------- sections ---------- */

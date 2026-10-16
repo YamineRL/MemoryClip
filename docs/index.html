@@ -43,28 +43,15 @@
       <a href="https://www.producthunt.com/products/memoryclip?embed=true&amp;utm_source=badge-featured&amp;utm_medium=badge&amp;utm_campaign=badge-memoryclip" target="_blank" rel="noopener noreferrer">Product Hunt</a></p>
 
     <div class="frame">
-      <video id="hero-video" autoplay muted playsinline loop preload="auto" poster="media/hero.jpg" aria-label="The MemoryClip panel opening with ⇧⌘V, Space opening the preview on a Chinese clip, and ⌘T flipping it to its English translation">
-        <source src="media/hero.webm" type="video/webm">
-        <source src="media/hero.mp4" type="video/mp4">
-      </video>
-      <div class="caption">
-        <span>Press <kbd>⇧⌘V</kbd> from any app. <kbd>Space</kbd> opens a preview; a clip in another language carries its translation a <kbd>⌘T</kbd> away.</span>
-        <button class="btn ghost small" id="replay" type="button">↻ Replay</button>
+      <div class="film">
+        <video id="film" playsinline preload="none" poster="media/showreel.jpg" aria-label="A 30-second film of MemoryClip: search, translation, clean links, calendar invites, screenshot notes, pinboards and Touch ID-locked secrets">
+          <source src="https://media.flyingdesk.app/memoryclip/showreel.mp4" type="video/mp4">
+        </video>
+        <button class="play" id="play" type="button" aria-label="Play the 30-second film"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.6v12.8c0 .8.9 1.3 1.6.9l10-6.4c.6-.4.6-1.3 0-1.7l-10-6.4C8.9 4.3 8 4.8 8 5.6z"/></svg></button>
       </div>
     </div>
   </div>
 </header>
-
-<section id="film">
-  <div class="shell">
-    <p class="eyebrow">The 30-second tour</p>
-    <div class="frame">
-      <video controls playsinline preload="none" poster="https://media.flyingdesk.app/memoryclip/showreel.jpg" aria-label="A 30-second film of MemoryClip: search, translation, clean links, calendar invites, screenshot notes, pinboards and Touch ID-locked secrets">
-        <source src="https://media.flyingdesk.app/memoryclip/showreel.mp4" type="video/mp4">
-      </video>
-    </div>
-  </div>
-</section>
 
 <section id="features">
   <div class="shell">
@@ -362,12 +349,11 @@ brew trust yaminerl/memoryclip &amp;&amp; brew install --cask memoryclip</code><
 const nav = document.getElementById('nav');
 addEventListener('scroll', () => nav.classList.toggle('scrolled', scrollY > 8), { passive: true });
 
-// Videos: the hero autoplays; the feature cards play while on screen. With
-// reduced motion, every one stays on its poster until asked.
+// Videos: the film waits for its play button; the feature cards play while on
+// screen. With reduced motion, every one stays on its poster until asked.
 const still = matchMedia('(prefers-reduced-motion: reduce)').matches;
-const hero = document.getElementById('hero-video');
-if (still) { hero.removeAttribute('autoplay'); hero.pause(); hero.load(); }
-document.getElementById('replay').addEventListener('click', () => { hero.currentTime = 0; hero.play(); });
+const film = document.getElementById('film');
+document.getElementById('play').addEventListener('click', (e) => { e.currentTarget.hidden = true; film.controls = true; film.play(); });
 if (!still && 'IntersectionObserver' in window) {
   const io = new IntersectionObserver((es) => es.forEach((e) => (e.isIntersecting ? e.target.play().catch(() => {}) : e.target.pause())), { threshold: 0.35 });
   document.querySelectorAll('video[data-play]').forEach((v) => io.observe(v));
