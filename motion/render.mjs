@@ -26,6 +26,17 @@ const outDir = opt('out', join(root, 'out'));
 // Retina screen; a GIF downscaled further is text nobody can read
 const gifWidth = +opt('gif-width', 1600);
 const gifFps = +opt('gif-fps', 15);
+// a film rendered at --scale 2 is supersampled: the videos are scaled back down
+// to this width (e.g. 1920 for a 1920 css px scene), the master keeps every pixel
+const videoWidth = +opt('video-width', 0);
+// --at 0,2.5,14.8: write those moments as PNGs to look at, and encode nothing
+const stills = opt('at', '');
+// --grain 6: a film's dark gradients come out of the browser in 8-bit steps, and
+// an encoder turns those steps into rings. A faint seeded grain on the full-size
+// master, before the downscale, dithers them into a ramp; the master stays clean.
+// It also tags the mp4 as BT.709, which is what players assume for HD.
+const grain = +opt('grain', 0);
+const crf = opt('crf', grain ? '16' : '20');
 
 const all = (await readdir(join(root, 'scenes'))).filter((f) => f.endsWith('.html')).map((f) => f.slice(0, -5));
 const scenes = args.filter((a) => !a.startsWith('--')).length ? args.filter((a) => !a.startsWith('--')) : all;
@@ -45,7 +56,17 @@ try {
       throw new Error(`${name} never became ready: ${errors.join('; ') || 'no page error'}`);
     });
     const duration = await page.evaluate('Motion.duration');
-    await page.setViewport({ width: 1200, height: await page.evaluate('Motion.height'), deviceScaleFactor: scale });
+    const posterAt = (await page.evaluate('Motion.poster')) ?? duration * 0.6;
+    await page.setViewport({ width: (await page.evaluate('Motion.width')) || 1200, height: await page.evaluate('Motion.height'), deviceScaleFactor: scale });
+    if (stills) {
+      for (const at of stills.split(',')) {
+        await page.evaluate(`seek(${+at})`);
+        await page.screenshot({ type: 'png', path: join(outDir, `${name}@${(+at).toFixed(2)}.png`) });
+      }
+      console.log(`${name}: stills at ${stills}`);
+      await page.close();
+      continue;
+    }
     const frames = Math.round(duration * fps);
     // frames go straight into one ffmpeg that writes the lossless master; the
     // delivery formats are re-encoded from it so each sees identical pixels
@@ -65,19 +86,25 @@ try {
       p.on('close', (c) => (c ? rej(new Error('ffmpeg failed: ' + argv.join(' '))) : res()));
     });
     const out = (ext) => join(outDir, `${name}.${ext}`);
+    const down = videoWidth ? ['-vf', `scale=${videoWidth}:-2:flags=lanczos`] : [];
+    const film = grain
+      ? ['-vf', `format=gbrp,noise=alls=${grain}:allf=t:all_seed=7,scale=${videoWidth || 'iw'}:-2:flags=lanczos+accurate_rnd+full_chroma_int:out_color_matrix=bt709,format=yuv420p`,
+          '-tune', 'grain', '-colorspace', 'bt709', '-color_primaries', 'bt709', '-color_trc', 'bt709']
+      : [...down, '-pix_fmt', 'yuv420p'];
     if (formats.includes('gif')) {
       const vf = `fps=${gifFps},scale=${gifWidth}:-1:flags=lanczos`;
       await enc(['-vf', `${vf},split[a][b];[a]palettegen=max_colors=256:stats_mode=diff[p];[b][p]paletteuse=dither=none:diff_mode=rectangle`, '-loop', '0', out('gif')]);
     }
-    if (formats.includes('mp4')) await enc(['-c:v', 'libx264', '-crf', '20', '-preset', 'slow', '-pix_fmt', 'yuv420p', '-movflags', '+faststart', '-an', out('mp4')]);
-    if (formats.includes('webm')) await enc(['-c:v', 'libvpx-vp9', '-crf', '32', '-b:v', '0', '-pix_fmt', 'yuv420p', '-an', out('webm')]);
+    if (formats.includes('mp4')) await enc([...film, '-c:v', 'libx264', '-crf', crf, '-preset', 'slow', '-movflags', '+faststart', '-an', out('mp4')]);
+    if (formats.includes('webm')) await enc([...down, '-c:v', 'libvpx-vp9', '-crf', '32', '-b:v', '0', '-pix_fmt', 'yuv420p', '-an', out('webm')]);
     // the poster the site shows before the video loads; frame 0 is an empty
-    // desktop in every scene, so take one from the middle where the panel is up
+    // desktop in every scene, so take one from the middle where the panel is up,
+    // unless the scene names its own (a film's poster is its last frame)
     const enc2 = (argv) => new Promise((res, rej) => {
-      const p = spawn('ffmpeg', ['-y', '-loglevel', 'error', '-ss', String(duration * 0.6), '-i', master, ...argv], { stdio: ['ignore', 'ignore', 'inherit'] });
+      const p = spawn('ffmpeg', ['-y', '-loglevel', 'error', '-ss', String(posterAt), '-i', master, ...argv], { stdio: ['ignore', 'ignore', 'inherit'] });
       p.on('close', (c) => (c ? rej(new Error('poster failed')) : res()));
     });
-    await enc2(['-frames:v', '1', '-q:v', '3', out('jpg')]);
+    await enc2([...down, '-frames:v', '1', '-q:v', '3', out('jpg')]);
     console.log(`${name}: ${frames} frames @ ${fps}fps, ${scale}x -> ${formats.join(', ')}`);
   }
 } finally {

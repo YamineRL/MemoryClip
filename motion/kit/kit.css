@@ -15,10 +15,10 @@
   --cjk: "PingFang SC", "Hiragino Sans GB", "Heiti SC", sans-serif;
 }
 * { box-sizing: border-box; margin: 0; padding: 0; }
-html, body { width: 1200px; height: var(--h, 720px); overflow: hidden; background: #0d0f1c; font-family: var(--font); color: var(--label); -webkit-font-smoothing: antialiased; }
+html, body { width: var(--w, 1200px); height: var(--h, 720px); overflow: hidden; background: #0d0f1c; font-family: var(--font); color: var(--label); -webkit-font-smoothing: antialiased; }
 
 /* flat, the site's dark --bg: a gradient bands and dithers in a GIF palette */
-#stage { position: relative; width: 1200px; height: var(--h, 720px); overflow: hidden; background: #191919; }
+#stage { position: relative; width: var(--w, 1200px); height: var(--h, 720px); overflow: hidden; background: #191919; }
 
 /* ---- panel: a translucent slab, not a window ---- */
 #panel { position: absolute; left: 60px; top: 70px; width: 1080px; height: 340px; border-radius: 28px;

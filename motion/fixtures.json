@@ -10,9 +10,10 @@
     "deploy":   { "app": "Terminal",   "icon": "terminal", "lines": ["error: deployment to", "production failed —", "exit code 1 (build step)"], "stat": "62 characters" },
     "link":     { "app": "Safari",     "icon": "safari",     "lines": ["https://example.com/", "guide/trip-planning", "?fbclid=demo123"], "stat": "URL" },
     "address":  { "app": "Notes",      "icon": "notes",   "lines": ["12 Rue Lepic", "75018 Paris"], "stat": "24 characters" },
-    "token":    { "app": "Terminal",   "icon": "terminal", "lines": ["sk_demo_9f3a71c20b84"], "stat": "API key", "secret": "sk_demo_9f3a71c20b84" }
+    "token":    { "app": "Terminal",   "icon": "terminal", "lines": ["sk_demo_9f3a71c20b84"], "stat": "API key", "secret": "sk_demo_9f3a71c20b84" },
+    "invite":   { "app": "Mail",       "icon": "mail",       "lines": ["Studio visit", "Thursday 22 Oct, 15:00", "12 Rue Lepic, 75018 Paris"], "stat": "61 characters" }
   },
-  "times": ["2 minutes ago", "9 minutes ago", "17 minutes ago", "24 minutes ago", "31 minutes ago"],
+  "times": ["2 minutes ago", "9 minutes ago", "17 minutes ago", "24 minutes ago", "31 minutes ago", "38 minutes ago"],
   "translation": {
     "from": "Chinese", "to": "English", "pair": "Chinese → English",
     "lines": ["This product is covered by a twelve-month warranty from the date of purchase.", "The warranty does not cover accidental damage, water damage or unauthorised", "repairs. Keep your proof of purchase; you will need to show it to claim."]
@@ -33,5 +34,19 @@
     { "name": "Canned replies", "color": "#30d158", "count": 1 }
   ],
   "pinPicker": { "query": "addr", "create": "Create board “addr”" },
-  "secret": { "mask": "••••••••••••••••", "prompt": "Touch ID to show this clip" }
+  "secret": { "mask": "••••••••••••••••", "prompt": "Touch ID to show this clip" },
+  "showreel": {
+    "copied": "Everything you copied.",
+    "private": "Never leaves your Mac.",
+    "name": "MemoryClip",
+    "tagline": "Your clipboard, remembered. Locally.",
+    "links": "Links arrive clean.",
+    "cleaned": "Cleaned",
+    "now": "Just now",
+    "offer": {
+      "title": "Add this event to your calendar?", "event": "Studio visit", "when": "22 Oct 2026 at 15:00",
+      "where": "Location: 12 Rue Lepic, 75018 Paris", "add": "Add", "edit": "Edit…", "later": "Not Now",
+      "added": "Added to your Home calendar", "stat": "61 characters · in calendar"
+    }
+  }
 }

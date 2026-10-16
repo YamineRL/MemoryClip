@@ -30,6 +30,10 @@ the daily update check below, off until you switch it on.
 
 Requires macOS 26 on Apple silicon.
 
+<a href="https://media.flyingdesk.app/memoryclip/showreel.mp4"><img src="https://media.flyingdesk.app/memoryclip/showreel.jpg" alt="Watch the 30-second film: search, translation, clean links, invites, screenshot notes, pinboards and secrets"></a>
+
+**[▶ Watch the 30-second film](https://media.flyingdesk.app/memoryclip/showreel.mp4)**
+
 ## Screenshots
 
 These are drawn, not recorded: every clip in them comes from
