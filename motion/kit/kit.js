@@ -18,10 +18,14 @@ export const tween = (t, t0, t1, a, b, e) => lerp(a, b, prog(t, t0, t1, e));
 // the first n characters of s, typed from t0 at cps characters per second
 export const typed = (s, t, t0, cps = 14) => [...s].slice(0, Math.max(0, Math.floor((t - t0) * cps))).join('');
 
-export const Motion = { duration: 6, height: 720, fns: [] };
+export const Motion = { duration: 6, height: 720, width: 1200, fns: [] };
 // a scene with no preview pane needs less than the full stage; the renderer
-// reads Motion.height for the viewport
-Motion.size = (h) => { Motion.height = h; document.documentElement.style.setProperty('--h', h + 'px'); };
+// reads Motion.height (and Motion.width, for a film frame) for the viewport
+Motion.size = (h, w = Motion.width) => {
+  Motion.height = h; Motion.width = w;
+  document.documentElement.style.setProperty('--h', h + 'px');
+  document.documentElement.style.setProperty('--w', w + 'px');
+};
 Motion.at = (fn) => Motion.fns.push(fn);
 window.Motion = Motion;
 window.seek = (t) => { for (const fn of Motion.fns) fn(t); };
