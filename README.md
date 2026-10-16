@@ -50,12 +50,16 @@ These are drawn, not recorded: every clip in them comes from
     <td colspan="2" align="center"><em>Search — a sentence finds <em>deployment to production failed</em>; <code>app:saf after:7d</code> narrows to where and when.</em></td>
   </tr>
   <tr>
-    <td width="50%"><img src="docs/media/gif/note.gif" alt="A receipt screenshot's text is recognised and ⌘S saves it as a Markdown note in Obsidian"></td>
-    <td width="50%"><img src="docs/media/gif/pinboards.gif" alt="⌘P files an address under the Addresses pinboard; the board then shows only its clips"></td>
+    <td colspan="2"><img src="docs/media/gif/note.gif" alt="A receipt screenshot's text is recognised and ⌘S saves it as a Markdown note in Obsidian"></td>
   </tr>
   <tr>
-    <td align="center"><em>Screenshot → note — <code>⌘S</code> sends the picture and its text to Obsidian.</em></td>
-    <td align="center"><em>Pinboards — <code>⌘P</code> files a clip under a board.</em></td>
+    <td colspan="2" align="center"><em>Screenshot → note — <code>⌘S</code> sends the picture and its text to Obsidian.</em></td>
+  </tr>
+  <tr>
+    <td colspan="2"><img src="docs/media/gif/pinboards.gif" alt="⌘P files an address under the Addresses pinboard; the board then shows only its clips"></td>
+  </tr>
+  <tr>
+    <td colspan="2" align="center"><em>Pinboards — <code>⌘P</code> files a clip under a board.</em></td>
   </tr>
   <tr>
     <td colspan="2"><img src="docs/media/gif/secret.gif" alt="A copied API key shows only as a mask; Return asks for Touch ID before the value is shown"></td>

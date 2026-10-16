@@ -40,20 +40,20 @@ frames on any machine, at any speed.
 | Flag | Default | |
 | --- | --- | --- |
 | `--fps` | `30` | frames per second sampled from the scene |
-| `--scale` | `1` | device pixel ratio — `2` for retina-sharp frames |
+| `--scale` | `2` | device pixel ratio — Retina-sharp frames, so text stays readable |
 | `--formats` | `gif,mp4,webm` | which deliveries to encode from the master |
-| `--gif-width` / `--gif-fps` | `800` / `15` | the GIF is downscaled; the videos are not |
+| `--gif-width` / `--gif-fps` | `1600` / `15` | 2x the ~800 px the README shows it at; the videos are not downscaled |
 | `--out` | `out/` | where everything lands |
 
 ## A master for a motion-design edit
 
 ```sh
-node render.mjs --fps 60 --scale 2 --formats mp4
+node render.mjs --fps 60 --formats mp4
 ```
 
 Every render writes `out/<scene>.master.mkv` first: lossless RGB (`libx264rgb -crf 0`),
 which Final Cut, Premiere, DaVinci Resolve and After Effects all import. At
-`--fps 60 --scale 2` that is a 2400 px wide, 60 fps source with no compression
+`--fps 60` that is a 2400 px wide, 60 fps source with no compression
 artefacts — cut it, grade it, slow it down. The MP4 next to it is for a quick look.
 Masters are big and stay out of git (`out/` is ignored).
 

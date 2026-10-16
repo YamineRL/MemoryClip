@@ -18,10 +18,13 @@ const root = dirname(fileURLToPath(import.meta.url));
 const args = process.argv.slice(2);
 const opt = (name, dflt) => { const i = args.indexOf('--' + name); return i < 0 ? dflt : args.splice(i, 2)[1]; };
 const fps = +opt('fps', 30);
-const scale = +opt('scale', 1);
+// 2x: frames are shot at Retina density, so text is sharp in every format
+const scale = +opt('scale', 2);
 const formats = opt('formats', 'gif,mp4,webm').split(',');
 const outDir = opt('out', join(root, 'out'));
-const gifWidth = +opt('gif-width', 800);
+// 1600 wide: the README shows a GIF at up to ~830 css px, so this is 2x for a
+// Retina screen; a GIF downscaled further is text nobody can read
+const gifWidth = +opt('gif-width', 1600);
 const gifFps = +opt('gif-fps', 15);
 
 const all = (await readdir(join(root, 'scenes'))).filter((f) => f.endsWith('.html')).map((f) => f.slice(0, -5));
@@ -64,7 +67,7 @@ try {
     const out = (ext) => join(outDir, `${name}.${ext}`);
     if (formats.includes('gif')) {
       const vf = `fps=${gifFps},scale=${gifWidth}:-1:flags=lanczos`;
-      await enc(['-vf', `${vf},split[a][b];[a]palettegen=max_colors=128:stats_mode=diff[p];[b][p]paletteuse=dither=bayer:bayer_scale=4:diff_mode=rectangle`, '-loop', '0', out('gif')]);
+      await enc(['-vf', `${vf},split[a][b];[a]palettegen=max_colors=256:stats_mode=diff[p];[b][p]paletteuse=dither=none:diff_mode=rectangle`, '-loop', '0', out('gif')]);
     }
     if (formats.includes('mp4')) await enc(['-c:v', 'libx264', '-crf', '20', '-preset', 'slow', '-pix_fmt', 'yuv420p', '-movflags', '+faststart', '-an', out('mp4')]);
     if (formats.includes('webm')) await enc(['-c:v', 'libvpx-vp9', '-crf', '32', '-b:v', '0', '-pix_fmt', 'yuv420p', '-an', out('webm')]);
