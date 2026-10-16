@@ -94,7 +94,7 @@ struct AppleTranslator: NoteTranslator {
             // the language where Settings will find it and write the note
             // untranslated.
             NoteTranslation.notePendingDownload(identifier)
-            log.notice("Translation skipped: \(identifier, privacy: .public) assets are not downloaded")
+            log.notice("Translation skipped: \(identifier, privacy: .public) → \(LanguageDetector.identifier(for: target), privacy: .public) assets are not downloaded")
             return nil
         case .unsupported:
             log.notice("Translation skipped: \(identifier, privacy: .public) is not supported by this Mac")
