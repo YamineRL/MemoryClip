@@ -30,9 +30,7 @@ the daily update check below, off until you switch it on.
 
 Requires macOS 26 on Apple silicon.
 
-<a href="https://media.flyingdesk.app/memoryclip/showreel.mp4"><img src="https://media.flyingdesk.app/memoryclip/showreel.jpg" alt="Watch the 30-second film: search, translation, clean links, invites, screenshot notes, pinboards and secrets"></a>
-
-**[▶ Watch the 30-second film](https://media.flyingdesk.app/memoryclip/showreel.mp4)**
+<p align="center"><a href="https://media.flyingdesk.app/memoryclip/showreel.mp4"><img src="docs/media/showreel-play.jpg" alt="Watch the 30-second film: search, translation, clean links, invites, screenshot notes, pinboards and secrets"></a></p>
 
 ## Screenshots
 
@@ -41,12 +39,6 @@ These are drawn, not recorded: every clip in them comes from
 [`motion/`](motion/README.md) renders them and checks that nothing else leaks in.
 
 <table>
-  <tr>
-    <td colspan="2"><img src="docs/media/gif/hero.gif" alt="The panel opens with ⇧⌘V; Space opens the preview on a Chinese clip and ⌘T flips it to its English translation"></td>
-  </tr>
-  <tr>
-    <td colspan="2" align="center"><em>The panel: <strong>⇧⌘V</strong> from anywhere. Preview pane: <code>Space</code> to open, again for Quick Look, <code>⌘T</code> to flip the translation.</em></td>
-  </tr>
   <tr>
     <td colspan="2"><img src="docs/media/gif/search.gif" alt="Typing “that error about the deploy failing” finds the clip that says deployment to production failed; app:saf after:7d narrows to Safari clips from the last week"></td>
   </tr>
