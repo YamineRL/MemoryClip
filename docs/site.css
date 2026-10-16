@@ -120,7 +120,7 @@ p { margin: 0 0 12px; }
   display: grid; place-items: center; transition: transform .2s;
 }
 .play:hover { transform: scale(1.06); }
-.play svg { width: 50px; height: 50px; fill: currentColor; margin-left: 4px; }
+.play svg { width: 50px; height: 50px; fill: currentColor; }
 .play[hidden] { display: none; }
 .caption { display: flex; justify-content: space-between; align-items: center; gap: 16px; padding: 14px 4px 2px; color: var(--muted); font-size: 14px; }
 
