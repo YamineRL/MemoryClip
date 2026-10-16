@@ -54,7 +54,7 @@ enum LinkRules {
     /// the same name elsewhere may well be load-bearing — `si` is Spotify's
     /// share identifier and somebody else's sort index.
     static let hostRules: [LinkHostRule] = [
-        LinkHostRule(domain: "instagram.com", parameters: ["igsh", "igshid", "img_index", "stkn"]),
+        LinkHostRule(domain: "instagram.com", parameters: ["igsh", "igshid", "img_index", "psln", "stkn"]),
         LinkHostRule(domain: "threads.net", parameters: ["igsh", "igshid", "xmt"]),
         LinkHostRule(domain: "threads.com", parameters: ["igsh", "igshid", "xmt"]),
         LinkHostRule(domain: "youtube.com", parameters: ["si", "pp", "feature", "kw"]),

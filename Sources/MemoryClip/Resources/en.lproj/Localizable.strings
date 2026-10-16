@@ -739,3 +739,11 @@
 "Connection string" = "Connection string";
 "One-time code" = "One-time code";
 "Token" = "Token";
+
+/* Command palette (⌘K) — the field, its empty state, the key hint and the group names the panel's own commands are filed under. */
+"Run an action…" = "Run an action…";
+"No matching actions" = "No matching actions";
+"↩ paste · ⌘↩ replace · ⌥↩ copy · esc close" = "↩ paste · ⌘↩ replace · ⌥↩ copy · esc close";
+"Pin to…" = "Pin to…";
+"Note" = "Note";
+"Queue" = "Queue";

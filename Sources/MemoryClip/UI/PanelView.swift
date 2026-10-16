@@ -1343,6 +1343,9 @@ struct PanelActions {
     /// Copy an arbitrary string derived from a clip (the preview pane's
     /// right-click menu).
     var copyText: (ClipItem, String) -> Void
+    /// Paste a string derived from a clip into the previous app: the
+    /// command palette's transform result, which is not a clip of its own.
+    var pasteText: (ClipItem, String) -> Void
     var close: () -> Void
     var applyTransform: (ClipItem, Transform) -> Void
     var showQR: (ClipItem) -> Void
@@ -1545,6 +1548,8 @@ struct PanelContentView: View {
     @FocusState private var searchFocused: Bool
     /// The clip the pinboard picker (⌘P, vim `P`) is open for.
     @State private var pinboardPickerItem: ClipItem?
+    /// The clip the command palette (⌘K, vim `:`) is open for.
+    @State private var paletteItem: ClipItem?
     /// Whether the strip's name field is showing. With `editingPinboard`
     /// set it renames that board; otherwise it names a new one.
     @State private var namingPinboard = false
@@ -2031,6 +2036,7 @@ struct PanelContentView: View {
             navHintDismissed = false
             quickLookHintDismissed = false
             pinboardPickerItem = nil
+            paletteItem = nil
             namingPinboard = false
             editingPinboard = nil
             pinboardPendingDelete = nil
@@ -2128,6 +2134,19 @@ struct PanelContentView: View {
                 }
             }
         }
+        .popover(
+            isPresented: paletteBinding,
+            arrowEdge: .bottom
+        ) {
+            if let item = paletteItem {
+                CommandPaletteView(
+                    actions: PaletteAction.available(for: item, isQueued: queue.position(of: item) != nil),
+                    counts: PaletteRunCounts().load(),
+                    onRun: { action, mode in runPaletteAction(action, mode: mode, on: item) },
+                    onCancel: { paletteItem = nil }
+                )
+            }
+        }
         // The chips badge their ⌃N jump while Control is held; there is no
         // other way for the gesture to be discovered before it is tried.
         .onModifierKeysChanged(mask: .control, initial: false) { _, new in
@@ -2139,6 +2158,13 @@ struct PanelContentView: View {
         Binding(
             get: { pinboardPendingDelete != nil },
             set: { if !$0 { pinboardPendingDelete = nil } }
+        )
+    }
+
+    private var paletteBinding: Binding<Bool> {
+        Binding(
+            get: { paletteItem != nil },
+            set: { if !$0 { paletteItem = nil } }
         )
     }
 
@@ -2643,6 +2669,60 @@ struct PanelContentView: View {
         pinboardPickerItem = item
     }
 
+    /// Open the command palette on the cursor clip.
+    private func openPalette() {
+        guard let item = selectedItem else { return }
+        paletteItem = item
+    }
+
+    /// Carry out what the palette picked.
+    ///
+    /// A transform places its result the way Return asked: pasted, written
+    /// over the clip through the edit path (so ⌘Z takes it back like any
+    /// saved edit), or copied. The panel's own commands go through the same
+    /// functions their keys call, so ⌘C from the palette is ⌘C, selection
+    /// and all.
+    private func runPaletteAction(_ action: PaletteAction, mode: PaletteAction.Mode, on item: ClipItem) {
+        paletteItem = nil
+        PaletteRunCounts().record(action.id)
+        switch action.command {
+        case .transform(let transform):
+            guard let text = item.text, let result = TransformService.apply(transform, to: text) else { return }
+            switch mode {
+            case .paste:
+                actions.pasteText(item, result)
+            case .replace:
+                guard let snapshot = actions.applyEdit(item, result) else { return }
+                lastEditUndo = snapshot
+                showStatus(loc("Clip edited · Undo (⌘Z)"))
+            case .copy:
+                actions.copyText(item, result)
+                showStatus(loc("Copied"))
+            }
+        case .copy:
+            copySelected()
+        case .pastePlain:
+            pasteSelected(plainOnly: true)
+        case .saveNote:
+            actions.saveNote(item)
+        case .addToCalendar:
+            actions.addToCalendar(item)
+        case .pinTo:
+            // One popover has to finish closing before the next can open
+            // from the same view; set in the same pass, the picker never
+            // appears.
+            Task { @MainActor in pinboardPickerItem = item }
+        case .toggleQueue:
+            for chosen in selectedItems {
+                actions.toggleQueue(chosen)
+            }
+        case .showQR:
+            actions.showQR(item)
+        case .revealInFinder:
+            actions.revealInFinder(item)
+        }
+    }
+
     /// A name for a board the picker is asked to create for this clip: the
     /// clip's first line, trimmed to the board-name limit.
     private func namingProposal(for item: ClipItem) -> String {
@@ -2765,7 +2845,7 @@ struct PanelContentView: View {
     /// the board-name field and the picker's filter field. The panel's bare
     /// key handlers stand down so typing reaches the field.
     private var auxiliaryFieldActive: Bool {
-        namingPinboard || pinboardPickerItem != nil
+        namingPinboard || pinboardPickerItem != nil || paletteItem != nil
     }
 
     // MARK: Key handling
@@ -2977,6 +3057,14 @@ struct PanelContentView: View {
                     // so the shortcut is free.
                     if press.characters.lowercased() == "p" {
                         openPinboardPicker()
+                        return .handled
+                    }
+                    // ⌘K is the command palette in the apps people bring the
+                    // habit from (Slack, Linear, VS Code's ⌘⇧P aside), and it
+                    // is free: no menu item claims it, and vim's `k` is a
+                    // bare key that never reaches this branch.
+                    if press.characters.lowercased() == "k" {
+                        openPalette()
                         return .handled
                     }
                     // ⌘Z is the session undo the edit toast advertises. The
@@ -3704,6 +3792,14 @@ struct PanelContentView: View {
         // itself "?", which is what shows the operator cheat-sheet. Going
         // to insert mode leaves the caret after it, ready to type over. A
         // pending `g` or `d` keeps first refusal of the keystroke.
+        // `:` is vim's command line, and the palette is this panel's: the
+        // place you type the name of a thing to do. Unbound in the navigator,
+        // so it can only mean this.
+        if key == ":", !vim.hasPending {
+            openPalette()
+            return .handled
+        }
+
         if key == "?", !vim.hasPending {
             filter.search = "?"
             setMode(.insert)
