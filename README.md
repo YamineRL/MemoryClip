@@ -32,18 +32,36 @@ Requires macOS 26 on Apple silicon.
 
 ## Screenshots
 
+These are drawn, not recorded: every clip in them comes from
+[`motion/fixtures.json`](motion/fixtures.json), so no real clipboard is ever on show.
+[`motion/`](motion/README.md) renders them and checks that nothing else leaks in.
+
 <table>
   <tr>
-    <td colspan="2"><img src="docs/screenshots/panel.svg" alt="The clipboard panel: search field, filter chips, a pinboard strip and a row of clip cards with keyboard shortcuts"></td>
+    <td colspan="2"><img src="docs/media/gif/hero.gif" alt="The panel opens with ⇧⌘V; Space opens the preview on a Chinese clip and ⌘T flips it to its English translation"></td>
   </tr>
   <tr>
-    <td colspan="2" align="center"><em>The panel — <strong>⇧⌘V</strong> from anywhere.</em></td>
+    <td colspan="2" align="center"><em>The panel — <strong>⇧⌘V</strong> from anywhere. Preview pane — <code>Space</code> to open, again for Quick Look, <code>⌘T</code> to flip the translation.</em></td>
   </tr>
   <tr>
-    <td colspan="2"><img src="docs/screenshots/preview.svg" alt="The panel with the preview pane open under the clip strip: a Chinese clip, with its English translation on a tab beside the original"></td>
+    <td colspan="2"><img src="docs/media/gif/search.gif" alt="Typing “that error about the deploy failing” finds the clip that says deployment to production failed; app:saf after:7d narrows to Safari clips from the last week"></td>
   </tr>
   <tr>
-    <td colspan="2" align="center"><em>Preview pane — <code>Space</code> to open, again for Quick Look, <code>⌘T</code> to flip the translation.</em></td>
+    <td colspan="2" align="center"><em>Search — a sentence finds <em>deployment to production failed</em>; <code>app:saf after:7d</code> narrows to where and when.</em></td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="docs/media/gif/note.gif" alt="A receipt screenshot's text is recognised and ⌘S saves it as a Markdown note in Obsidian"></td>
+    <td width="50%"><img src="docs/media/gif/pinboards.gif" alt="⌘P files an address under the Addresses pinboard; the board then shows only its clips"></td>
+  </tr>
+  <tr>
+    <td align="center"><em>Screenshot → note — <code>⌘S</code> sends the picture and its text to Obsidian.</em></td>
+    <td align="center"><em>Pinboards — <code>⌘P</code> files a clip under a board.</em></td>
+  </tr>
+  <tr>
+    <td colspan="2"><img src="docs/media/gif/secret.gif" alt="A copied API key shows only as a mask; Return asks for Touch ID before the value is shown"></td>
+  </tr>
+  <tr>
+    <td colspan="2" align="center"><em>Secrets — a copied key is sealed in the Secure Enclave and shown as a mask until Touch ID.</em></td>
   </tr>
   <tr>
     <td width="50%" align="center"><img src="docs/screenshots/menu-bar.svg" alt="The menu-bar dropdown listing recent clips and app commands"></td>

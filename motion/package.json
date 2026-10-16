@@ -1,0 +1,14 @@
+{
+  "name": "memoryclip-motion",
+  "private": true,
+  "type": "module",
+  "description": "Deterministic, fake-data motion scenes for the README GIFs, the site videos and later video work.",
+  "scripts": {
+    "render": "node render.mjs",
+    "publish": "node publish.mjs",
+    "check": "node check-fixtures.mjs"
+  },
+  "devDependencies": {
+    "puppeteer-core": "24.2.0"
+  }
+}

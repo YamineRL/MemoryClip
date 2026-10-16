@@ -1,0 +1,48 @@
+<!doctype html><meta charset="utf-8"><title>search</title>
+<link rel="stylesheet" href="../kit/kit.css"><div id="stage"></div>
+<script type="module">
+import { clips, loadFixtures, buildPanel, put, slotX, prog, lerp, typed, ease, $ } from '../kit/kit.js';
+const fx = await loadFixtures();
+Motion.duration = 8;
+Motion.size(480);
+const P = buildPanel(fx, { clipIds: ['deploy', 'rechta', 'booking', 'warranty', 'link'] });
+const sg = document.createElement('div'); sg.id = 'suggest'; sg.style.left = '136px';
+sg.innerHTML = `<div class="on">${fx.search.suggestion}</div>`; $('#stage').append(sg);
+const { sentence, operator: op } = fx.search;
+const ids = P.cards.map((c) => c._.id);
+const CPS1 = 16, CPS2 = 12, T_SENT = 0.9, T_CLEAR = 3.9, T_OP = 4.3;
+
+// The one rule: the result set changes at these moments, and cards blend from
+// the previous set's layout to the new one over 0.35s.
+const STATES = [
+  { t: 0, want: ids },
+  { t: T_SENT + 18 / CPS1, want: ['deploy'] },                              // "…the deploy" typed
+  { t: T_CLEAR, want: ids },                                                 // field cleared
+  { t: T_OP + op.length / CPS2, want: ['rechta', 'warranty', 'link'] },      // app:saf after:7d
+];
+const place = (want, id, i) => {
+  const hit = want.includes(id);
+  return { x: slotX(hit ? want.indexOf(id) : i), o: hit ? 1 : 0, s: hit ? 1 : 0.95, y: hit ? 0 : 8, sel: hit && want[0] === id ? 1 : 0 };
+};
+
+Motion.at((t) => {
+  const a = Math.min(prog(t, 0.2, 0.8, ease.out), 1 - prog(t, 7.4, 7.9));
+  P.panel.style.opacity = a; P.panel.style.transform = `translateY(${(1 - a) * 22}px)`;
+
+  const txt = t < T_CLEAR ? typed(sentence, t, T_SENT, CPS1) : typed(op, t, T_OP, CPS2);
+  P.search(txt, t, false);
+
+  const k = STATES.findLastIndex((s) => t >= s.t);
+  const cur = STATES[k], prev = STATES[Math.max(0, k - 1)];
+  const m = prog(t, cur.t, cur.t + 0.35, ease.out);
+  P.cards.forEach((c, i) => {
+    const A = place(prev.want, c._.id, i), B = place(cur.want, c._.id, i);
+    put(c, { x: lerp(A.x, B.x, m), o: lerp(A.o, B.o, m), s: lerp(A.s, B.s, m), y: lerp(A.y, B.y, m), sel: lerp(A.sel, B.sel, m) });
+  });
+  P.count.textContent = clips(cur.want.length);
+
+  // the value list is open while "app:" has a partial value and closes once it is accepted
+  sg.style.opacity = t >= T_OP && txt.startsWith('app:') && txt.length >= 5 && !txt.includes(' ') ? 1 : 0;
+});
+window.__ready = true;
+</script>
