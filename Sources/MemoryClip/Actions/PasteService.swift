@@ -291,6 +291,22 @@ final class PasteService {
         return true
     }
 
+    /// Paste a string made from a clip rather than the clip itself: the
+    /// palette's transform result. It goes out as plain text because that
+    /// is all a transform produces, and the clip is marked used because it
+    /// is what the user reached for.
+    @discardableResult
+    func pasteText(_ text: String, item: ClipItem, target: NSRunningApplication?) -> Bool {
+        guard writeText(text) else { return false }
+        watcher.noteOwnWrite()
+        store.markUsed(item)
+        guard Self.isAutoPasteEnabled, let target else { return true }
+        Task { @MainActor [weak self] in
+            _ = await self?.activateAndPost(target: target)
+        }
+        return true
+    }
+
     /// Write the clip and, when auto-paste is on, post ⌘V — returning only
     /// once the keystroke has been delivered and the target has had time to
     /// consume it. Queue mode sequences on this instead of a fixed delay.
