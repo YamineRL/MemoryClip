@@ -19,6 +19,12 @@ final class SettingsWindowController {
     static var windowTitle: String { loc("MemoryClip Settings") }
 
     private var window: NSWindow?
+    /// Whether the window's frame is one the user left it at — restored from
+    /// the autosave or from an earlier showing — rather than AppKit's default
+    /// origin in a screen's corner.
+    private var hasChosenFrame = false
+
+    private static let autosaveName = "MemoryClipSettingsSidebarWindow"
 
     private init() {}
 
@@ -43,19 +49,13 @@ final class SettingsWindowController {
     /// server: a `makeKeyAndOrderFront` issued while the app is still inactive
     /// orders the window in and leaves the key part unhonoured.
     func show() {
-        // An `NSApp.hide` from the panel dismissing leaves the app hidden, and
-        // a hidden app will not order new windows in.
-        NSApp.unhide(nil)
-
         let window = window ?? makeWindow()
         self.window = window
 
-        if !window.isVisible {
-            window.center()
-        }
-        window.orderFrontRegardless()
-        NSApp.activate(ignoringOtherApps: true)
-        window.makeKey()
+        // Unhidden, unminimised, on the user's screen and Space, and focused:
+        // see `WindowPresenter.present`.
+        WindowPresenter.present(window, keepPosition: hasChosenFrame)
+        hasChosenFrame = true
     }
 
     private func makeWindow() -> NSWindow {
@@ -75,6 +75,12 @@ final class SettingsWindowController {
         // reason to be widened (long hints, larger text sizes), and
         // `contentMinSize` is what keeps that from being used to squash it.
         window.styleMask = [.titled, .closable, .miniaturizable, .resizable]
+        // Opened from any Space — or over a full-screen app — it comes to that
+        // Space rather than switching the user away to wherever it was last
+        // open, or not showing at all. A settings window belongs to one Space
+        // at a time, so not `.canJoinAllSpaces` as the tour and the
+        // permissions window are.
+        window.collectionBehavior = [.moveToActiveSpace, .fullScreenAuxiliary]
         // Closing settings must not deallocate the window out from under us —
         // it is reused for the life of the app.
         window.isReleasedWhenClosed = false
@@ -89,7 +95,8 @@ final class SettingsWindowController {
         // 520×420 tab window, and AppKit restores a saved frame verbatim — a
         // user who had opened Settings before this change would get the
         // sidebar layout crushed into the tab window's footprint.
-        window.setFrameAutosaveName("MemoryClipSettingsSidebarWindow")
+        hasChosenFrame = window.setFrameUsingName(Self.autosaveName)
+        window.setFrameAutosaveName(Self.autosaveName)
         return window
     }
 }

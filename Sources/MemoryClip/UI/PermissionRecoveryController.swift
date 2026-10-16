@@ -192,9 +192,6 @@ final class PermissionRecoveryController: NSObject, NSWindowDelegate {
         // third row or leave the single one floating in a page of nothing.
         window.setContentSize(hostingView.fittingSize)
 
-        if !window.isVisible {
-            window.center()
-        }
         front()
     }
 
@@ -209,10 +206,9 @@ final class PermissionRecoveryController: NSObject, NSWindowDelegate {
     /// or findable again unless the app takes activation with it.
     private func front() {
         guard let window else { return }
-        NSApp.unhide(nil)
-        window.orderFrontRegardless()
-        NSApp.activate(ignoringOtherApps: true)
-        window.makeKey()
+        // Centred on the user's screen each time it opens; left where it is
+        // while it is already open and reachable.
+        WindowPresenter.present(window, keepPosition: false)
     }
 
     /// Win the window back after a permission prompt has been answered.

@@ -61,18 +61,13 @@ final class OnboardingController: NSObject, NSWindowDelegate {
         ensureWindow()
         guard let window else { return }
 
-        if !window.isVisible {
-            window.center()
-        }
         // MemoryClip is an .accessory agent, so it must activate for the window
         // to become visible and focusable — and it must do so the same way
         // `SettingsWindowController.show()` does, for the reasons written out
         // there: cooperative activation can be refused, and a refused tour is
         // one that opens behind whatever the user was reading and takes none
-        // of their key presses.
-        window.orderFrontRegardless()
-        NSApp.activate(ignoringOtherApps: true)
-        window.makeKey()
+        // of their key presses. Centred on the user's screen each time.
+        WindowPresenter.present(window, keepPosition: false)
     }
 
     /// Closes the tour without releasing the window (it is reused).
