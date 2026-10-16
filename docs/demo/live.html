@@ -1,0 +1,103 @@
+<!doctype html><meta charset="utf-8"><title>MemoryClip — try the panel</title>
+<meta name="viewport" content="width=1200">
+<link rel="stylesheet" href="kit/kit.css">
+<style>
+  /* the page embeds this in an iframe and scales it; the hint sits on the wallpaper */
+  #hint { position: absolute; left: 0; right: 0; bottom: 18px; text-align: center; font-size: 14px; color: rgba(255,255,255,.62); }
+  #hint kbd { font: 12px var(--font); padding: 2px 7px; border-radius: 6px; background: rgba(255,255,255,.1); box-shadow: inset 0 0 0 1px rgba(255,255,255,.18); color: var(--label); }
+  #empty { position: absolute; left: 0; right: 0; top: 190px; text-align: center; font-size: 13px; color: var(--second); display: none; }
+  .card { transition: transform .28s cubic-bezier(.2,.8,.2,1), opacity .2s; }
+  #panel { transition: height .3s cubic-bezier(.2,.8,.2,1); }
+  #pane { transition: opacity .25s; }
+</style>
+<div id="stage"></div>
+<script type="module">
+// The live demo: the same panel the motion scenes draw, driven by the keyboard
+// instead of a clock. Every clip is from fixtures.json; nothing is read from the
+// visitor's clipboard.
+import { loadFixtures, buildPanel, put, slotX, clips, $ } from './kit/kit.js';
+const fx = await loadFixtures();
+const ids = Object.keys(fx.clips);
+const P = buildPanel(fx, { clipIds: ids });
+const stage = $('#stage');
+stage.insertAdjacentHTML('beforeend', `<div id="hint">Type to search · <kbd>←</kbd> <kbd>→</kbd> to move · <kbd>Space</kbd> to preview · try <kbd>app:saf</kbd> or <kbd>type:image</kbd></div>`);
+$('#cards').insertAdjacentHTML('afterend', '<div id="empty">No clips match</div>');
+P.pane.innerHTML = `<div class="tabs" id="tabs"><span class="tab on" id="t1">Original</span><span class="tab" id="t2">${fx.translation.to}</span><span class="pair">${fx.translation.pair}</span></div><div class="body" id="pb"></div>`;
+
+// What a clip is, for type: — derived from the fixture's own fields.
+const kind = (c) => (c.receipt ? 'image' : c.lines?.[0]?.startsWith('http') ? 'link' : 'text');
+const hay = (c) => [c.app, c.stat, ...(c.lines || []), ...(c.receipt ? [c.receipt.shop, ...c.receipt.rows.flat(), c.receipt.total] : []),
+  ...(c.cjk ? fx.translation.lines : [])].join(' ').toLowerCase();
+// Words reduce to a stem that is a prefix of what was typed (failing → fail), and
+// common words drop out — the same rules the README describes for the app.
+const STOP = new Set(['a', 'an', 'the', 'that', 'this', 'about', 'of', 'to', 'for', 'and', 'in', 'on', 'my', 'with']);
+const stem = (w) => w.replace(/(ing|ed|ment|s)$/, '') || w;
+
+function match(q) {
+  const toks = q.toLowerCase().match(/-?\w+:"[^"]*"|\S+/g) || [];
+  return ids.filter((id) => {
+    const c = fx.clips[id], h = hay(c);
+    return toks.every((tok) => {
+      const neg = tok.startsWith('-') && tok.includes(':'); const t = neg ? tok.slice(1) : tok;
+      const m = t.match(/^(app|type):"?([^"]*)"?$/);
+      let ok;
+      if (m) ok = m[1] === 'app' ? c.app.toLowerCase().startsWith(m[2]) : kind(c).startsWith(m[2]);
+      else if (/^\w+:$/.test(t)) ok = true;        // a key with no value yet filters nothing
+      else ok = STOP.has(t) || h.includes(stem(t));
+      return neg ? !ok : ok;
+    });
+  });
+}
+
+let q = '', sel = 0, preview = false, translated = false;
+function render() {
+  const res = match(q);
+  sel = Math.min(sel, Math.max(0, res.length - 1));
+  const first = Math.max(0, Math.min(sel - 2, res.length - 5));  // keep the selection in the five visible slots
+  P.cards.forEach((c, i) => {
+    const slot = res.indexOf(c._.id) - first;
+    const on = res.includes(c._.id) && slot >= 0 && slot < 5;
+    put(c, { x: slotX(on ? slot : Math.max(-1, Math.min(5, slot))), o: on ? 1 : 0, s: on ? 1 : 0.95, sel: on && res[sel] === c._.id ? 1 : 0 });
+    c._.key.textContent = on ? `⌘${slot + 1}` : '';
+    c._.time.textContent = on ? fx.times[Math.min(slot, fx.times.length - 1)] : '';
+    if (c._.mask) c._.mask.textContent = fx.secret.mask;
+  });
+  $('#empty').style.display = res.length ? 'none' : 'block';
+  P.count.textContent = clips(res.length);
+  P.search(q, performance.now() / 1000);
+  const cur = fx.clips[res[sel]];
+  const open = preview && !!cur;
+  P.height(open ? 600 : 340);
+  P.pane.style.opacity = open ? 1 : 0;
+  if (open) {
+    $('#tabs').style.display = cur.cjk ? 'flex' : 'none';
+    $('#t1').classList.toggle('on', !translated); $('#t2').classList.toggle('on', translated);
+    const pb = $('#pb');
+    pb.className = 'body' + (cur.cjk && !translated ? ' cjk' : '');
+    pb.style.top = cur.cjk ? '54px' : '12px';
+    pb.textContent = cur.secret ? fx.secret.mask
+      : cur.receipt ? [cur.receipt.shop, ...cur.receipt.rows.map((r) => r.join('  ')), `TOTAL  ${cur.receipt.total}`].join('\n')
+      : (cur.cjk && translated ? fx.translation.lines : cur.lines).join('\n');
+  }
+}
+
+addEventListener('keydown', (e) => {
+  const k = e.key;
+  if (k === 'ArrowRight' || k === 'ArrowDown') sel++;
+  else if (k === 'ArrowLeft' || k === 'ArrowUp') sel = Math.max(0, sel - 1);
+  else if (k === ' ' && (q === '' || preview)) { preview = !preview; translated = false; }
+  else if (k === 't' && e.metaKey) translated = !translated;
+  else if (k === 'Escape') { if (preview) preview = false; else q = ''; }
+  else if (k === 'Backspace') { q = q.slice(0, -1); sel = 0; }
+  else if (k.length === 1 && !e.metaKey && !e.ctrlKey) { q += k; sel = 0; preview = false; }
+  else return;
+  e.preventDefault();
+  render();
+});
+// a click anywhere hands the iframe the keyboard
+addEventListener('pointerdown', () => focus());
+setInterval(() => P.search(q, performance.now() / 1000), 500);
+P.panel.style.top = '56px';
+render();
+window.__ready = true;
+</script>

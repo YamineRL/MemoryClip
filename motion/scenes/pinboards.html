@@ -1,0 +1,36 @@
+<!doctype html><meta charset="utf-8"><title>pinboards</title>
+<link rel="stylesheet" href="../kit/kit.css"><div id="stage"></div>
+<script type="module">
+import { clips, loadFixtures, buildPanel, put, slotX, keycaps, prog, typed, ease, $ } from '../kit/kit.js';
+const fx = await loadFixtures();
+Motion.duration = 8;
+Motion.size(480);
+const P = buildPanel(fx, { clipIds: ['address', 'dinner', 'booking', 'calc', 'link'] });
+const pk = document.createElement('div'); pk.id = 'suggest'; pk.style.cssText = 'left:300px;top:150px;width:260px;z-index:6';
+pk.innerHTML = `<div id="pq" style="color:#98989d;padding:6px 9px"></div><div class="on">${fx.boards[0].name}</div>`; $('#stage').append(pk);
+const cap = keycaps(['⌘', 'P']); const cap2 = keycaps(['⌥', '→']);
+const bAll = P.boards[0], bPin = P.boards[1], bAddr = P.boards[2];
+const cnt = bAddr.querySelector('b');
+const ON = (el, on) => el.classList.toggle('on', on);
+Motion.at((t) => {
+  const a = Math.min(prog(t, 0.2, 0.8, ease.out), 1 - prog(t, 7.4, 7.9));
+  P.panel.style.opacity = a; P.panel.style.transform = `translateY(${(1 - a) * 22}px)`;
+  // after 5.0 the strip is on the Addresses board: 4 clips, the filed one among them
+  const onBoard = t >= 5.0;
+  const show = onBoard ? ['address', 'dinner', 'booking', 'link'] : P.cards.map((c) => c._.id);
+  P.cards.forEach((c, i) => { const k = prog(t, 0.4 + i * 0.08, 1.0 + i * 0.08, ease.back); const hit = show.includes(c._.id); const slot = hit ? show.indexOf(c._.id) : i;
+    put(c, { x: slotX(slot), y: (1 - k) * 18 + (hit ? 0 : 8), s: hit ? 1 : 0.95, o: hit ? k : 0, sel: slot === 0 ? 1 : 0 }); });
+  // ⌘P picker 1.8–3.6, typing "addr"
+  cap(t, 1.5, 2.4, 1.8);
+  const pa = Math.min(prog(t, 1.9, 2.2, ease.out), 1 - prog(t, 3.4, 3.7));
+  pk.style.opacity = pa; $('#pq').textContent = typed(fx.pinPicker.query, t, 2.2, 6) + '▏';
+  // filed at 3.5: count 3 → 4 with a pulse on the chip
+  cnt.textContent = t >= 3.5 ? fx.boards[0].count + 1 : fx.boards[0].count;
+  const pulse = Math.exp(-(((t - 3.7) / 0.18) ** 2)); bAddr.style.transform = `scale(${1 + 0.12 * pulse})`;
+  // ⌥→ ⌥→ walks All → Pinned → Addresses at 4.4 / 5.0
+  cap2(t, 4.1, 5.5, 4.5);
+  ON(bAll, t < 4.5); ON(bPin, t >= 4.5 && t < 5.0); ON(bAddr, t >= 5.0);
+  P.count.textContent = `${show.length === 4 && onBoard ? 4 : 8} clips`;
+});
+window.__ready = true;
+</script>

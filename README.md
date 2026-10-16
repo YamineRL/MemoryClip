@@ -15,43 +15,65 @@
 </p>
 
 A local-first menu-bar clipboard manager for macOS: keyboard-first history of everything
-you copy. It also notices your screenshots, reads the text out of them — 30 languages,
-translated into your own when it is not one you read — and turns one into a note in
+you copy. It also notices your screenshots, reads the text out of them (30 languages,
+translated into your own when it is not one you read) and turns one into a note in
 **[Obsidian](https://obsidian.md)**, any other folder of Markdown, Apple Notes, or a
 Shortcut. Copied links arrive with their tracking parameters stripped, API keys and
 one-time codes are kept encrypted behind the Secure Enclave, and an invitation can
-become a calendar event — offered for your approval rather than written silently.
+become a calendar event, offered for your approval rather than written silently.
 
 **No network calls unless you ask for one**: no sync, no analytics, no accounts. Clips
 live in a local SwiftData store, and the models that read, tidy and translate run here too.
 The only files written anywhere else are the notes you asked for, in the folder you chose,
-and the calendar events you asked for. One optional setting reaches the network at all —
+and the calendar events you asked for. One optional setting reaches the network at all:
 the daily update check below, off until you switch it on.
 
 Requires macOS 26 on Apple silicon.
 
 ## Screenshots
 
+These are drawn, not recorded: every clip in them comes from
+[`motion/fixtures.json`](motion/fixtures.json), so no real clipboard is ever on show.
+[`motion/`](motion/README.md) renders them and checks that nothing else leaks in.
+
 <table>
   <tr>
-    <td colspan="2"><img src="docs/screenshots/panel.svg" alt="The clipboard panel: search field, filter chips, a pinboard strip and a row of clip cards with keyboard shortcuts"></td>
+    <td colspan="2"><img src="docs/media/gif/hero.gif" alt="The panel opens with ⇧⌘V; Space opens the preview on a Chinese clip and ⌘T flips it to its English translation"></td>
   </tr>
   <tr>
-    <td colspan="2" align="center"><em>The panel — <strong>⇧⌘V</strong> from anywhere.</em></td>
+    <td colspan="2" align="center"><em>The panel: <strong>⇧⌘V</strong> from anywhere. Preview pane: <code>Space</code> to open, again for Quick Look, <code>⌘T</code> to flip the translation.</em></td>
   </tr>
   <tr>
-    <td colspan="2"><img src="docs/screenshots/preview.svg" alt="The panel with the preview pane open under the clip strip: a Chinese clip, with its English translation on a tab beside the original"></td>
+    <td colspan="2"><img src="docs/media/gif/search.gif" alt="Typing “that error about the deploy failing” finds the clip that says deployment to production failed; app:saf after:7d narrows to Safari clips from the last week"></td>
   </tr>
   <tr>
-    <td colspan="2" align="center"><em>Preview pane — <code>Space</code> to open, again for Quick Look, <code>⌘T</code> to flip the translation.</em></td>
+    <td colspan="2" align="center"><em>Search: a sentence finds <em>deployment to production failed</em>; <code>app:saf after:7d</code> narrows to where and when.</em></td>
+  </tr>
+  <tr>
+    <td colspan="2"><img src="docs/media/gif/note.gif" alt="A receipt screenshot's text is recognised and ⌘S saves it as a Markdown note in Obsidian"></td>
+  </tr>
+  <tr>
+    <td colspan="2" align="center"><em>Screenshot → note: <code>⌘S</code> sends the picture and its text to Obsidian.</em></td>
+  </tr>
+  <tr>
+    <td colspan="2"><img src="docs/media/gif/pinboards.gif" alt="⌘P files an address under the Addresses pinboard; the board then shows only its clips"></td>
+  </tr>
+  <tr>
+    <td colspan="2" align="center"><em>Pinboards: <code>⌘P</code> files a clip under a board.</em></td>
+  </tr>
+  <tr>
+    <td colspan="2"><img src="docs/media/gif/secret.gif" alt="A copied API key shows only as a mask; Return asks for Touch ID before the value is shown"></td>
+  </tr>
+  <tr>
+    <td colspan="2" align="center"><em>Secrets: a copied key is sealed in the Secure Enclave and shown as a mask until Touch ID.</em></td>
   </tr>
   <tr>
     <td width="50%" align="center"><img src="docs/screenshots/menu-bar.svg" alt="The menu-bar dropdown listing recent clips and app commands"></td>
     <td width="50%" align="center"><img src="docs/screenshots/settings.svg" alt="The Settings window showing its sidebar of preference panes"></td>
   </tr>
   <tr>
-    <td align="center"><em>Menu-bar dropdown — the last five clips.</em></td>
-    <td align="center"><em>Settings — ten panes behind a sidebar, no Dock icon anywhere.</em></td>
+    <td align="center"><em>Menu-bar dropdown: the last five clips.</em></td>
+    <td align="center"><em>Settings: ten panes behind a sidebar, no Dock icon anywhere.</em></td>
   </tr>
 </table>
 
@@ -71,7 +93,7 @@ not load third-party casks until you vouch for them. `brew upgrade`, `brew unins
 **By hand**: the [install page](https://yaminerl.github.io/MemoryClip/#install) walks through this
 with screenshots. In short: download the `.dmg` from
 [Releases](https://github.com/yaminerl/MemoryClip/releases) and drag it to Applications.
-The app is **ad-hoc signed** — no Developer ID, no notarisation — so Gatekeeper blocks the
+The app is **ad-hoc signed** (no Developer ID, no notarisation), so Gatekeeper blocks the
 first launch until you strip the quarantine flag, which is all the cask does for you:
 
 ```sh
@@ -84,7 +106,7 @@ bar. **Launch at login** is in **Settings → General**.
 ### Staying up to date
 
 `brew upgrade --cask memoryclip` if you installed it that way. If you installed by hand
-there is nothing to tell you a new version exists — no Dock icon, no window, no sync — so
+there is nothing to tell you a new version exists (no Dock icon, no window, no sync), so
 **Settings → General → Updates** has a switch for it, offered again on its own page of the
 first-run tour:
 
@@ -92,7 +114,7 @@ first-run tour:
 - **On**, it asks `api.github.com` once a day what the newest release is. The request is
   an unauthenticated `GET` of a public endpoint carrying no identifier of any kind; the
   only thing GitHub learns is that some address asked.
-- If there is something newer you get **one notification** — once per version, not once a
+- If there is something newer you get **one notification**: once per version, not once a
   day until you give in. Take it and MemoryClip downloads that release's `.dmg` to a
   temporary folder and opens it, leaving you the same drag onto `/Applications` as the
   first install. That window asks you to quit MemoryClip before you drag, because macOS
@@ -104,7 +126,7 @@ first-run tour:
 
 ⇧⌘V opens the panel from any app, newest clip first, list already focused. The menu-bar
 glyph gives the last five clips under a **Recent Clips** header, then Open MemoryClip and
-Pause Capture, then Settings, Permissions and Clear All History, then Quit — the
+Pause Capture, then Settings, Permissions and Clear All History, then Quit, the
 irreversible one kept a separator away from the item people actually come to click.
 
 | Key | Does |
@@ -129,15 +151,15 @@ irreversible one kept a separator away from the item people actually come to cli
 | `Esc` | Leave the editor, close the suggestion list, then Quick Look, then the preview, then the panel |
 
 Pasting puts the clip on the clipboard, reactivates your previous app and sends a ⌘V. If
-macOS blocks that synthetic keystroke the clip is still on the clipboard — see
+macOS blocks that synthetic keystroke the clip is still on the clipboard; see
 [Permissions](#permissions).
 
 Some apps never want the fonts and colours a rich-text clip carries. **Settings → General →
-Pasting** keeps a list of them — terminals, editors and the like, seeded with the obvious
-ones and every entry removable — and a clip pasted into one arrives as plain text without
+Pasting** keeps a list of them (terminals, editors and the like, seeded with the obvious
+ones and every entry removable), and a clip pasted into one arrives as plain text without
 you reaching for ⇧Return.
 
-Hold `←` or `→` and the list walks at about eight clips a second — MemoryClip's own pace
+Hold `←` or `→` and the list walks at about eight clips a second, MemoryClip's own pace
 rather than the key-repeat rate in your Keyboard settings, which at its fastest is a blur
 that overshoots by a dozen clips before a finger comes off the key. The preview waits
 until you stop, so a run of forty clips loads one rather than forty. The keys that delete,
@@ -150,13 +172,13 @@ come back out.
 **Search** matches clip text, text recognised inside images, the model's summary, title
 and tags, the translation, colour values, file names and the source app, with chips
 for **All, Text, Images, Links, Files, Colors**. It runs in the database over an index, a
-page at a time, so tens of thousands of clips filter like an empty store — paging bounds
+page at a time, so tens of thousands of clips filter like an empty store: paging bounds
 what is *drawn*, never what is *findable*.
 
 Type a **sentence** and every word has to match, rather than the whole phrase being looked
 for verbatim: "that error about the deploy failing" finds the clip that says *deployment
 to production failed*. Words are reduced to the stem they share with their dictionary form
-— `failing` reaches `failed`, `screenshots` reaches `screenshot` — and a stem is only ever
+(`failing` reaches `failed`, `screenshots` reaches `screenshot`), and a stem is only ever
 a prefix of what you typed, so it can widen a search and never narrow it. Common words are
 dropped, the database is asked for the longest term alone, and the rest of the sentence is
 checked over the page that comes back.
@@ -175,8 +197,8 @@ and a value with spaces takes quotes (`app:"Google Chrome"`):
 | `before:` | copied before | the same values |
 | `on:` | copied on one day | the same values |
 
-Typing a key and `:` offers the values it knows — source apps most-used first, pinboards
-in strip order — with `↓`/`↑` to choose and `Return` or `Tab` to accept; `Esc` closes the
+Typing a key and `:` offers the values it knows (source apps most-used first, pinboards
+in strip order), with `↓`/`↑` to choose and `Return` or `Tab` to accept; `Esc` closes the
 list. A lone `?` in
 the field shows this whole table as a cheat-sheet, a click on a previewed clip's app name
 filters to it (`app:"Name"`), and an empty result names its constraints in words with a
@@ -184,15 +206,15 @@ filters to it (`app:"Name"`), and an empty result names its constraints in words
 
 **Along the way** it badges emails, URLs, phone numbers, JWTs and JSON, shows `= 84` under
 a copied `12*7`, and offers a QR code for links. Right-click to transform a clip on the
-way out — grouped as Case, JSON, Encoding, Color, Time and Lines, so the menu stays
-readable at twenty-five of them — or **Add to Queue**, and **Paste N** sends the lot in
+way out (grouped as Case, JSON, Encoding, Color, Time and Lines, so the menu stays
+readable at twenty-five of them), or **Add to Queue**, and **Paste N** sends the lot in
 order. Colours convert between hex, `rgb()` and `hsl()`; a Unix timestamp becomes a date
 and back; and a clip can be dragged straight out of the panel into any app, a screenshot
 travelling as the file it already is rather than as a copy of its bytes.
 
-**Links arrive cleaned.** A copied URL sheds its tracking parameters on the way in —
+**Links arrive cleaned.** A copied URL sheds its tracking parameters on the way in:
 `fbclid`, `gclid`, `igshid` and the rest are dropped on every host, `si` only where
-YouTube or Spotify is the one issuing it — and the cleaned link goes straight back on
+YouTube or Spotify is the one issuing it. The cleaned link goes straight back on
 the clipboard, so your next ⌘V pastes it without opening the panel at all. The same link
 copied with two different identifiers deduplicates to one clip. The preview names what
 was removed (`Cleaned · removed igsh`), and **Settings → Privacy → Links** can switch
@@ -209,35 +231,35 @@ clips back to Pinned rather than deleting them. Inside a board, clips keep the o
 put them in (`⌥⇧←` and `⌥⇧→` slide the selected clip along it), and searching filters the
 board you are looking at. Boards ride along in a JSON export and come back on import.
 
-**Translation** — off by default, **Settings → Translation → Clip preview**. Copy
+**Translation** is off by default, in **Settings → Translation → Clip preview**. Copy
 something in a language you do not read and the preview shows it in one you do, beside the
 text as it was copied; a screenshot or an image is translated from the text recognised
 inside it. The target starts as whatever language this Mac is set to read. It happens when
-you open the preview rather than when you copy — a clipboard is mostly things nobody looks
-at twice — which costs a second or two the first time and nothing afterwards, since the
+you open the preview rather than when you copy (a clipboard is mostly things nobody looks
+at twice), which costs a second or two the first time and nothing afterwards, since the
 answer is kept on the clip. The work outlives the panel, so clicking away mid-translation
 loses nothing.
 
-The two texts sit on **Original** and **Translation** tabs in the pane — the second
-named for the language it holds — and **⌘T** flips
-between them. When a translation finishes arriving, the pane switches to it once — unless
+The two texts sit on **Original** and **Translation** tabs in the pane, the second
+named for the language it holds, and **⌘T** flips
+between them. When a translation finishes arriving, the pane switches to it once, unless
 you had already picked a tab for this clip, or you last picked the original, in which case
 it stays exactly where you put it. Your pick is remembered for the rest of the session, so
 the next clip in that language opens the way you prefer, and the language pair
 ("Chinese, Simplified → English") rides along beside the tabs.
 
-**Vim navigation** — off by default, **Settings → Panel**. Properly modal, the mode shown
+**Vim navigation** is off by default, in **Settings → Panel**. Properly modal, the mode shown
 in the search bar. In NORMAL:
 
 | Key | Does |
 | --- | --- |
-| `j` `k` | Move down / up (`l` `h` too — the strip of cards runs left to right) |
+| `j` `k` | Move down / up (`l` `h` too; the strip of cards runs left to right) |
 | `gg` `G` | Jump to top / bottom |
 | `⌃d` `⌃u` | Half-page down / up |
 | `o` | Paste (`⇧O` pastes as plain text) |
 | `p` | Pin the clip |
 | `P` | File it under a pinboard |
-| `v` | Visual mode — `j` and `k` extend the selection, `Esc` leaves |
+| `v` | Visual mode: `j` and `k` extend the selection, `Esc` leaves |
 | `dd` | Delete the clip, after a confirmation |
 | `q` `⇧Q` | Add to the queue / paste the whole queue |
 | `n` | Save the clip as a note (`⌘S` does the same in either mode) |
@@ -272,16 +294,16 @@ here, so moving to a new Mac keeps the history.
 MemoryClip exposes four App Intents, so Shortcuts can build automations out of the
 history and Spotlight can run them directly:
 
-- **Get Latest Clip** — the newest clip, optionally only of one kind (text, image,
+- **Get Latest Clip**: the newest clip, optionally only of one kind (text, image,
   link, file, color). Text comes back as text; an image arrives as the image itself.
-- **Search Clips** — the panel's own matching, returned as a list of clips a shortcut
+- **Search Clips**: the panel's own matching, returned as a list of clips a shortcut
   can loop over, capped at 100.
-- **Copy Clip** — puts a clip back on the clipboard without opening the panel.
-- **Open MemoryClip** — shows the panel, optionally with the search already filled in.
+- **Copy Clip** puts a clip back on the clipboard without opening the panel.
+- **Open MemoryClip** shows the panel, optionally with the search already filled in.
 
-If the app lock (Touch ID) is on, every intent but Open asks for it first — Open leaves
+If the app lock (Touch ID) is on, every intent but Open asks for it first. Open leaves
 it to the panel, which gates itself like the hotkey does. All four are read-only: no
-intent edits or deletes history, and secret clips are invisible to them — a secret never
+intent edits or deletes history, and secret clips are invisible to them: a secret never
 appears in an answer, not even as a masked row, so neither Shortcuts nor Spotlight can
 learn that one exists.
 
@@ -296,12 +318,12 @@ Screenshot clips are **links, not copies**: the file stays where it is, with a t
 for the row. Deleting a clip never touches it, and **Reveal in Finder** opens it.
 
 Vision reads the text inside images on-device and folds it into search, so you can find a
-screenshot by words that appear *in* it — 30 languages, detected rather than assumed.
+screenshot by words that appear *in* it, in 30 languages, detected rather than assumed.
 Those rows read `text found`.
 
 A screenshot **of a table comes back as a table**. Columns are recovered from where the
 words sat on the page, stored as Markdown, drawn as a grid in the preview and carried into
-notes — a real `<table>` in Apple Notes, a Markdown table in a vault.
+notes: a real `<table>` in Apple Notes, a Markdown table in a vault.
 
 ### Notes
 
@@ -311,9 +333,9 @@ title, summary and tags. The raw recognition is kept alongside it, and is used o
 when the model is unavailable or when a rewrite drops or invents too much of the text.
 
 A screenshot that is not in the language you read is **translated on this Mac** and the
-note carries both — the text as it was on screen, and the translation under it. It goes
+note carries both: the text as it was on screen, and the translation under it. It goes
 into the language set under **Settings → Translation**, the same one the preview pane
-uses, and falls back to English when this Mac has no assets for that pair — `xx→en` is the
+uses, and falls back to English when this Mac has no assets for that pair; `xx→en` is the
 pairing macOS ships most widely. Title, summary and tags are written from the translation,
 so a note captured in Arabic is findable in the vault you search. Tick the languages you
 want in **Settings → Translation → Notes** (22 on macOS 26) and macOS fetches what it
@@ -323,20 +345,20 @@ Three destinations, in **Settings → Notes**:
 
 | Destination | What it does | Needs |
 | --- | --- | --- |
-| **Markdown folder** | Writes a `.md` file with YAML front matter — an Obsidian vault, or any folder of Markdown — filed under the month and day it was captured. The screenshot is copied in and embedded, so the note survives you clearing your Desktop. | A folder you pick |
-| **Notes** | Creates a note in Apple Notes, in a folder you name. The screenshot goes in as a link — Notes does not accept an image through automation. | Automation permission |
+| **Markdown folder** | Writes a `.md` file with YAML front matter (an Obsidian vault, or any folder of Markdown), filed under the month and day it was captured. The screenshot is copied in and embedded, so the note survives you clearing your Desktop. | A folder you pick |
+| **Notes** | Creates a note in Apple Notes, in a folder you name. The screenshot goes in as a link, because Notes does not accept an image through automation. | Automation permission |
 | **Shortcut** | Runs a Shortcut with the note as its input, so Bear, Things, DEVONthink or anything else Shortcuts reaches can be the destination. | A Shortcut name |
 
 Notes are written when you ask, or automatically above a text threshold if you turn on
 **Write a note for every screenshot**. Asking on a screenshot whose text has not been
-recognised yet waits for the recognition rather than failing — the note is written as
+recognised yet waits for the recognition rather than failing: the note is written as
 soon as the words are there. A clip that has one reads `Screenshot · noted` and
-offers **Update Note**, which rewrites the same file — even one you moved or renamed
+offers **Update Note**, which rewrites the same file, even one you moved or renamed
 inside your vault.
 
 ### Where notes go
 
-Every note is a plain `.md` file named `2026-08-13 1422 Title.md` — timestamp first, so
+Every note is a plain `.md` file named `2026-08-13 1422 Title.md`, timestamp first, so
 two shots of the same window do not collide and a note that ends up somewhere else still
 says when it is from. Notes are filed by the day they were captured:
 
@@ -382,34 +404,34 @@ screenshot: "/Users/you/Desktop/Screenshot 2026-08-13 at 14.22.01.png"
 ```
 
 Every string is quoted because a heading with a colon in it would otherwise rewrite the
-note's own metadata. `lang:` is the language of the text in the body — what you
-photographed, not what it was translated into — and is written only when that differs from
+note's own metadata. `lang:` is the language of the text in the body (what you
+photographed, not what it was translated into) and is written only when that differs from
 the language notes are translated into, so `lang: ar` finds everything you captured in
 Arabic. `screenshot:` points at the original file even when a copy was made,
 `memoryclip-uuid` lets an update find the note it wrote last time, and `created` is UTC
 for Dataview while the file name is local time, for you.
 
-Anything that reads Markdown off disk opens one. Apps differ on two things only — front
-matter, and wiki-style `![[embeds]]` — which is what the **Copy the screenshot into the
+Anything that reads Markdown off disk opens one. Apps differ on two things only, front
+matter and wiki-style `![[embeds]]`, which is what the **Copy the screenshot into the
 folder** switch is for: on, the picture is copied in and embedded; off, the note links to
 it where it sits, in a form every editor renders.
 
-- **[Obsidian](https://obsidian.md)** — your vault, or any folder in it, copying **on**
+- **[Obsidian](https://obsidian.md)**: your vault, or any folder in it, copying **on**
   and dated folders **on**: it walks subfolders, and its own attachment setting is the
   flat folder these notes already use. Front matter becomes note properties, so tags are
   tags and `lang`, `source` and `created` are Dataview-queryable.
-- **[Logseq](https://logseq.com)** — the `pages` folder of your graph, attachments set to
+- **[Logseq](https://logseq.com)**: the `pages` folder of your graph, attachments set to
   `assets`, and dated folders **off**: a Logseq page is named by its file, and any
   hierarchy is spelled into that name rather than into folders, so a dated tree buys
   nothing the graph can use.
 - **[iA Writer](https://ia.net/writer)**, **[Typora](https://typora.io)**,
-  **[Zettlr](https://www.zettlr.com)**, VS Code — any folder they watch, copying **off**.
+  **[Zettlr](https://www.zettlr.com)**, VS Code: any folder they watch, copying **off**.
   All four open a folder and show its subfolders, so leave the dated folders on unless
   you would rather scroll one long list.
-- **[DEVONthink](https://www.devontechnologies.com/apps/devonthink)** — index the folder,
+- **[DEVONthink](https://www.devontechnologies.com/apps/devonthink)**: index the folder,
   so notes stay files MemoryClip can update in place.
-- **[Joplin](https://joplinapp.org)** — import, and re-import after later edits.
-- **iCloud Drive, Dropbox, Syncthing** — notes are written whole, so a half-written file
+- **[Joplin](https://joplinapp.org)**: import, and re-import after later edits.
+- **iCloud Drive, Dropbox, Syncthing**: notes are written whole, so a half-written file
   never syncs.
 
 Bear, Craft, Notion and Things keep no files: use the **Shortcut** destination. A shorter
@@ -418,14 +440,14 @@ version of this list is in the app, under
 
 ## Dates into events
 
-A clip that names a time — an invitation pasted out of an e-mail, a screenshot of a
-meeting request, a line someone sent you in chat — becomes an event in Calendar.
+A clip that names a time (an invitation pasted out of an e-mail, a screenshot of a
+meeting request, a line someone sent you in chat) becomes an event in Calendar.
 Right-click → **Add to Calendar**, **⌘E**, or `c` in vim mode.
 
 What it reads is what macOS reads: the same detector that underlines "Thursday at 3" in
 Mail, so it understands the forms people actually send, in every language the system
-ships. Around that it looks for the two things that turn a date into an appointment — a
-video-call link (Zoom, Meet, Teams, Webex and the rest) and a postal address — and takes
+ships. Around that it looks for the two things that turn a date into an appointment, a
+video-call link (Zoom, Meet, Teams, Webex and the rest) and a postal address, and takes
 the title from the line above the details, which is where an invitation puts its subject.
 A date with no clock time becomes an all-day event rather than an hour at noon.
 
@@ -434,38 +456,38 @@ an appointment is **offered** rather than written: a notification carrying the t
 day and the place it detected, with **Add**, **Edit…** and **Not Now**. *Add* creates the
 event; *Edit…* opens it as a draft in Calendar, where you can fix the title or move it
 before it exists; *Not Now* leaves nothing behind. While the setting is on, the panel's
-own **⌘E** opens the same review — you see what was detected before anything is written.
+own **⌘E** opens the same review, so you see what was detected before anything is written.
 *Plainly* is the whole of it: the text has to name a time of day **and** carry either a
-meeting link or an address. A bare date does not qualify, and that is deliberate — "Q3
+meeting link or an address. A bare date does not qualify, and that is deliberate: "Q3
 ends September 30" is a date, a receipt has a date, an article has a date, and a clipboard
 manager that turned every one of them into a calendar entry would be something you switch
 off rather than something you rely on. Everything weaker still gets the button.
 
-Every added event — however it was added — announces itself with a notification carrying
+Every added event, however it was added, announces itself with a notification carrying
 **Open in Calendar**, which lands on the event's own day, and **Undo**, which takes it
 back out again. Either way the clip row reads `· in calendar`.
 
 ## Privacy and security
 
-Everything happens on this Mac — a local SwiftData store, and no network calls except the
+Everything happens on this Mac: a local SwiftData store, and no network calls except the
 one you can switch on ([the daily update check](#staying-up-to-date), off by default,
 which sends nothing about you and installs nothing on its own).
 
-- **The store is owner-only**, at `~/Library/Application Support/app.memoryclip/` —
+- **The store is owner-only**, at `~/Library/Application Support/app.memoryclip/`,
   directory `0700`, files `0600`.
 - **Password managers are skipped**: the standard pasteboard opt-out markers
   (`org.nspasteboard.TransientType`, `AutoGeneratedType`, `ConcealedType`), and known
   credential apps outright.
-- **Any app you name is skipped too** — **Settings → Privacy → Excluded apps**. Nothing
+- **Any app you name is skipped too**, in **Settings → Privacy → Excluded apps**. Nothing
   copied there reaches the store at all, and unlike the built-in list it keeps applying
   even with sensitive-content filtering switched off.
-- **Card numbers are never captured** — Luhn-validated numbers are dropped from plain
+- **Card numbers are never captured**: Luhn-validated numbers are dropped from plain
   text, rich text, OCR output and translations alike.
 - **Detection is app-identity based**: bundle identifier and name, never window titles or
   the screen, which is why no Screen Recording grant is needed.
 - **The model and the translator are local.** Foundation Models and Translation run
   on-device with no cloud fallback.
-- **Notes leave the store on purpose** — a note is a file in your folder, with that
+- **Notes leave the store on purpose**: a note is a file in your folder, with that
   folder's permissions rather than the store's `0600`.
 - **Optional Touch ID lock** gates the panel, redacts the dropdown to clip kinds, and
   always re-authenticates for Export and Clear All History.
@@ -473,12 +495,12 @@ which sends nothing about you and installs nothing on its own).
 ### Secrets
 
 Copy an API key, a private key, a token, a connection string or a one-time code and
-MemoryClip recognises it — the whole clip has to match a pattern, so a password inside a
-paragraph is left alone — and, by default, **keeps it encrypted**: the row in your
+MemoryClip recognises it (the whole clip has to match a pattern, so a password inside a
+paragraph is left alone) and, by default, **keeps it encrypted**: the row in your
 history holds only ciphertext, sealed with a P-256 key that lives in this Mac's Secure
 Enclave and can never leave it (ephemeral key agreement, HKDF-SHA256, AES-GCM). The card
-shows a lock, a label and a mask like `AKIA••••••••••••7Q2X` — which is also all that
-search can match — and the value behind it asks for Touch ID or your password before it
+shows a lock, a label and a mask like `AKIA••••••••••••7Q2X` (which is also all that
+search can match), and the value behind it asks for Touch ID or your password before it
 is shown or pasted. One authentication covers 60 seconds of reveals, so a queue of
 secrets pastes behind a single prompt. Two alternatives live in **Settings → Privacy →
 Secrets**: **Don't keep it** drops the clip entirely, and **Keep it like any other clip**
@@ -486,16 +508,16 @@ turns the feature off. Right-click → **Not a Secret** unseals a false positive
 **Mark as Secret** seals an ordinary clip you already have.
 
 A reveal lasts 30 seconds and relocks on Esc or on changing clips; a concealed paste is
-wiped from the clipboard 90 seconds later (both switchable). One-time codes — recognised
-only in Messages and Mail — delete themselves after ten minutes unless pinned. Exported
+wiped from the clipboard 90 seconds later (both switchable). One-time codes, recognised
+only in Messages and Mail, delete themselves after ten minutes unless pinned. Exported
 histories omit secret rows entirely and the export dialog says how many were left out.
 
 **What this protects against:** a copied store directory, a Time Machine backup, another
-process reading the SwiftData file — everywhere the ciphertext goes, the key stays in the
+process reading the SwiftData file: everywhere the ciphertext goes, the key stays in the
 enclave. **What it does not:** malware running as you while a secret is revealed, the
 clipboard for the 90 seconds a pasted secret lives there, secrets copied while plaintext
-mode was selected, and a move to another Mac — the enclave key cannot leave this one, so
-sealed history does not follow you.
+mode was selected, and a move to another Mac (the enclave key cannot leave this one, so
+sealed history does not follow you).
 
 VoiceOver is supported throughout: rows carry labels for kind, content and state, mode and
 selection changes are announced, and every row action is reachable from the keyboard.
@@ -505,23 +527,23 @@ selection changes are announced, and every row action is reachable from the keyb
 **None** for the core job: capture, store, search, and copy clips back. No Screen
 Recording, no Input Monitoring, no network. Optional, and only with the matching feature:
 
-- **Notifications** — for the banner an automatic calendar event posts, and the one the
+- **Notifications**: for the banner an automatic calendar event posts, and the one the
   update check posts when a newer release exists. Asked for at the first banner, never at
   launch.
 
-- **Files and folders** — to read your screenshot folder and write notes into the one you
+- **Files and folders**: to read your screenshot folder and write notes into the one you
   pick. Each grant is kept as a *security-scoped bookmark* rather than a path, so it
   outlives a relaunch, and MemoryClip never reaches into a folder you did not point it at.
-- **Automation** — only when Apple Notes is your note destination.
-- **Calendars** — only to add an event you asked for. The grant requested is *write-only*:
+- **Automation**: only when Apple Notes is your note destination.
+- **Calendars**: only to add an event you asked for. The grant requested is *write-only*:
   it can create events and cannot read one. That is also why an event goes to your default
-  calendar and there is no picker — listing the others would need the read permission this
+  calendar and there is no picker, since listing the others would need the read permission this
   feature is deliberately not asking for.
-- **Accessibility** — only to auto-paste with a synthetic ⌘V. Without it the clip still
+- **Accessibility**: only to auto-paste with a synthetic ⌘V. Without it the clip still
   reaches the clipboard.
 
 macOS keys a permission to an app's *signature*, not its name, and MemoryClip is ad-hoc
-signed — so every update is a new app to it, and the grants you gave the last version are
+signed, so every update is a new app to it, and the grants you gave the last version are
 dropped without anything saying so. MemoryClip records which permissions have worked and
 offers to ask again for the ones an update took, on the launch after it. **Permissions…**
 in the menu bar opens the same window at any time: one row per permission, each with the
@@ -542,11 +564,11 @@ where you left it.
 | Clipboard | **Privacy** | Touch ID lock, sensitive-content filtering, secrets, link cleaning, excluded apps, permission notes |
 | Clip actions | **Notes** | The on-device model, note destination, automatic notes |
 | Clip actions | **Calendar** | Event suggestions, their notification, how long an event runs |
-| Clip actions | **Translation** | Both translators — the languages notes are read in, and the preview's own switch and target |
-| — | **About** | Version, privacy summary, replay the welcome tour |
+| Clip actions | **Translation** | Both translators: the languages notes are read in, and the preview's own switch and target |
+| | **About** | Version, privacy summary, replay the welcome tour |
 
 The groups follow a clip's life: the app itself, the clip arriving and being found again,
-then the three things it can turn into. Translation is one of those three — it governs
+then the three things it can turn into. Translation is one of those three: it governs
 notes and the panel's preview alike, which is why its two halves are headed **Notes** and
 **Clip preview**.
 
@@ -576,7 +598,7 @@ DRAFT=1 ./Scripts/publish_release.sh    # draft, to eyeball first
 ```
 
 Builds the DMG, tags the commit, creates the release with its `sha256`, then points the
-cask at what it just published and pushes that one-line bump — a tap naming the previous
+cask at what it just published and pushes that one-line bump, since a tap naming the previous
 version keeps installing the previous version. The checksum comes from the asset GitHub
 serves, not the local copy. It refuses to run on a dirty tree or an unpushed commit, since
 a published binary should correspond to source anyone can fetch. Drafts skip the cask,
@@ -622,21 +644,21 @@ Paste flow: selection → `PasteService.write` puts the payload on the pasteboar
 watcher ignores its own write → the previous app is reactivated → synthetic ⌘V.
 
 Packaging: `make_app.sh` and `make_dmg.sh` build, `publish_release.sh` releases, and
-`update_cask.sh` points [`Casks/memoryclip.rb`](Casks/memoryclip.rb) at the result — this
+`update_cask.sh` points [`Casks/memoryclip.rb`](Casks/memoryclip.rb) at the result; this
 repository doubles as the Homebrew tap.
 
 ## Prior art
 
-MemoryClip is inspired by [Deck](https://github.com/yuzeguitarist/Deck) — a
+MemoryClip is inspired by [Deck](https://github.com/yuzeguitarist/Deck), but it is a
 **clean-room implementation**, containing **no Deck code**. Where the two diverge it is
 deliberate: the design notes in `DesignSystem.swift` and `ClipCardView.swift` record
 which of Deck's visual choices were kept and which were not.
 
 ## Licence
 
-[FSL-1.1-ALv2](LICENSE) — the Functional Source License, with Apache-2.0 as its future
+[FSL-1.1-ALv2](LICENSE), the Functional Source License, with Apache-2.0 as its future
 licence. Use it for anything you like, including your work at a company: read it, change
-it, build on it, pass it on. The one thing it withholds is competing use — making
+it, build on it, pass it on. The one thing it withholds is competing use: making
 MemoryClip, or something with substantially the same functionality, available in a
 commercial product or service. Ask me first, by opening an issue.
 
