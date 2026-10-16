@@ -17,12 +17,8 @@
 * { box-sizing: border-box; margin: 0; padding: 0; }
 html, body { width: 1200px; height: var(--h, 720px); overflow: hidden; background: #0d0f1c; font-family: var(--font); color: var(--label); -webkit-font-smoothing: antialiased; }
 
-#stage { position: relative; width: 1200px; height: var(--h, 720px); overflow: hidden;
-  background:
-    radial-gradient(circle at 16% 10%, rgba(76, 92, 255, 0.40), transparent 60%),
-    radial-gradient(circle at 88% 95%, rgba(0, 184, 160, 0.34), transparent 65%),
-    radial-gradient(circle at 68% 5%, rgba(255, 111, 181, 0.22), transparent 45%),
-    linear-gradient(135deg, #141a33, #2a1c3f 50%, #0d2630); }
+/* flat, the site's dark --bg: a gradient bands and dithers in a GIF palette */
+#stage { position: relative; width: 1200px; height: var(--h, 720px); overflow: hidden; background: #191919; }
 
 /* ---- panel: a translucent slab, not a window ---- */
 #panel { position: absolute; left: 60px; top: 70px; width: 1080px; height: 340px; border-radius: 28px;
