@@ -240,11 +240,17 @@ enum Design {
 
     // MARK: - Motion
 
+    /// Critically damped springs: no overshoot, and a change mid-flight
+    /// retargets from the current value and velocity instead of restarting.
     enum Motion {
-        /// Selection scrolling and hover — fast enough to feel direct.
-        static let quick = Animation.easeOut(duration: 0.12)
+        /// Exits and small reveals — fast enough to feel direct.
+        static let quick = Animation.spring(duration: 0.12, bounce: 0)
         /// State changes that redraw a whole region (preview, filter chips).
-        static let standard = Animation.easeOut(duration: 0.18)
+        static let standard = Animation.spring(duration: 0.18, bounce: 0)
+        /// A fade that leaves faster than it arrives.
+        static var fade: AnyTransition {
+            .asymmetric(insertion: .opacity, removal: .opacity.animation(quick))
+        }
     }
 
     // MARK: - Typography
@@ -511,7 +517,7 @@ struct HintBubble: View {
             .background(Design.Palette.hintFill, in: Capsule(style: .continuous))
             .shadow(color: Design.Palette.cardShadow, radius: 6, y: 2)
             .allowsHitTesting(false)
-            .transition(.opacity)
+            .transition(Design.Motion.fade)
     }
 }
 

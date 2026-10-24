@@ -1994,7 +1994,7 @@ struct PanelContentView: View {
             guard statusMessage != nil else { return }
             try? await Task.sleep(for: .seconds(5))
             guard !Task.isCancelled else { return }
-            statusMessage = nil
+            withAnimation(Design.Motion.standard) { statusMessage = nil }
         }
         // Debounced for the same reason the preview pane is: the filter is
         // rebuilt on every keystroke, and counting once the typing comes to
@@ -3227,13 +3227,13 @@ struct PanelContentView: View {
                     // must see the selection it is reacting to.
                     guard let index = selection.index(in: visible.map(\.uuid)),
                           visible.indices.contains(index) else { return }
-                    withAnimation(Design.Motion.quick) {
-                        // `.center` rather than the default: on a horizontal
-                        // axis the leading anchor parks the selected card
-                        // against the panel's left edge with its neighbours
-                        // off-screen, which loses the sense of a deck.
-                        proxy.scrollTo(visible[index].uuid, anchor: .center)
-                    }
+                    // Not animated: the arrow keys drive this, and a scroll
+                    // that eases trails a held key.
+                    // `.center` rather than the default: on a horizontal
+                    // axis the leading anchor parks the selected card
+                    // against the panel's left edge with its neighbours
+                    // off-screen, which loses the sense of a deck.
+                    proxy.scrollTo(visible[index].uuid, anchor: .center)
                 }
             }
         }
