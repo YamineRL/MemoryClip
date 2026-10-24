@@ -739,3 +739,25 @@
 "Connection string" = "Chaîne de connexion";
 "One-time code" = "Code à usage unique";
 "Token" = "Jeton";
+
+/* Failure notices. */
+"Clip not translated" = "Clip non traduit";
+"Download %@ in Settings → Translation to translate it." = "Téléchargez %@ dans Réglages → Traduction pour le traduire.";
+"Note not saved" = "Note non enregistrée";
+"Apple Intelligence is off" = "Apple Intelligence est désactivé";
+"Turn it on in System Settings, or turn off note refinement in Settings → Notes." = "Activez-le dans Réglages Système, ou désactivez l’amélioration des notes dans Réglages → Notes.";
+"Image not saved" = "Image non enregistrée";
+"Images over %d MB or %d megapixels aren’t kept in history." = "Les images de plus de %d Mo ou %d mégapixels ne sont pas conservées dans l’historique.";
+"Secret not saved" = "Secret non enregistré";
+"It couldn’t be encrypted, so it wasn’t kept. It’s still on your clipboard." = "Il n’a pas pu être chiffré, il n’a donc pas été conservé. Il est toujours dans votre presse-papiers.";
+"Screenshots not being saved" = "Captures d’écran non enregistrées";
+"Choose the screenshot folder again in Settings → Screenshots." = "Choisissez à nouveau le dossier des captures dans Réglages → Captures d’écran.";
+"Allow MemoryClip into the screenshot folder in Settings → Screenshots." = "Autorisez MemoryClip à accéder au dossier des captures dans Réglages → Captures d’écran.";
+"Panel opened without Touch ID" = "Panneau ouvert sans Touch ID";
+"This Mac can’t ask for Touch ID or a password. Set one up in System Settings to lock the panel." = "Ce Mac ne peut pas demander Touch ID ni de mot de passe. Configurez-en un dans Réglages Système pour verrouiller le panneau.";
+"History won’t be saved" = "L’historique ne sera pas enregistré";
+"Clips copied now will be gone when MemoryClip quits. Restart it to try again." = "Les clips copiés maintenant disparaîtront à la fermeture de MemoryClip. Relancez-le pour réessayer.";
+"Couldn’t undo the event" = "Impossible d’annuler l’événement";
+"Couldn’t add the event" = "Impossible d’ajouter l’événement";
+"Update not downloaded" = "Mise à jour non téléchargée";
+"Try again from Settings → General." = "Réessayez depuis Réglages → Général.";

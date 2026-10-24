@@ -739,3 +739,25 @@
 "Connection string" = "Connection string";
 "One-time code" = "One-time code";
 "Token" = "Token";
+
+/* Failure notices. */
+"Clip not translated" = "Clip not translated";
+"Download %@ in Settings → Translation to translate it." = "Download %@ in Settings → Translation to translate it.";
+"Note not saved" = "Note not saved";
+"Apple Intelligence is off" = "Apple Intelligence is off";
+"Turn it on in System Settings, or turn off note refinement in Settings → Notes." = "Turn it on in System Settings, or turn off note refinement in Settings → Notes.";
+"Image not saved" = "Image not saved";
+"Images over %d MB or %d megapixels aren’t kept in history." = "Images over %d MB or %d megapixels aren’t kept in history.";
+"Secret not saved" = "Secret not saved";
+"It couldn’t be encrypted, so it wasn’t kept. It’s still on your clipboard." = "It couldn’t be encrypted, so it wasn’t kept. It’s still on your clipboard.";
+"Screenshots not being saved" = "Screenshots not being saved";
+"Choose the screenshot folder again in Settings → Screenshots." = "Choose the screenshot folder again in Settings → Screenshots.";
+"Allow MemoryClip into the screenshot folder in Settings → Screenshots." = "Allow MemoryClip into the screenshot folder in Settings → Screenshots.";
+"Panel opened without Touch ID" = "Panel opened without Touch ID";
+"This Mac can’t ask for Touch ID or a password. Set one up in System Settings to lock the panel." = "This Mac can’t ask for Touch ID or a password. Set one up in System Settings to lock the panel.";
+"History won’t be saved" = "History won’t be saved";
+"Clips copied now will be gone when MemoryClip quits. Restart it to try again." = "Clips copied now will be gone when MemoryClip quits. Restart it to try again.";
+"Couldn’t undo the event" = "Couldn’t undo the event";
+"Couldn’t add the event" = "Couldn’t add the event";
+"Update not downloaded" = "Update not downloaded";
+"Try again from Settings → General." = "Try again from Settings → General.";

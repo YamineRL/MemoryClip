@@ -23,6 +23,7 @@ enum AppNotifications {
             EventNotifier.category,
             EventNotifier.offerCategory,
             UpdateNotifier.category,
+            FailureNotifier.category,
         ])
     }
 }
@@ -76,17 +77,27 @@ final class AppNotificationDelegate: NSObject, UNUserNotificationCenterDelegate 
             .flatMap(UUID.init(uuidString:))
         let eventStart = (content.userInfo["eventStart"] as? TimeInterval)
             .map(Date.init(timeIntervalSinceReferenceDate:))
+        let destination = (content.userInfo[FailureNotice.Destination.userInfoKey] as? String)
+            .flatMap(FailureNotice.Destination.init(userInfoValue:))
         log.notice("Notification action \(response.actionIdentifier, privacy: .public) on \(content.categoryIdentifier, privacy: .public)")
         await handle(
             response.actionIdentifier,
             operation: operation,
             clipUUID: clipUUID,
             eventStart: eventStart,
+            destination: destination,
             category: content.categoryIdentifier
         )
     }
 
-    private func handle(_ action: String, operation: UUID?, clipUUID: UUID?, eventStart: Date?, category: String) async {
+    private func handle(
+        _ action: String,
+        operation: UUID?,
+        clipUUID: UUID?,
+        eventStart: Date?,
+        destination: FailureNotice.Destination?,
+        category: String
+    ) async {
         switch action {
         case EventNotifier.undoActionIdentifier:
             // The banner names the creation it announced; undo retracts THAT
@@ -139,6 +150,8 @@ final class AppNotificationDelegate: NSObject, UNUserNotificationCenterDelegate 
                 Self.openCalendar(showing: eventStart)
             } else if category == EventNotifier.offerCategoryIdentifier, let clipUUID {
                 presentOfferDialog(forClipWith: clipUUID)
+            } else if category == FailureNotifier.categoryIdentifier, let destination {
+                FailureNotifier.open(destination)
             }
         default:
             // The banner's own close control and dismissals — neither is
