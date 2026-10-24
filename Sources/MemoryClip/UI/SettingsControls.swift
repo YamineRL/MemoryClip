@@ -41,35 +41,37 @@ struct SettingsHint: View {
     }
 }
 
-/// The tinted, rounded glyph that leads a settings row.
+/// The glyph that leads a settings row.
 ///
 /// Gives every control the same leading slot, so a form of otherwise
 /// unrelated toggles and pickers scans as one column instead of a wall of
-/// left-aligned sentences. The colour is what distinguishes a row at a
-/// glance; the symbol says which one.
+/// left-aligned sentences. Rows draw a plain secondary-colour symbol; `tiled`
+/// draws the tinted, rounded badge used for a window's header.
 struct SettingsIcon: View {
     let symbol: String
     let tint: Color
     var size: CGFloat = Design.Size.settingsIcon
     var radius: CGFloat = Design.Radius.small
-
-    /// The glyph is set at 55% of the tile — the ratio the 20-point row tile
-    /// was already drawn at — so the larger header tile is the same badge
-    /// scaled up rather than a second, differently-proportioned one.
-    private var glyphSize: CGFloat { size * 0.55 }
+    var tiled: Bool = false
 
     var body: some View {
-        RoundedRectangle(cornerRadius: radius, style: .continuous)
-            .fill(tint.gradient)
-            .frame(width: size, height: size)
-            .overlay {
+        Group {
+            if tiled {
+                RoundedRectangle(cornerRadius: radius, style: .continuous)
+                    .fill(tint.gradient)
+                    .overlay {
+                        Image(systemName: symbol)
+                            .font(.system(size: size * 0.55, weight: .semibold))
+                            .foregroundStyle(.white)
+                    }
+            } else {
                 Image(systemName: symbol)
-                    .font(.system(size: glyphSize, weight: .semibold))
-                    // The tiles are saturated system colours, which macOS
-                    // tunes to stay legible under white in both appearances.
-                    .foregroundStyle(.white)
+                    .font(.system(size: size * 0.7))
+                    .foregroundStyle(Color(nsColor: .secondaryLabelColor))
             }
-            .accessibilityHidden(true)
+        }
+        .frame(width: size, height: size)
+        .accessibilityHidden(true)
     }
 }
 
