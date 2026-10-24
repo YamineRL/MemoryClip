@@ -576,6 +576,8 @@
 "Filed in %@" = "Filed in %@";
 "Pinboard created, %@" = "Pinboard created, %@";
 "Pinboard created, %@ filed" = "Pinboard created, %@ filed";
+"A pinboard named %@ already exists." = "A pinboard named %@ already exists.";
+"Pinboard names can be up to %d characters." = "Pinboard names can be up to %d characters.";
 "%@ deleted, %d clips returned to Pinned" = "%@ deleted, %d clips returned to Pinned";
 "Nothing in Pinned yet" = "Nothing in Pinned yet";
 "Nothing in %@ yet" = "Nothing in %@ yet";

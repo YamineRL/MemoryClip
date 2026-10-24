@@ -2742,6 +2742,20 @@ struct PanelContentView: View {
 
     /// Commit or abandon the strip's name field.
     private func commitPinboardName() {
+        let trimmed = pinboardName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            cancelPinboardName()
+            return
+        }
+        // A name that cannot be used keeps the field open, with the reason.
+        guard Pinboard.normalizedName(trimmed) != nil else {
+            showStatus(loc("Pinboard names can be up to %d characters.", Pinboard.maximumNameLength))
+            return
+        }
+        if let existing = Pinboard.named(trimmed, in: pinboards), existing.uuid != editingPinboard?.uuid {
+            showStatus(loc("A pinboard named %@ already exists.", existing.name))
+            return
+        }
         defer { cancelPinboardName() }
         if let board = editingPinboard {
             if board.rename(to: pinboardName, in: modelContext) {

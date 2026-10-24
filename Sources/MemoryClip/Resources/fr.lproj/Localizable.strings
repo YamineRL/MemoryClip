@@ -576,6 +576,8 @@
 "Filed in %@" = "Classé dans %@";
 "Pinboard created, %@" = "Tableau créé : %@";
 "Pinboard created, %@ filed" = "Tableau créé, %@ classé";
+"A pinboard named %@ already exists." = "Un tableau nommé %@ existe déjà.";
+"Pinboard names can be up to %d characters." = "Les noms de tableau sont limités à %d caractères.";
 "%@ deleted, %d clips returned to Pinned" = "%@ supprimé, %d clips retournés dans Épinglés";
 "Nothing in Pinned yet" = "Rien dans Épinglés pour l’instant";
 "Nothing in %@ yet" = "Rien dans %@ pour l’instant";
