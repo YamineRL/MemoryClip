@@ -1,0 +1,38 @@
+<!doctype html><meta charset="utf-8"><title>hero</title>
+<link rel="stylesheet" href="../kit/kit.css"><div id="stage"></div>
+<script type="module">
+import { loadFixtures, buildPanel, put, slotX, keycaps, prog, tween, ease, $ } from '../kit/kit.js';
+const fx = await loadFixtures();
+Motion.duration = 8;
+const P = buildPanel(fx, { clipIds: ['warranty', 'rechta', 'booking', 'calc', 'receipt'] });
+const caps = keycaps(['⇧', '⌘', 'V']);
+const capsT = keycaps(['⌘', 'T']);
+const spaceCap = keycaps(['Space']);
+P.pane.innerHTML = `<div class="tabs"><span class="tab on" id="t1">Original</span><span class="tab" id="t2">English</span><span class="pair">${fx.translation.pair}</span></div><div class="body cjk" id="pb"></div>`;
+const orig = fx.clips.warranty.lines.join('\n'), tr = fx.translation.lines.join('\n');
+Motion.at((t) => {
+  // panel in (1.0–1.7) and out (7.3–7.9)
+  const a = Math.min(prog(t, 1.0, 1.7, ease.out), 1 - prog(t, 7.3, 7.9));
+  P.panel.style.opacity = a;
+  P.panel.style.transform = `translateY(${(1 - a) * 26}px) scale(${0.97 + 0.03 * a})`;
+  P.cards.forEach((c, i) => {
+    const k = prog(t, 1.2 + i * 0.09, 1.8 + i * 0.09, ease.back);
+    put(c, { x: slotX(i), y: (1 - k) * 18, o: k, sel: i === 0 ? 1 : 0 });
+  });
+  P.count.textContent = '8 clips';
+  caps(t, 0.2, 1.6, 0.85);
+  // preview: Space at 2.4 opens, panel grows over the card strip
+  const open = prog(t, 2.5, 3.0);
+  P.height(340 + 260 * open);
+  P.pane.style.opacity = open;
+  spaceCap(t, 2.1, 3.2, 2.5);
+  // ⌘T at 4.6 flips Original → English
+  const flip = t > 4.6;
+  $('#t1').classList.toggle('on', !flip); $('#t2').classList.toggle('on', flip);
+  const pb = $('#pb'); pb.className = 'body' + (flip ? '' : ' cjk');
+  pb.textContent = flip ? tr : orig;
+  pb.style.opacity = flip ? prog(t, 4.6, 5.1) : 1;
+  capsT(t, 4.2, 5.4, 4.65);
+});
+window.__ready = true;
+</script>

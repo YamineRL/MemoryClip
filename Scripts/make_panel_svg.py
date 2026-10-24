@@ -7,16 +7,18 @@
 The panel and the dropdown show live clipboard contents and cannot be
 screenshotted for a public repo, so the illustration is drawn instead. Every
 size here is the token PanelView and ClipCardView actually lay out with, from
-Sources/MemoryClip/UI/DesignSystem.swift: panel 1080x308, panelTopPadding 10,
-topBarHeight 44, card 200 square, cardSpace 16, loose 16, cardHeader 40,
-roomy 12, panelFooterHeight 34, Radius.panel 28, Radius.card 16.
+Sources/MemoryClip/UI/DesignSystem.swift: panel 1080x340, panelTopPadding 10,
+topBarHeight 44, pinboardStripHeight 32, card 200 square, cardSpace 16,
+loose 16, cardHeader 40, roomy 12, panelFooterHeight 34, Radius.panel 28,
+Radius.card 16.
 
 The `preview` variant is the same panel with the preview pane open, which is
 where the pane lives: PanelView stacks it between the card strip and the
 footer, behind a resize handle, so the panel grows by
 previewResizeHandleHeight + previewPaneHeight and the footer moves down.
-Inside it, PreviewView's own order — the translation over the clip, each on
-its own pane at Radius.pane with Space.roomy around and between them.
+Inside it, PreviewTextPanel's own header — the Original/translation tabs and
+the language pair — over the text of the selected tab, on one pane at
+Radius.pane with Space.roomy around it.
 
 The source-app icons in Scripts/panel-icons are the real ones, exported at 40px
 from the system apps with NSWorkspace.icon(forFile:) — the same call the card
@@ -33,6 +35,7 @@ PW = 1080                   # Design.Size.panelWidth
 PX, PY = M, M
 
 TOP_PAD, TOPBAR = 10, 44    # panelTopPadding, topBarHeight
+BOARD_STRIP = 32            # pinboardStripHeight
 CARD, GAP, PADH = 200, 16, 16
 HEADER = 40                 # cardHeader
 FOOTER_H = 34               # panelFooterHeight
@@ -41,11 +44,12 @@ GRIP_W = 36                 # previewResizeGripWidth
 ROOMY = 12                  # Space.roomy — the pane's padding, and its gutter
 PANE_R = 16                 # Radius.pane
 
-PH = 308 + (HANDLE_H + PANE_H if PREVIEW else 0)    # Design.Size.panelHeight
+PH = 340 + (HANDLE_H + PANE_H if PREVIEW else 0)    # Design.Size.panelHeight
 W, H = PW + 2 * M, PH + 2 * M
 
-CARD_Y = PY + TOP_PAD + TOPBAR + 8          # + Space.normal top padding
-HANDLE_Y = CARD_Y + CARD + 12               # + cardBottomPadding
+CARD_Y = PY + TOP_PAD + TOPBAR + BOARD_STRIP + 8    # + Space.normal top padding
+STRIP_Y = PY + TOP_PAD + TOPBAR                     # the pinboard strip
+HANDLE_Y = CARD_Y + CARD + 12                       # + cardBottomPadding
 PANE_Y = HANDLE_Y + HANDLE_H
 FOOTER_Y = PY + PH - FOOTER_H
 
@@ -67,11 +71,8 @@ LABEL = "#f2f2f7"
 SECOND = "#98989d"
 ACCENT = "#0a84ff"
 
-# The clip the preview is open on, and the three lines of it the card can
-# hold before its own text runs out of card.
-ZH = ["本产品保修期为自购买之日起十二个月。",
-      "保修不包括人为损坏、进水或未经授权的拆修。",
-      "请保留购买凭证，办理保修时需要出示。"]
+# The preview's body text: the translation the pane is showing on its
+# selected tab.
 ZH_EN = ["This product is covered by a twelve-month warranty from the date of purchase.",
          "The warranty does not cover accidental damage, water damage or unauthorised",
          "repairs. Keep your proof of purchase; you will need to show it to claim."]
@@ -213,6 +214,59 @@ for label, dot, on in CHIPS:
     out.append(text(cx + 12 + 7 + 6, bar_mid + 4, label, 11, LABEL if on else SECOND, weight="500"))
     cx += w + 6
 
+# ---- pinboard strip: All, Pinned, one chip per board, then +
+# Same capsule treatment as the type chips, per scopeChip(): All on, the rest
+# at rest; Pinned carries the pin glyph and its boardless count, boards carry
+# their colour as the dot and their clip count beside the name.
+board_mid = STRIP_Y + BOARD_STRIP / 2
+bx = PX + PADH
+
+def scope_chip(x, label, dot=None, pin=False, count=None, on=False):
+    w = 37 + len(label) * 6.1 + (len(str(count)) * 7 + 7 if count is not None else 0)
+    if on:
+        out.append(f'<rect x="{x}" y="{board_mid - 12.5}" width="{w:.1f}" height="25" rx="12.5" '
+                   f'fill="{ACCENT}" fill-opacity="0.22"/>')
+        out.append(f'<rect x="{x + 0.75}" y="{board_mid - 11.75}" width="{w - 1.5:.1f}" height="23.5" rx="11.75" '
+                   f'fill="none" stroke="{ACCENT}" stroke-opacity="0.75" stroke-width="1.5"/>')
+    else:
+        out.append(f'<rect x="{x}" y="{board_mid - 12.5}" width="{w:.1f}" height="25" rx="12.5" '
+                   f'fill="#ffffff" fill-opacity="0.055"/>')
+        out.append(f'<rect x="{x + 0.5}" y="{board_mid - 12}" width="{w - 1:.1f}" height="24" rx="12" '
+                   f'fill="none" stroke="#ffffff" stroke-opacity="0.1"/>')
+    ix = x + 12
+    if pin:
+        # pin.fill at ~9pt: a small pushpin, tinted the pin colour the way
+        # scopeChip tints the SF Symbol.
+        out.append(f'<g stroke="#ff9f0a" stroke-width="1.3" fill="#ff9f0a" fill-opacity="0.9" '
+                   f'stroke-linejoin="round" stroke-linecap="round">'
+                   f'<path d="M{ix + 3.5} {board_mid - 4.5} h6 l-1 4.5 l2.5 2.5 h-9 l2.5 -2.5 z"/>'
+                   f'<path d="M{ix + 6.5} {board_mid + 2.5} v3" fill="none"/></g>')
+        ix += 13
+    elif dot:
+        out.append(f'<circle cx="{ix + 3.5}" cy="{board_mid}" r="3.5" fill="{dot}"/>')
+        ix += 13
+    else:
+        ix += 4
+    tx_ = text(ix, board_mid + 4, label, 11, LABEL if on else SECOND, weight="500")
+    out.append(tx_)
+    if count is not None:
+        wpx = len(label) * 6.1
+        out.append(text(ix + wpx + 7, board_mid + 4, str(count), 11, SECOND))
+    return w
+
+BOARDS = [("Addresses", "#ff453a"), ("Canned replies", "#30d158")]
+bx += scope_chip(bx, "All", on=True) + 6
+bx += scope_chip(bx, "Pinned", pin=True, count=4) + 6
+for name, dot in BOARDS:
+    bx += scope_chip(bx, name, dot=dot, count=len(name) % 7 + 1) + 6
+# the + at the end of the strip
+out.append(f'<rect x="{bx}" y="{board_mid - 12.5}" width="30" height="25" rx="12.5" '
+           f'fill="#ffffff" fill-opacity="0.055"/>')
+out.append(f'<rect x="{bx + 0.5}" y="{board_mid - 12}" width="29" height="24" rx="12" '
+           f'fill="none" stroke="#ffffff" stroke-opacity="0.1"/>')
+out.append(f'<path d="M{bx + 15} {board_mid - 4} v8 M{bx + 11} {board_mid} h8" '
+           f'stroke="{SECOND}" stroke-width="1.4" stroke-linecap="round"/>')
+
 # ---- cards
 for i, clip in enumerate(CLIPS):
     x = PX + PADH + i * (CARD + GAP)
@@ -294,10 +348,9 @@ for i, clip in enumerate(CLIPS):
 
 # ---- the preview pane, under a resize handle
 #
-# Sizes are PreviewView's own: the pane is padded by roomy, the translation
-# and the clip are panes of their own with roomy between them, and the clip
-# takes whatever the translation leaves — the translation is bounded, the
-# clip is what the preview is for.
+# Sizes are PreviewView's own: the pane is padded by roomy, and the text
+# panel — header and text — is the pane's whole content for a text clip, at
+# Radius.pane with Space.roomy around it.
 if PREVIEW:
     grip_y = HANDLE_Y + HANDLE_H / 2 - 1
     out.append(f'<rect x="{PX + PW / 2 - GRIP_W / 2}" y="{grip_y}" width="{GRIP_W}" height="2" '
@@ -306,7 +359,6 @@ if PREVIEW:
     px_ = PX + ROOMY
     pw_ = PW - 2 * ROOMY
     tr_y = PANE_Y + ROOMY
-    tr_h = 96
 
     def pane(x, y, w, h):
         out.append(f'<rect x="{x}" y="{y}" width="{w}" height="{h}" rx="{PANE_R}" '
@@ -315,18 +367,27 @@ if PREVIEW:
                    f'rx="{PANE_R - 0.5}" fill="none" stroke="{PANE_STROKE}" '
                    f'stroke-opacity="{PANE_STROKE_OP}"/>')
 
-    # the translation, over the clip
-    pane(px_, tr_y, pw_, tr_h)
-    out.append(text(px_ + ROOMY, tr_y + 23, "Chinese, Simplified → English", 11, SECOND))
+    # the text panel: PreviewTextPanel's header — the Original/target tabs as
+    # a segmented control, the language pair at the right — over the selected
+    # tab's text. The translation is the selected tab: that is the one switch
+    # the model makes when a translation finishes arriving. One pane fills
+    # the whole preview, as PreviewView's own content pane does.
+    cl_h = PANE_H - 2 * ROOMY
+    pane(px_, tr_y, pw_, cl_h)
+    seg_x, seg_y, seg_h = px_ + ROOMY, tr_y + 14, 22
+    tab_w = 78
+    # the segmented control's capsule, then the selected second segment drawn
+    # as the knob (the original stays the plain label it is at rest)
+    out.append(f'<rect x="{seg_x}" y="{seg_y}" width="{tab_w * 2 + 3}" height="{seg_h}" rx="6" '
+               f'fill="#ffffff" fill-opacity="0.08"/>')
+    out.append(f'<rect x="{seg_x + tab_w + 1.5}" y="{seg_y + 1.5}" width="{tab_w}" height="{seg_h - 3}" rx="4.5" '
+               f'fill="#ffffff" fill-opacity="0.14"/>')
+    out.append(text(seg_x + tab_w / 2, seg_y + 15, "Original", 11, SECOND, anchor="middle"))
+    out.append(text(seg_x + tab_w * 1.5 + 1.5, seg_y + 15, "English", 11, LABEL, weight="600", anchor="middle"))
+    # the language pair rides at the right of the same header
+    out.append(text(px_ + pw_ - ROOMY, seg_y + 15, "Chinese, Simplified → English", 11, SECOND, anchor="end"))
     for n, line in enumerate(ZH_EN):
-        out.append(text(px_ + ROOMY, tr_y + 45 + n * 17.5, line, 13, LABEL))
-
-    # the clip as it was copied
-    cl_y = tr_y + tr_h + ROOMY
-    cl_h = PANE_H - 2 * ROOMY - tr_h - ROOMY
-    pane(px_, cl_y, pw_, cl_h)
-    for n, line in enumerate(ZH):
-        out.append(text(px_ + ROOMY, cl_y + 27 + n * 28, line, 13.5, LABEL, family=CJK))
+        out.append(text(px_ + ROOMY, tr_y + 62 + n * 19, line, 13, LABEL))
 
 # ---- panel footer
 fy = FOOTER_Y + FOOTER_H / 2

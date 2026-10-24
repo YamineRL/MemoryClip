@@ -1248,7 +1248,7 @@ private struct TranslationSettingsPane: View {
         Form {
             Section(loc("Language")) {
                 ClipTranslationTargetPicker()
-                SettingsHint(loc("The language MemoryClip translates into, for notes and for the panel's preview alike. It starts as the language this Mac is set to read. A language the on-device translator has no assets for falls back to English, which is the pairing macOS ships most widely."))
+                SettingsHint(loc("The language MemoryClip translates into, for notes and for the panel's preview alike. It starts as the language this Mac is set to read. Translation runs on this Mac only, so the language has to be downloaded: in System Settings → General → Language & Region → Translation Languages, download it and turn on On-Device Mode."))
             }
 
             Section(loc("Notes")) {
@@ -1565,32 +1565,116 @@ private struct TranslationLanguagePicker: View {
 ///
 /// A single choice, not the note picker's checklist, and for a reason: the
 /// note pipeline picks which languages it will *read*, of which there are
-/// many, while this picks the one language the user reads *in*. No readiness
-/// column either — the pair is not known until a clip turns up in some
-/// language, and a missing pack is recorded then, in
-/// `NoteTranslation.pendingDownloads`, exactly as the note pipeline records
-/// it.
+/// many, while this picks the one language the user reads *in*.
+///
+/// The target's own pack is checked here, though, because nothing else can
+/// fix it: every translation into a language whose assets are missing is
+/// skipped, and the pending list only ever names *sources*. A Mac updated to
+/// macOS 27 came back with French gone, and the preview went quiet with
+/// nothing in Settings saying why.
 private struct ClipTranslationTargetPicker: View {
     /// The catalog lives outside the view — see `TranslationLanguageStore`.
     private var store: TranslationLanguageStore { .shared }
 
     @AppStorage(NoteSettingsKeys.clipTranslationTarget) private var target = ClipTranslation.defaultTargetIdentifier
 
+    /// Whether the target's pack is on this Mac, nil until checked.
+    @State private var readiness: TranslationReadiness?
+    /// The target the last check was for, so only a real change of target
+    /// starts a download — not the pane opening, which can run the check
+    /// more than once.
+    @State private var checkedTarget: String?
+    @State private var isDownloading = false
+    @State private var failed = false
+    #if canImport(Translation)
+    @State private var configuration: TranslationSession.Configuration?
+    #endif
+
     private let translator = AppleTranslator()
 
     var body: some View {
-        Picker(selection: selection) {
-            ForEach(rows) { language in
-                Text(language.name).tag(language.id)
+        Group {
+            Picker(selection: selection) {
+                ForEach(rows) { language in
+                    Text(language.name).tag(language.id)
+                }
+            } label: {
+                Label {
+                    Text(loc("Into"))
+                } icon: {
+                    SettingsIcon(symbol: "globe", tint: Color(nsColor: .systemTeal))
+                }
             }
-        } label: {
-            Label {
-                Text(loc("Into"))
-            } icon: {
-                SettingsIcon(symbol: "globe", tint: Color(nsColor: .systemTeal))
+            .task { await store.loadIfNeeded(using: translator) }
+            // Rechecked on every change of target, and a newly picked target
+            // that is missing is fetched straight away: nobody picks a
+            // language in order to have it not work.
+            .task(id: target) {
+                failed = false
+                let changed = checkedTarget.map { $0 != target } ?? false
+                checkedTarget = target
+                readiness = await Self.readiness(of: target, using: translator)
+                if changed, readiness == .needsDownload { download() }
+            }
+            .modifier(TranslationDownloadTask(configuration: $configuration, onFinish: finish))
+
+            if readiness == .needsDownload || failed {
+                HStack(alignment: .firstTextBaseline, spacing: Design.Space.snug) {
+                    SettingsCallout(text: missingDescription, symbol: "arrow.down.circle.fill", tint: Color(nsColor: .systemOrange))
+                    if isDownloading {
+                        Text(loc("Downloading…"))
+                            .font(.caption)
+                            .foregroundStyle(Color(nsColor: .secondaryLabelColor))
+                    } else {
+                        Button(loc("Download"), action: download)
+                    }
+                }
             }
         }
-        .task { await store.loadIfNeeded(using: translator) }
+    }
+
+    private var missingDescription: String {
+        // The menu's name, not the identifier's: "fr-Latn" reads "French
+        // (Latin)" on its own.
+        let name = TranslationCatalog.row(matching: target, in: rows)?.name ?? LanguageDetector.displayName(forIdentifier: target)
+        if failed {
+            return loc("The download did not finish. You can also add languages in System Settings → General → Language & Region → Translation Languages.")
+        }
+        return loc("%@ is not downloaded on this Mac, so nothing can be translated into it yet.", name)
+    }
+
+    /// The target's pack, read through the pair from English, which macOS
+    /// ships most widely. English itself is read the other way round.
+    private static func readiness(of identifier: String, using translator: AppleTranslator) async -> TranslationReadiness {
+        let target = Locale.Language(identifier: identifier)
+        let english = Locale.Language(identifier: "en")
+        if target.languageCode == english.languageCode {
+            return await translator.readiness(from: Locale.Language(identifier: "es"), to: english)
+        }
+        return await translator.readiness(from: english, to: target)
+    }
+
+    private func download() {
+        guard !isDownloading else { return }
+        failed = false
+        isDownloading = true
+        #if canImport(Translation)
+        let target = Locale.Language(identifier: target)
+        let english = Locale.Language(identifier: "en")
+        let source = target.languageCode == english.languageCode ? Locale.Language(identifier: "es") : english
+        configuration = TranslationSession.Configuration(source: source, target: target)
+        #else
+        finish("", false)
+        #endif
+    }
+
+    private func finish(_: String, _ succeeded: Bool) {
+        isDownloading = false
+        #if canImport(Translation)
+        configuration = nil
+        #endif
+        failed = !succeeded
+        Task { readiness = await Self.readiness(of: target, using: translator) }
     }
 
     /// The menu, with the language currently chosen guaranteed to be in it.

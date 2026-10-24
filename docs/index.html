@@ -6,406 +6,322 @@
 <title>MemoryClip — From clipboard to notes and calendar.</title>
 <meta name="description" content="A free clipboard manager for macOS. Everything you copy, searchable. Reads the text out of your screenshots and turns them into notes in Obsidian or Apple Notes, and dates into calendar events. Nothing ever leaves your Mac.">
 <link rel="icon" href="logo.png">
+<link rel="alternate" type="application/atom+xml" title="MemoryClip releases" href="https://github.com/YamineRL/MemoryClip/releases.atom">
 <meta property="og:title" content="MemoryClip">
 <meta property="og:description" content="From clipboard to notes and calendar.">
 <meta property="og:image" content="https://yaminerl.github.io/MemoryClip/logo.png">
 <meta property="og:type" content="website">
-<style>
-:root {
-  --bg: #fbfbfd;
-  --bg-raised: #ffffff;
-  --bg-sunken: #f2f2f6;
-  --ink: #1c1c22;
-  --ink-soft: #55555f;
-  --ink-faint: #8a8a95;
-  --line: #e3e3ea;
-  --accent: #3f5bd9;
-  --accent-ink: #ffffff;
-  --warn-bg: #fff8e6;
-  --warn-line: #f0d69a;
-  --warn-ink: #6b4e07;
-  --shadow: 0 1px 2px rgba(0,0,0,.05), 0 12px 32px rgba(20,20,40,.08);
-  --radius: 14px;
-}
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
-    --bg: #0f0f13;
-    --bg-raised: #17171d;
-    --bg-sunken: #1d1d25;
-    --ink: #f2f2f6;
-    --ink-soft: #b4b4c0;
-    --ink-faint: #7e7e8c;
-    --line: #2a2a34;
-    --accent: #7f97ff;
-    --accent-ink: #0f0f13;
-    --warn-bg: #2a2313;
-    --warn-line: #4d4225;
-    --warn-ink: #f0d69a;
-    --shadow: 0 1px 2px rgba(0,0,0,.4), 0 12px 32px rgba(0,0,0,.45);
-  }
-}
-:root[data-theme="dark"] {
-  --bg: #0f0f13;
-  --bg-raised: #17171d;
-  --bg-sunken: #1d1d25;
-  --ink: #f2f2f6;
-  --ink-soft: #b4b4c0;
-  --ink-faint: #7e7e8c;
-  --line: #2a2a34;
-  --accent: #7f97ff;
-  --accent-ink: #0f0f13;
-  --warn-bg: #2a2313;
-  --warn-line: #4d4225;
-  --warn-ink: #f0d69a;
-  --shadow: 0 1px 2px rgba(0,0,0,.4), 0 12px 32px rgba(0,0,0,.45);
-}
-
-* { box-sizing: border-box; }
-html { -webkit-text-size-adjust: 100%; }
-body {
-  margin: 0;
-  background: var(--bg);
-  color: var(--ink);
-  font: 17px/1.65 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
-  -webkit-font-smoothing: antialiased;
-}
-img { max-width: 100%; height: auto; display: block; }
-a { color: var(--accent); }
-code, kbd {
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: .92em;
-}
-kbd {
-  background: var(--bg-sunken);
-  border: 1px solid var(--line);
-  border-bottom-width: 2px;
-  border-radius: 6px;
-  padding: 1px 7px;
-  white-space: nowrap;
-}
-
-.wrap { width: 100%; max-width: 920px; margin: 0 auto; padding: 0 24px; }
-
-/* ---------- hero ---------- */
-.hero { text-align: center; padding: 76px 0 8px; }
-.hero img.logo { width: 104px; height: 104px; margin: 0 auto 22px; border-radius: 22px; }
-.hero h1 { font-size: 3rem; letter-spacing: -.025em; margin: 0 0 10px; line-height: 1.1; }
-.hero .tagline { font-size: 1.3rem; color: var(--ink-soft); margin: 0 0 34px; }
-
-.cta { display: flex; flex-wrap: wrap; gap: 12px; justify-content: center; align-items: center; }
-.btn {
-  display: inline-block;
-  background: var(--accent);
-  color: var(--accent-ink);
-  text-decoration: none;
-  font-weight: 600;
-  font-size: 1.05rem;
-  padding: 14px 30px;
-  border-radius: 11px;
-  box-shadow: var(--shadow);
-}
-.btn:hover { filter: brightness(1.08); }
-.btn.ghost {
-  background: transparent;
-  color: var(--ink-soft);
-  box-shadow: none;
-  border: 1px solid var(--line);
-  font-weight: 500;
-}
-.meta { margin-top: 18px; color: var(--ink-faint); font-size: .92rem; }
-
-/* ---------- sections ---------- */
-section { padding: 60px 0; }
-section.sunken { background: var(--bg-sunken); border-block: 1px solid var(--line); }
-h2 { font-size: 1.85rem; letter-spacing: -.02em; margin: 0 0 8px; }
-h2 + .lede { color: var(--ink-soft); margin: 0 0 32px; font-size: 1.08rem; }
-h3 { font-size: 1.15rem; margin: 0 0 6px; }
-
-.grid { display: grid; gap: 18px; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); }
-.card {
-  background: var(--bg-raised);
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  padding: 22px;
-}
-.card p { margin: 0; color: var(--ink-soft); font-size: .97rem; }
-.card .icon { font-size: 1.5rem; line-height: 1; margin-bottom: 12px; }
-
-.shot {
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  overflow: hidden;
-  box-shadow: var(--shadow);
-  background: var(--bg-raised);
-}
-/* The SVG mockups carry their drawn size as an attribute, which is narrower
-   than the column: without this they sit short of the right edge. */
-.shot img { width: 100%; }
-figure { margin: 0 0 28px; }
-figcaption { color: var(--ink-faint); font-size: .9rem; text-align: center; margin-top: 10px; }
-
-/* ---------- steps ---------- */
-ol.steps { list-style: none; counter-reset: step; margin: 0; padding: 0; }
-ol.steps > li {
-  counter-increment: step;
-  position: relative;
-  padding: 0 0 26px 52px;
-  border-left: 2px solid var(--line);
-  margin-left: 15px;
-}
-ol.steps > li:last-child { border-left-color: transparent; padding-bottom: 0; }
-ol.steps > li::before {
-  content: counter(step);
-  position: absolute;
-  left: -16px;
-  top: -2px;
-  width: 32px; height: 32px;
-  border-radius: 50%;
-  background: var(--accent);
-  color: var(--accent-ink);
-  font-weight: 700;
-  font-size: .95rem;
-  display: grid;
-  place-items: center;
-}
-ol.steps h3 { margin-top: 0; }
-ol.steps p { margin: 0; color: var(--ink-soft); }
-
-.note {
-  background: var(--warn-bg);
-  border: 1px solid var(--warn-line);
-  color: var(--warn-ink);
-  border-radius: var(--radius);
-  padding: 18px 20px;
-  margin: 26px 0;
-  font-size: .97rem;
-}
-.note strong { color: inherit; }
-
-pre {
-  background: var(--bg-sunken);
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  padding: 14px 16px;
-  overflow-x: auto;
-  margin: 14px 0;
-  font-size: .9rem;
-  line-height: 1.6;
-}
-:where(section.sunken) pre { background: var(--bg); }
-
-table { width: 100%; border-collapse: collapse; font-size: .97rem; }
-th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--line); }
-th { color: var(--ink-faint); font-weight: 600; font-size: .85rem; text-transform: uppercase; letter-spacing: .04em; }
-td:first-child { width: 132px; white-space: nowrap; }
-.scroller { overflow-x: auto; }
-
-details {
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  padding: 0 18px;
-  background: var(--bg-raised);
-  margin-top: 16px;
-}
-summary { cursor: pointer; font-weight: 600; padding: 16px 0; }
-details[open] summary { border-bottom: 1px solid var(--line); margin-bottom: 14px; }
-details > :last-child { margin-bottom: 16px; }
-
-footer {
-  padding: 44px 0 60px;
-  text-align: center;
-  color: var(--ink-faint);
-  font-size: .93rem;
-  border-top: 1px solid var(--line);
-}
-footer a { margin: 0 10px; }
-
-@media (max-width: 600px) {
-  .hero { padding-top: 52px; }
-  .hero h1 { font-size: 2.3rem; }
-  .hero .tagline { font-size: 1.1rem; }
-  td:first-child { width: auto; }
-}
-</style>
+<link rel="preload" href="fonts/inter-latin-wght.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="site.css">
 </head>
 <body>
 
-<header class="hero">
-  <div class="wrap">
-    <img class="logo" src="logo.png" alt="">
-    <h1>MemoryClip</h1>
-    <p class="tagline">From clipboard to notes and calendar.</p>
-    <div class="cta">
-      <a class="btn" id="download" href="https://github.com/YamineRL/MemoryClip/releases/latest">Download for Mac</a>
-      <a class="btn ghost" href="#install">Installation help</a>
-      <a class="btn ghost" href="https://www.paypal.com/donate/?hosted_button_id=H8XWE3HUPKCME" rel="noopener">Donate</a>
-      <a class="btn ghost" href="https://www.producthunt.com/products/memoryclip?embed=true&amp;utm_source=badge-featured&amp;utm_medium=badge&amp;utm_campaign=badge-memoryclip" target="_blank" rel="noopener noreferrer">Product Hunt</a>
+<nav class="nav" id="nav">
+  <div class="shell">
+    <a class="brand" href="./"><img src="logo.png" alt="">MemoryClip</a>
+    <div class="links">
+      <a href="#features">Features</a>
+      <a href="#install">Install</a>
+      <a href="#privacy">Privacy</a>
+      <a href="https://github.com/YamineRL/MemoryClip">GitHub</a>
     </div>
-    <p class="meta" id="meta">Free download · source available · Requires macOS 26 on Apple silicon</p>
+    <a class="btn small" data-download href="https://github.com/YamineRL/MemoryClip/releases/latest">Download for Mac</a>
+  </div>
+</nav>
+
+<header class="hero">
+  <div class="shell">
+    <h1>Your clipboard, remembered. Locally.</h1>
+    <p class="sub">From clipboard to notes and calendar. A free clipboard manager for macOS: everything you copy, searchable — and the screenshots worth keeping turned into notes and events. Nothing ever leaves your Mac.</p>
+    <div class="actions">
+      <a class="btn" id="download" data-download href="https://github.com/YamineRL/MemoryClip/releases/latest">Download for Mac</a>
+      <a class="btn ghost" href="changelog.html">What's new</a>
+      <a class="btn ghost" href="#install">Installation help</a>
+    </div>
+    <p class="meta"><span id="meta">Free download · source available · Requires macOS 26 on Apple silicon</span><br>
+      <a href="https://www.paypal.com/donate/?hosted_button_id=H8XWE3HUPKCME" rel="noopener">Donate</a> ·
+      <a href="https://www.producthunt.com/products/memoryclip?embed=true&amp;utm_source=badge-featured&amp;utm_medium=badge&amp;utm_campaign=badge-memoryclip" target="_blank" rel="noopener noreferrer">Product Hunt</a></p>
+
+    <div class="frame">
+      <div class="film">
+        <video id="film" playsinline preload="none" poster="media/showreel.jpg" aria-label="A 30-second film of MemoryClip: search, translation, clean links, calendar invites, screenshot notes, pinboards and Touch ID-locked secrets">
+          <source src="https://media.flyingdesk.app/memoryclip/showreel.mp4" type="video/mp4">
+        </video>
+        <button class="play" id="play" type="button" aria-label="Play the 30-second film"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.6v12.8c0 .8.9 1.3 1.6.9l10-6.4c.6-.4.6-1.3 0-1.7l-10-6.4C8.9 4.3 8 4.8 8 5.6z"/></svg></button>
+      </div>
+    </div>
   </div>
 </header>
 
-<section>
-  <div class="wrap">
-    <h2>Everything you copy, put to work</h2>
-    <p class="lede">Your Mac forgets a copied thing the moment you copy the next one. MemoryClip keeps it, reads it, and turns the ones worth keeping into notes and calendar events.</p>
-    <div class="grid">
-      <div class="card">
-        <div class="icon">📋</div>
+<section id="features">
+  <div class="shell">
+    <p class="eyebrow">Everything you copy, put to work</p>
+    <h2>Your Mac forgets a copy the moment you make the next one.</h2>
+    <p class="lede">MemoryClip keeps it, reads it, and turns the ones worth keeping into notes and calendar events.</p>
+
+    <div class="groups">
+      <div><h3>Find anything you copied</h3><p>Text, links, images, files and colours — searched by what they say, where they came from and when.</p></div>
+      <div><h3>Keep what matters</h3><p>Pinboards for the keepers, notes from screenshots, events from invitations.</p></div>
+      <div><h3>Private by construction</h3><p>No sync, no accounts, no analytics. Even the language models run on your Mac.</p></div>
+    </div>
+
+    <div class="bento">
+      <article class="card w7">
+        <div class="media"><video data-play muted playsinline loop preload="metadata" poster="media/search.jpg" aria-label="Typing a sentence finds the clip that says deployment to production failed; app:saf after:7d narrows to Safari clips from the last week">
+          <source src="media/search.webm" type="video/webm"><source src="media/search.mp4" type="video/mp4"></video></div>
         <h3>A searchable history</h3>
-        <p>Press <kbd>⇧⌘V</kbd> anywhere and every recent copy is there — text, links, images, files, colours. Type to find one, press Return to paste it.</p>
-      </div>
-      <div class="card">
-        <div class="icon">🔍</div>
-        <h3>It reads your screenshots</h3>
-        <p>Take a screenshot and MemoryClip pulls the text out of it, in 30 languages, so you can search for a picture by what it said.</p>
-      </div>
-      <div class="card">
-        <div class="icon">🌍</div>
-        <h3>Translates as you look</h3>
-        <p>Copy something in a language you don't read — or screenshot it — and the preview shows it in one you do.</p>
-      </div>
-      <div class="card">
-        <div class="icon">📝</div>
+        <p>Press <kbd>⇧⌘V</kbd> anywhere and every recent copy is there — text, links, images, files, colours. Type a sentence to find one, <kbd>Return</kbd> to paste it. A <code>key:value</code> operator narrows to when (<code>after:7d</code>) or where (<code>app:Safari</code>) it came from.</p>
+      </article>
+      <article class="card w5">
+        <div class="media"><video data-play muted playsinline loop preload="metadata" poster="media/note.jpg" aria-label="A receipt screenshot's text is recognised, ⌘S saves it, and a Markdown note appears in Obsidian">
+          <source src="media/note.webm" type="video/webm"><source src="media/note.mp4" type="video/mp4"></video></div>
         <h3>Turns a screenshot into a note</h3>
-        <p>One key sends it to Obsidian, a folder of Markdown files, Apple Notes or a Shortcut — with the picture and the text it found.</p>
-      </div>
-      <div class="card">
-        <div class="icon">🔒</div>
-        <h3>Nothing leaves your Mac</h3>
-        <p>No sync, no accounts, no analytics. Everything runs on your machine, including the language models. The one network call it can make is an update check you switch on yourself.</p>
-      </div>
-      <div class="card">
-        <div class="icon">📅</div>
-        <h3>Puts a date in your calendar</h3>
-        <p>Copy an invitation, or screenshot one, and <kbd>⌘E</kbd> makes it an event — the time, the Zoom link, the address. It can do it on its own for the ones that are plainly appointments.</p>
-      </div>
+        <p>One key sends it to Obsidian, a folder of Markdown files, Apple Notes or a Shortcut — with the picture and the text it found, filed by the day you captured it.</p>
+      </article>
+      <article class="card w5">
+        <div class="media"><video data-play muted playsinline loop preload="metadata" poster="media/pinboards.jpg" aria-label="⌘P files an address under the Addresses pinboard, and the board shows only its clips">
+          <source src="media/pinboards.webm" type="video/webm"><source src="media/pinboards.mp4" type="video/mp4"></video></div>
+        <h3>Pinboards for the keepers</h3>
+        <p>Named sets — addresses, canned replies, commands — as chips over the clips. <kbd>⌘P</kbd> files one under a board, and inside a board clips keep the order you put them in.</p>
+      </article>
+      <article class="card w7">
+        <div class="media"><video data-play muted playsinline loop preload="metadata" poster="media/secret.jpg" aria-label="A copied API key shows as a mask; Return asks for Touch ID before it is shown">
+          <source src="media/secret.webm" type="video/webm"><source src="media/secret.mp4" type="video/mp4"></video></div>
+        <h3>Keeps your keys encrypted</h3>
+        <p>Copy an API key, a token or a one-time code and it is sealed with a key that lives in this Mac's Secure Enclave. The history shows a mask; the value asks for Touch ID before it is shown or pasted.</p>
+      </article>
+    </div>
+
+    <div class="features">
+      <div><h3>It reads your screenshots</h3><p>Take a screenshot and MemoryClip pulls the text out of it, in 30 languages, so you can search for a picture by what it said.</p></div>
+      <div><h3>Translates as you look</h3><p>Copy something in a language you don't read — or screenshot it — and the preview shows it in one you do, a <kbd>⌘T</kbd> away from the original.</p></div>
+      <div><h3>Nothing leaves your Mac</h3><p>No sync, no accounts, no analytics. Everything runs on your machine, including the language models. The one network call it can make is an update check you switch on yourself.</p></div>
+      <div><h3>Cleans the links you copy</h3><p>Tracking parameters — <code>fbclid</code>, <code>gclid</code> and friends — are stripped on the way in, and the cleaned link goes straight back on the clipboard. Your next ⌘V pastes it without opening the panel.</p></div>
+      <div><h3>Offers a date as an event</h3><p>Copy an invitation, or screenshot one, and <kbd>⌘E</kbd> makes it an event — the time, the Zoom link, the address. With suggestions on, an appointment-shaped clip is <em>offered</em>: Add, Edit…, or Not Now, and nothing is written until you say so.</p></div>
+      <div><h3>Open while you work</h3><p>The panel opens over whatever you're doing and closes the moment you're done. Newest first, already focused. <kbd>⌘S</kbd> saves one as a note.</p></div>
     </div>
   </div>
 </section>
 
-<section class="sunken">
-  <div class="wrap">
-    <h2>A look at it</h2>
-    <p class="lede">The panel opens over whatever you're doing and closes the moment you're done.</p>
-    <figure>
-      <div class="shot"><img src="screenshots/panel.svg" alt="The MemoryClip panel floating over the desktop: a search field, filter chips, and a row of clip cards each showing a keyboard shortcut"></div>
-      <figcaption>Press ⇧⌘V from any app. Newest first, already focused. ⌘S saves one as a note.</figcaption>
-    </figure>
-    <figure>
-      <div class="shot"><img src="screenshots/preview.svg" alt="The panel with the preview pane open under the clip strip, showing a Chinese clip with its English translation above it"></div>
-      <figcaption>Space opens a preview. A clip in another language carries its translation on top.</figcaption>
-    </figure>
+<section id="search">
+  <div class="shell">
+    <p class="eyebrow">Search</p>
+    <h2>Search in your own words.</h2>
+    <p class="lede">Say roughly what it said, or say where and when it came from. Both work as you type.</p>
+    <div class="syntax">
+      <div class="panel">
+        <h3>Operators — narrow to where and when</h3>
+        <table>
+          <tr><td><code>app:</code></td><td>clips from an app, matched by name prefix — <code>app:saf</code> reaches Safari</td></tr>
+          <tr><td><code>is:</code></td><td>a state — <code>pinned</code>, <code>screenshot</code>, <code>noted</code>, <code>event</code>, <code>translated</code>, <code>secret</code></td></tr>
+          <tr><td><code>in:</code></td><td>a pinboard, matched by name prefix (<code>in:pinned</code> is Pinned)</td></tr>
+          <tr><td><code>type:</code></td><td>a clip kind — <code>text</code>, <code>image</code>, <code>link</code>, <code>file</code>, <code>color</code></td></tr>
+          <tr><td><code>after:</code></td><td>copied on or after — <code>today</code>, <code>yesterday</code>, <code>2026-09-01</code>, <code>7d</code>, <code>2w</code>, <code>3m</code></td></tr>
+          <tr><td><code>before:</code></td><td>copied before — the same values</td></tr>
+          <tr><td><code>on:</code></td><td>copied on one day — the same values</td></tr>
+        </table>
+      </div>
+      <div class="panel">
+        <h3>Sentences — say what it was about</h3>
+        <div class="say"><q>that error about the deploy failing</q><span class="arrow">→ finds the clip that says <em>deployment to production failed</em></span></div>
+        <div class="say"><q>failing</q><span class="arrow">→ reaches <em>failed</em>. <q style="display:inline;font-size:inherit">screenshots</q> reaches <em>screenshot</em>. Words are reduced to the stem they share with their dictionary form, and a stem is only ever a prefix of what you typed — so it can widen a search and never narrow it.</span></div>
+        <div class="say"><q>app:"Google Chrome" -app:Slack</q><span class="arrow">→ a value with spaces takes quotes, and a leading <code>-</code> excludes.</span></div>
+      </div>
+    </div>
+    <p class="fine">Typing a key and <code>:</code> offers the values it knows — source apps most-used first, pinboards in strip order. A lone <code>?</code> in the field shows the whole table as a cheat-sheet.</p>
+  </div>
+</section>
+
+<section id="try" class="tight">
+  <div class="shell">
+    <p class="eyebrow">Try it here</p>
+    <h2>Have a go at the panel.</h2>
+    <p class="lede">Click it, then type. Arrow keys move, <kbd>Space</kbd> previews, <kbd>⌘T</kbd> translates the Chinese clip. Every clip in it is made up — nothing is read from your clipboard.</p>
+    <div class="demo">
+      <div class="viewport" id="demo-viewport"><iframe id="demo" title="An interactive model of the MemoryClip panel" data-src="demo/live.html" tabindex="0"></iframe></div>
+      <div class="fallback"><img src="media/hero.jpg" alt="The MemoryClip panel with the preview pane open" loading="lazy"><div class="caption">The live panel needs a wider screen — the video above shows it in action.</div></div>
+    </div>
+  </div>
+</section>
+
+<section id="everywhere">
+  <div class="shell">
+    <p class="eyebrow">Everywhere</p>
+    <h2>Everywhere, one shortcut away.</h2>
+    <p class="lede">The history is never more than a key, a click or a Shortcut from wherever you are.</p>
+    <div class="trio">
+      <div class="tile">
+        <div class="big"><kbd>⇧⌘V</kbd></div>
+        <h3>From any app</h3>
+        <p>Opens the panel newest clip first, list already focused. <kbd>Return</kbd> pastes, <kbd>⌘1</kbd>–<kbd>⌘9</kbd> paste any of the first nine directly.</p>
+      </div>
+      <div class="tile">
+        <div class="big">Menu bar</div>
+        <h3>The last five clips</h3>
+        <p>The menu-bar glyph gives the last five clips under a <strong>Recent Clips</strong> header, then Open MemoryClip and Pause Capture, Settings, Permissions and Clear All History.</p>
+      </div>
+      <div class="tile">
+        <div class="big">Shortcuts &amp; Spotlight</div>
+        <h3>Four App Intents</h3>
+        <ul><li>Search Clips</li><li>Get Latest Clip</li><li>Copy Clip</li><li>Open MemoryClip</li></ul>
+      </div>
+    </div>
+    <p class="fine">An automation can grab what you copied without you touching the panel. All four are read-only, and secret clips are invisible to them.</p>
   </div>
 </section>
 
 <section id="install">
-  <div class="wrap">
+  <div class="shell">
+    <p class="eyebrow">Install</p>
     <h2>Installing it</h2>
     <p class="lede">Five minutes, and one screen that will try to stop you. Here's how to get past it.</p>
-
-    <ol class="steps">
-      <li>
-        <h3>Download the app</h3>
-        <p>Use the <a href="https://github.com/YamineRL/MemoryClip/releases/latest" id="download2">Download for Mac</a> button — it gives you a file ending in <code>.dmg</code>, in your Downloads folder.</p>
-      </li>
-      <li>
-        <h3>Drag it into Applications</h3>
-        <p>Double-click the downloaded file. A window opens with the MemoryClip icon and an Applications folder. Drag the icon onto the folder, then close the window.</p>
-      </li>
-      <li>
-        <h3>Try to open it — and let macOS refuse</h3>
-        <p>Open your Applications folder and double-click MemoryClip. macOS will say it cannot be opened because it is not from an identified developer. This is expected. Click <strong>Done</strong>.</p>
-      </li>
-      <li>
-        <h3>Tell macOS you meant it</h3>
-        <p>Open <strong>System Settings → Privacy &amp; Security</strong>, scroll down to the Security section, and you'll see a line about MemoryClip being blocked. Click <strong>Open Anyway</strong>, then confirm with Touch ID or your password.</p>
-      </li>
-      <li>
-        <h3>That's it — press <kbd>⇧⌘V</kbd></h3>
-        <p>Copy a few things, then press <kbd>⇧⌘V</kbd> from any app. Everything you copied is there, waiting.</p>
-      </li>
-    </ol>
-
-    <div class="note">
-      <strong>Why does macOS block it?</strong>
-      Apple charges developers $99 a year to sign apps in a way that opens without a warning. MemoryClip is free and unsigned, so macOS treats it as unknown rather than unsafe — it has no idea what the app is, and says so. Every line of its source is public on GitHub if you or someone you trust would like to look before installing.
-    </div>
-
-    <details>
-      <summary>Comfortable with Terminal? Use Homebrew instead</summary>
-      <p>Two commands, and <code>brew upgrade</code> keeps it current afterwards. The trust line is Homebrew's own check on third-party sources.</p>
+    <div class="install">
+      <ol class="steps">
+        <li><h3>Download the app</h3>
+          <p>Use the <a href="https://github.com/YamineRL/MemoryClip/releases/latest" id="download2" data-download>Download for Mac</a> button — it gives you a file ending in <code>.dmg</code>, in your Downloads folder.</p></li>
+        <li><h3>Drag it into Applications</h3>
+          <p>Double-click the downloaded file. A window opens with the MemoryClip icon and an Applications folder. Drag the icon onto the folder, then close the window.</p></li>
+        <li><h3>Try to open it — and let macOS refuse</h3>
+          <p>Open your Applications folder and double-click MemoryClip. macOS will say it cannot be opened because it is not from an identified developer. This is expected. Click <strong>Done</strong>.</p></li>
+        <li><h3>Tell macOS you meant it</h3>
+          <p>Open <strong>System Settings → Privacy &amp; Security</strong>, scroll down to the Security section, and you'll see a line about MemoryClip being blocked. Click <strong>Open Anyway</strong>, then confirm with Touch ID or your password.</p></li>
+        <li><h3>That's it — press <kbd>⇧⌘V</kbd></h3>
+          <p>Copy a few things, then press <kbd>⇧⌘V</kbd> from any app. Everything you copied is there, waiting.</p></li>
+      </ol>
+      <div>
+        <div class="note">
+          <strong>Why does macOS block it?</strong>
+          Apple charges developers $99 a year to sign apps in a way that opens without a warning. MemoryClip is free and unsigned, so macOS treats it as unknown rather than unsafe — it has no idea what the app is, and says so. Every line of its source is public on GitHub if you or someone you trust would like to look before installing.
+        </div>
+        <div class="faq" style="border-top:0">
+          <details>
+            <summary>Comfortable with Terminal? Use Homebrew instead</summary>
+            <div>
+              <p>Two commands, and <code>brew upgrade</code> keeps it current afterwards. The trust line is Homebrew's own check on third-party sources.</p>
 <pre><code>brew tap yaminerl/memoryclip https://github.com/YamineRL/MemoryClip
 brew trust yaminerl/memoryclip &amp;&amp; brew install --cask memoryclip</code></pre>
-      <p>This handles the Gatekeeper step for you, so steps 3 and 4 above don't apply.</p>
-    </details>
-
-    <details>
-      <summary>Removing it</summary>
-      <p>Drag MemoryClip from your Applications folder to the Trash — or <code>brew uninstall --cask memoryclip</code> if you installed it that way. Your clip history lives in your user Library folder and goes with the app if you add <code>--zap</code> to the Homebrew command.</p>
-    </details>
+              <p>This handles the Gatekeeper step for you, so steps 3 and 4 don't apply.</p>
+            </div>
+          </details>
+          <details>
+            <summary>Removing it</summary>
+            <div><p>Drag MemoryClip from your Applications folder to the Trash — or <code>brew uninstall --cask memoryclip</code> if you installed it that way. Your clip history lives in your user Library folder and goes with the app if you add <code>--zap</code> to the Homebrew command.</p></div>
+          </details>
+        </div>
+      </div>
+    </div>
   </div>
 </section>
 
-<section class="sunken">
-  <div class="wrap">
+<section id="keys">
+  <div class="shell">
+    <p class="eyebrow">Keyboard</p>
     <h2>The keys worth knowing</h2>
     <p class="lede">There are more, but these are the ones you'll use every day.</p>
-    <div class="scroller">
-      <table>
-        <thead><tr><th>Key</th><th>Does</th></tr></thead>
-        <tbody>
-          <tr><td><kbd>⇧⌘V</kbd></td><td>Open the panel from any app</td></tr>
-          <tr><td><kbd>↑</kbd> <kbd>↓</kbd></td><td>Move through the list</td></tr>
-          <tr><td><kbd>Return</kbd></td><td>Paste the selected clip</td></tr>
-          <tr><td><kbd>⇧Return</kbd></td><td>Paste it as plain text, dropping fonts and colours</td></tr>
-          <tr><td><kbd>⌘1</kbd>–<kbd>⌘9</kbd></td><td>Paste any of the first nine directly</td></tr>
-          <tr><td><kbd>⌘C</kbd></td><td>Copy the selected clip, leaving the panel open</td></tr>
-          <tr><td><kbd>Space</kbd></td><td>Preview the clip; again on a picture for full size</td></tr>
-          <tr><td><kbd>⌘S</kbd></td><td>Save the clip as a note</td></tr>
-          <tr><td><kbd>⌘E</kbd></td><td>Add the clip to your calendar, if it names a date</td></tr>
-          <tr><td><kbd>Esc</kbd></td><td>Back out, one layer at a time</td></tr>
-        </tbody>
+    <div class="cols2">
+      <table class="keys">
+        <tr><td><kbd>⇧⌘V</kbd></td><td>Open the panel from any app</td></tr>
+        <tr><td><kbd>↑</kbd> <kbd>↓</kbd></td><td>Move through the list</td></tr>
+        <tr><td><kbd>Return</kbd></td><td>Paste the selected clip</td></tr>
+        <tr><td><kbd>⇧Return</kbd></td><td>Paste it as plain text, dropping fonts and colours</td></tr>
+        <tr><td><kbd>⌘1</kbd>–<kbd>⌘9</kbd></td><td>Paste any of the first nine directly</td></tr>
+        <tr><td><kbd>⌘C</kbd></td><td>Copy the selected clip, leaving the panel open</td></tr>
+      </table>
+      <table class="keys">
+        <tr><td><kbd>⌘I</kbd></td><td>Edit the clip in the preview pane</td></tr>
+        <tr><td><kbd>Space</kbd></td><td>Preview the clip; again on a picture for full size</td></tr>
+        <tr><td><kbd>⌘T</kbd></td><td>Flip the preview between the original and its translation</td></tr>
+        <tr><td><kbd>⌘S</kbd></td><td>Save the clip as a note</td></tr>
+        <tr><td><kbd>⌘E</kbd></td><td>Add the clip to your calendar, if it names a date</td></tr>
+        <tr><td><kbd>Esc</kbd></td><td>Back out, one layer at a time</td></tr>
       </table>
     </div>
+    <p class="fine">Shortcuts and Spotlight can reach the history too: four App Intents — <strong>Search Clips</strong>, <strong>Get Latest Clip</strong>, <strong>Copy Clip</strong> and <strong>Open MemoryClip</strong> — so an automation can grab what you copied without you touching the panel. All four are read-only, and secret clips are invisible to them.</p>
   </div>
 </section>
 
-<section>
-  <div class="wrap">
+<section id="privacy">
+  <div class="shell">
+    <p class="eyebrow">Privacy</p>
     <h2>What it does with your data</h2>
-    <p class="lede">Short version: nothing you didn't ask for.</p>
-    <div class="grid">
-      <div class="card">
-        <h3>It never phones home</h3>
-        <p>No sync service, no accounts, no analytics, no crash reporting — the text recognition and translation run on your Mac. It makes exactly one kind of network request, and only if you ask: an anonymous daily read of the public releases page, off by default, which tells you a new version exists and never installs anything itself.</p>
-      </div>
-      <div class="card">
-        <h3>It skips your passwords</h3>
-        <p>Copies marked confidential by password managers are ignored, and card numbers are filtered out of what it reads. You can lock the whole history behind Touch ID.</p>
-      </div>
-      <div class="card">
-        <h3>It asks for almost nothing</h3>
-        <p>No Screen Recording, no Input Monitoring. Folder access only for the screenshot folder and the notes folder you choose, and only if you use those features. Calendar access is write-only: it can add an event and cannot read one.</p>
-      </div>
-      <div class="card">
-        <h3>It forgets on a schedule</h3>
-        <p>The newest 5,000 clips are kept and anything older than 90 days is swept away. Both numbers are yours to change, up to Unlimited and a year, and Clear All History is one menu item.</p>
-      </div>
+    <p class="lede">Short version: nothing you didn't ask for. <a href="privacy.html">The full privacy page →</a></p>
+    <div class="grid2">
+      <div class="tile"><h3>It never phones home</h3><p>No sync service, no accounts, no analytics, no crash reporting — the text recognition and translation run on your Mac. It makes exactly one kind of network request, and only if you ask: an anonymous daily read of the public releases page, off by default, which tells you a new version exists and never installs anything itself.</p></div>
+      <div class="tile"><h3>It skips your passwords</h3><p>Copies marked confidential by password managers are ignored, and card numbers are filtered out of what it reads. An API key or a one-time code is recognised and kept encrypted — sealed with a key in the Secure Enclave that never leaves this Mac — and asking for one back needs Touch ID. You can lock the whole history behind Touch ID, too.</p></div>
+      <div class="tile"><h3>It asks for almost nothing</h3><p>No Screen Recording, no Input Monitoring. Folder access only for the screenshot folder and the notes folder you choose, and only if you use those features. Calendar access is write-only: it can add an event and cannot read one.</p></div>
+      <div class="tile"><h3>It forgets on a schedule</h3><p>The newest 5,000 clips are kept and anything older than 90 days is swept away. Both numbers are yours to change, up to Unlimited and a year, and Clear All History is one menu item. Pinned clips are exempt from the sweep.</p></div>
     </div>
   </div>
 </section>
 
+<section id="faq">
+  <div class="shell">
+    <p class="eyebrow">FAQ</p>
+    <h2>Questions people ask</h2>
+    <div class="faq">
+      <details>
+        <summary>Why does macOS say it can't be opened?</summary>
+        <div><p>Apple charges developers $99 a year to sign apps in a way that opens without a warning. MemoryClip is free and unsigned, so macOS treats it as unknown rather than unsafe — it has no idea what the app is, and says so. <a href="#install">Steps 3 and 4 of the install</a> get you past it once; Homebrew handles it for you. Every line of the source is public on GitHub if you'd like to look first.</p></div>
+      </details>
+      <details>
+        <summary>Does it see my passwords?</summary>
+        <div><p>No. Copies marked confidential by password managers are ignored — the standard pasteboard opt-out markers, and known credential apps outright — and card numbers are filtered out of what it reads. Any app you name in <strong>Settings → Privacy → Excluded apps</strong> is skipped too. An API key or a one-time code is recognised and kept encrypted with a key in the Secure Enclave, and asking for one back needs Touch ID.</p></div>
+      </details>
+      <details>
+        <summary>Where does my history live, and for how long?</summary>
+        <div><p>On this Mac only, in an owner-only store at <code>~/Library/Application Support/app.memoryclip/</code>. The newest 5,000 clips are kept and anything older than 90 days is swept away; both numbers are yours to change, up to Unlimited and a year. Pinned clips are exempt, and Clear All History is one menu item.</p></div>
+      </details>
+      <details>
+        <summary>What does the update check send?</summary>
+        <div><p>Nothing about you. It is off by default, and with it off MemoryClip makes no network calls at all. Switched on in <strong>Settings → General → Updates</strong>, it asks <code>api.github.com</code> once a day what the newest release is — an unauthenticated request to a public endpoint carrying no identifier of any kind. If there's something newer you get one notification, once per version. It never installs anything itself.</p></div>
+      </details>
+      <details>
+        <summary>How do I uninstall it?</summary>
+        <div><p>Drag MemoryClip from your Applications folder to the Trash — or <code>brew uninstall --cask memoryclip</code> if you installed it that way. Your clip history lives in your user Library folder and goes with the app if you add <code>--zap</code> to the Homebrew command.</p></div>
+      </details>
+    </div>
+  </div>
+</section>
+
+<div class="band">
+  <div class="shell">
+    <h2>Never lose a copy again.</h2>
+    <div class="actions">
+      <a class="btn" data-download href="https://github.com/YamineRL/MemoryClip/releases/latest">Download for Mac</a>
+      <a class="btn ghost" href="https://github.com/YamineRL/MemoryClip">Source on GitHub</a>
+    </div>
+    <p class="meta">Free · Requires macOS 26 on Apple silicon</p>
+  </div>
+</div>
+
 <footer>
-  <div class="wrap">
-    <p>
-      <a href="https://github.com/YamineRL/MemoryClip">Source on GitHub</a>
-      <a href="https://github.com/YamineRL/MemoryClip/releases">All releases</a>
-      <a href="https://github.com/YamineRL/MemoryClip/issues">Report a problem</a>
-      <a href="https://www.paypal.com/donate/?hosted_button_id=H8XWE3HUPKCME">Donate</a>
-    </p>
-    <p>Made for macOS 26 on Apple silicon.</p>
-    <p>Source under <a href="https://github.com/YamineRL/MemoryClip/blob/main/LICENSE">FSL-1.1-ALv2</a> · © 2026 YamineRL · "MemoryClip" and its icon are unregistered trademarks.</p>
+  <div class="shell">
+    <div class="cols">
+      <div>
+        <a class="brand" href="./"><img src="logo.png" alt="">MemoryClip</a>
+        <p style="margin-top:12px">From clipboard to notes and calendar.<br>Made for macOS 26 on Apple silicon.</p>
+      </div>
+      <div><h4>Product</h4><ul>
+        <li><a href="https://github.com/YamineRL/MemoryClip/releases/latest">Download</a></li>
+        <li><a href="changelog.html">Changelog</a></li>
+        <li><a href="#install">Install help</a></li>
+        <li><a href="privacy.html">Privacy</a></li>
+      </ul></div>
+      <div><h4>Source</h4><ul>
+        <li><a href="https://github.com/YamineRL/MemoryClip">Source on GitHub</a></li>
+        <li><a href="https://github.com/YamineRL/MemoryClip/releases">All releases</a></li>
+        <li><a href="https://github.com/YamineRL/MemoryClip/blob/main/LICENSE">License</a></li>
+      </ul></div>
+      <div><h4>Support</h4><ul>
+        <li><a href="https://github.com/YamineRL/MemoryClip/issues">Report a problem</a></li>
+        <li><a href="https://www.paypal.com/donate/?hosted_button_id=H8XWE3HUPKCME">Donate</a></li>
+        <li><a href="https://github.com/YamineRL/MemoryClip/releases.atom">Stay updated (RSS)</a></li>
+        <li><a href="https://github.com/YamineRL/MemoryClip" title="On GitHub: Watch → Custom → Releases">Watch → Releases on GitHub</a></li>
+      </ul></div>
+    </div>
+    <div class="legal">
+      <p>Source under <a href="https://github.com/YamineRL/MemoryClip/blob/main/LICENSE">FSL-1.1-ALv2</a> · © 2026 YamineRL · "MemoryClip" and its icon are unregistered trademarks.</p>
+    </div>
   </div>
 </footer>
 
@@ -413,7 +329,7 @@ brew trust yaminerl/memoryclip &amp;&amp; brew install --cask memoryclip</code><
 // Point the download buttons at the newest release's .dmg. Falls back to the
 // releases page if the API is unreachable.
 (async function () {
-  const buttons = [document.getElementById('download'), document.getElementById('download2')];
+  const buttons = document.querySelectorAll('[data-download]');
   const meta = document.getElementById('meta');
   try {
     const res = await fetch('https://api.github.com/repos/YamineRL/MemoryClip/releases/latest');
@@ -421,13 +337,36 @@ brew trust yaminerl/memoryclip &amp;&amp; brew install --cask memoryclip</code><
     const release = await res.json();
     const dmg = (release.assets || []).find(a => a.name.endsWith('.dmg'));
     if (!dmg) return;
-    for (const b of buttons) if (b) b.href = dmg.browser_download_url;
+    for (const b of buttons) b.href = dmg.browser_download_url;
     const mb = (dmg.size / 1048576).toFixed(1);
     meta.textContent = `Version ${release.tag_name.replace(/^v/, '')} · ${mb} MB · Free download · source available · Requires macOS 26 on Apple silicon`;
   } catch (e) {
     /* keep the releases-page fallback */
   }
 })();
+
+// The nav gains a hairline once the page moves.
+const nav = document.getElementById('nav');
+addEventListener('scroll', () => nav.classList.toggle('scrolled', scrollY > 8), { passive: true });
+
+// Videos: the film waits for its play button; the feature cards play while on
+// screen. With reduced motion, every one stays on its poster until asked.
+const still = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const film = document.getElementById('film');
+document.getElementById('play').addEventListener('click', (e) => { e.currentTarget.hidden = true; film.controls = true; film.play(); });
+if (!still && 'IntersectionObserver' in window) {
+  const io = new IntersectionObserver((es) => es.forEach((e) => (e.isIntersecting ? e.target.play().catch(() => {}) : e.target.pause())), { threshold: 0.35 });
+  document.querySelectorAll('video[data-play]').forEach((v) => io.observe(v));
+}
+
+// The live demo is a 1200×720 page scaled to fit its frame; it only loads on a
+// screen wide enough to type into it.
+const vp = document.getElementById('demo-viewport'), demo = document.getElementById('demo');
+const fit = () => { demo.style.transform = `scale(${vp.clientWidth / 1200})`; };
+if (matchMedia('(min-width: 720px)').matches) {
+  new IntersectionObserver((es, o) => { if (es[0].isIntersecting) { demo.src = demo.dataset.src; o.disconnect(); } }, { rootMargin: '400px' }).observe(vp);
+}
+new ResizeObserver(fit).observe(vp);
 </script>
 
 </body>

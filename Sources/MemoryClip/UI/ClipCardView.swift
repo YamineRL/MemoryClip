@@ -71,6 +71,11 @@ struct ClipCardView: View {
     /// Cached instant-calc result. Computed once per content change off the
     /// main actor rather than on every body pass (hover, selection, scroll).
     @State private var calcSuffix: String?
+    /// The transforms that do something to this clip, worked out off the
+    /// main actor with `calcSuffix` and for the same reason: the menu is
+    /// rebuilt on every body pass, and running 26 transforms on hover is
+    /// what this cache is for. Empty until the first pass lands.
+    @State private var applicableTransforms: Set<Transform> = []
 
     init(
         item: ClipItem,
@@ -148,7 +153,10 @@ struct ClipCardView: View {
         .overlay { selectionOutline }
         .shadow(color: Design.Palette.cardShadow, radius: 3, x: 0, y: 1)
         .onHover { isHovering = $0 }
-        .task(id: contentKey) { await refreshCalc() }
+        .task(id: contentKey) {
+            await refreshCalc()
+            await refreshTransforms()
+        }
         .contextMenu {
             if item.isSecret {
                 // A secret's menu is the four things that can lawfully act
@@ -158,85 +166,100 @@ struct ClipCardView: View {
                 // demand plaintext the row does not have.
                 Button(loc("Show")) { onRevealSecret() }
                 Button(loc("Paste")) { onPaste(false) }
-                Button(loc("Copy")) { onCopyOnly() }
+                if menuCommands.contains(.copy) {
+                    Button(loc("Copy")) { onCopyOnly() }
+                }
                 Divider()
-                Button(queuePosition == nil ? loc("Add to Queue") : loc("Remove from Queue")) {
-                    onToggleQueue()
+                if menuCommands.contains(.toggleQueue) {
+                    Button(queuePosition == nil ? loc("Add to Queue") : loc("Remove from Queue")) {
+                        onToggleQueue()
+                    }
                 }
                 Button(item.isPinned ? loc("Unpin") : loc("Pin")) { togglePinned() }
                 Divider()
                 Button(loc("Not a Secret")) { onDemoteSecret() }
                 Button(loc("Delete"), role: .destructive) { deleteItem() }
             } else {
+                // The items `PaletteAction` also lists are gated on its
+                // answer, so the menu and ⌘K offer the same set; the rest
+                // (Paste, Edit, Delete, Pin…) are the menu's own.
                 Button(loc("Paste")) { onPaste(false) }
-                Button(loc("Paste as Plain Text")) { onPaste(true) }
-                Button(loc("Copy Only")) { onCopyOnly() }
+                if menuCommands.contains(.pastePlain) {
+                    Button(loc("Paste as Plain Text")) { onPaste(true) }
+                }
+                if menuCommands.contains(.copy) {
+                    Button(loc("Copy Only")) { onCopyOnly() }
+                }
                 if canEdit {
                     Button(loc("Edit…")) { onEdit() }
                 }
                 Divider()
-                if item.kind == .link {
+                if menuCommands.contains(.showQR) {
                     Button(loc("Show QR Code")) { onShowQR() }
                 }
                 if extractedText != nil {
                     Button(loc("Copy Extracted Text")) { onCopyExtractedText() }
                 }
-                if isTextBearing {
+                if !menuTransformGroups.isEmpty {
                     Menu(loc("Transform")) {
-                        ForEach(TransformGroup.allCases) { group in
-                            Menu(group.label) {
-                                ForEach(group.transforms) { transform in
+                        ForEach(menuTransformGroups, id: \.group) { entry in
+                            Menu(entry.group.label) {
+                                ForEach(entry.transforms) { transform in
                                     Button(transform.label) { onTransform(transform) }
                                 }
                             }
                         }
                     }
                 }
-                if item.isScreenshot {
+                if menuCommands.contains(.revealInFinder) {
                     Button(loc("Reveal in Finder")) { onRevealInFinder() }
                 }
-                if canSaveNote {
+                if menuCommands.contains(.saveNote) {
                     Button(item.notePath == nil ? loc("Save as Note") : loc("Update Note")) { onSaveNote() }
                 }
                 if item.notePath != nil {
                     Button(loc("Open Note")) { onOpenNote() }
                 }
-                if mightHaveEvent {
+                if menuCommands.contains(.addToCalendar) {
                     Button(calendarTitle) { onAddToCalendar() }
                 }
                 if canMarkSecret {
                     Button(loc("Mark as Secret")) { onMarkSecret() }
                 }
                 Divider()
-                Button(queuePosition == nil ? loc("Add to Queue") : loc("Remove from Queue")) { onToggleQueue() }
+                if menuCommands.contains(.toggleQueue) {
+                    Button(queuePosition == nil ? loc("Add to Queue") : loc("Remove from Queue")) { onToggleQueue() }
+                }
                 Button(item.isPinned ? loc("Unpin") : loc("Pin")) { togglePinned() }
                 // `Pin to ▸` files the clip under a board: the pinned sets are
                 // listed flat (Pinned for no board at all, then every board)
                 // with the clip's current filing checked. Picked from the clip
                 // a selection cannot speak for, this is the one-clip menu.
-                Menu(loc("Pin to")) {
-                    Button {
-                        onFile(.pinned)
-                    } label: {
-                        if item.isPinned, item.pinboard == nil {
-                            Label(loc("Pinned"), systemImage: "checkmark")
-                        } else {
-                            Label(loc("Pinned"), systemImage: "pin")
-                        }
-                    }
-                    ForEach(pinboards, id: \.uuid) { board in
+                if menuCommands.contains(.pinTo) {
+                    Menu(loc("Pin to")) {
                         Button {
-                            onFile(.board(board.uuid))
+                            onFile(.pinned)
                         } label: {
-                            if item.pinboard?.uuid == board.uuid {
-                                Label(board.name, systemImage: "checkmark")
+                            if item.isPinned, item.pinboard == nil {
+                                Label(loc("Pinned"), systemImage: "checkmark")
                             } else {
-                                Label(board.name, systemImage: "pin")
+                                Label(loc("Pinned"), systemImage: "pin")
                             }
                         }
+                        ForEach(pinboards, id: \.uuid) { board in
+                            Button {
+                                onFile(.board(board.uuid))
+                            } label: {
+                                if item.pinboard?.uuid == board.uuid {
+                                    Label(board.name, systemImage: "checkmark")
+                                } else {
+                                    Label(board.name, systemImage: "pin")
+                                }
+                            }
+                        }
+                        Divider()
+                        Button(loc("Pinboard…")) { onOpenPinboardPicker() }
                     }
-                    Divider()
-                    Button(loc("Pinboard…")) { onOpenPinboardPicker() }
                 }
                 Button(loc("Delete"), role: .destructive) { deleteItem() }
             }
@@ -259,21 +282,19 @@ struct ClipCardView: View {
             if canMarkSecret {
                 Button(loc("Mark as Secret")) { onMarkSecret() }
             }
-            if canSaveNote {
+            if menuCommands.contains(.saveNote) {
                 Button(item.notePath == nil ? loc("Save as Note") : loc("Update Note")) { onSaveNote() }
             }
             if item.notePath != nil {
                 Button(loc("Open Note")) { onOpenNote() }
             }
-            if mightHaveEvent {
+            if menuCommands.contains(.addToCalendar) {
                 Button(calendarTitle) { onAddToCalendar() }
             }
         }
         .accessibilityActions {
-            if isTextBearing {
-                ForEach(Transform.allCases) { transform in
-                    Button(transform.label) { onTransform(transform) }
-                }
+            ForEach(menuTransformGroups.flatMap(\.transforms)) { transform in
+                Button(transform.label) { onTransform(transform) }
             }
             if item.kind == .link {
                 Button(loc("Show QR Code")) { onShowQR() }
@@ -685,17 +706,30 @@ struct ClipCardView: View {
     }
 
     /// The image clip's OCR text, or nil when there is none worth offering.
-    private var extractedText: String? {
-        ClipDisplay.extractedText(for: item)
+    /// The shared action list's answer for this clip: what the menu may
+    /// offer of the commands the palette also lists.
+    private var menuCommands: Set<PaletteAction.Command> {
+        Self.menuCommands(for: item, transforms: applicableTransforms)
     }
 
-    /// Whether this clip has anything a note could be made of.
-    ///
-    /// Shared with the panel's ⌘S / `n` keys, which have to offer the action
-    /// on exactly the clips this menu does.
-    private var canSaveNote: Bool {
-        // Also offered while OCR is pending; the export waits for it.
-        ClipDisplay.canSaveNote(item) || (item.isAwaitingOCR && !item.isSecret)
+    /// Static so the palette's test can ask it the same question the menu
+    /// does, without a view.
+    static func menuCommands(for item: ClipItem, transforms: Set<Transform>) -> Set<PaletteAction.Command> {
+        Set(PaletteAction.available(for: item, transforms: transforms).map(\.command))
+    }
+
+    /// The Transform submenu, minus the groups with nothing in them for
+    /// this clip.
+    private var menuTransformGroups: [(group: TransformGroup, transforms: [Transform])] {
+        let offered = menuCommands
+        return TransformGroup.allCases.compactMap { group in
+            let transforms = group.transforms.filter { offered.contains(.transform($0)) }
+            return transforms.isEmpty ? nil : (group, transforms)
+        }
+    }
+
+    private var extractedText: String? {
+        ClipDisplay.extractedText(for: item)
     }
 
     /// Whether this clip may be edited in place.
@@ -705,14 +739,6 @@ struct ClipCardView: View {
     /// show the action at all.
     private var canEdit: Bool {
         ClipDisplay.canEdit(item)
-    }
-
-    /// Whether this clip is worth offering the calendar for.
-    ///
-    /// Shared with the panel's ⌘E / `c` keys, and cheap by design: the real
-    /// detection runs once, when the action is taken.
-    private var mightHaveEvent: Bool {
-        ClipDisplay.mightHaveEvent(item)
     }
 
     /// Whether "Mark as Secret" applies: any ordinary text clip with
@@ -746,6 +772,15 @@ struct ClipCardView: View {
     /// changes (rather than every body pass) is the whole point.
     private var contentKey: String {
         "\(item.contentHash)-\(item.text?.count ?? 0)"
+    }
+
+    private func refreshTransforms() async {
+        let text = item.isSecret || !isTextBearing ? nil : item.text
+        let result = await Task.detached(priority: .utility) {
+            PaletteAction.applicableTransforms(to: text)
+        }.value
+        guard !Task.isCancelled else { return }
+        applicableTransforms = result
     }
 
     private func refreshCalc() async {

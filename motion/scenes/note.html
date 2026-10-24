@@ -1,0 +1,30 @@
+<!doctype html><meta charset="utf-8"><title>note</title>
+<link rel="stylesheet" href="../kit/kit.css"><div id="stage"></div>
+<script type="module">
+import { clips, loadFixtures, buildPanel, put, slotX, keycaps, toast, prog, typed, ease, $ } from '../kit/kit.js';
+const fx = await loadFixtures();
+Motion.duration = 8;
+Motion.size(600);
+const P = buildPanel(fx, { clipIds: ['receipt', 'dinner', 'booking', 'calc', 'rechta'] });
+const N = fx.note;
+const noteEl = document.createElement('div'); noteEl.id = 'note'; noteEl.style.top = '426px';
+noteEl.innerHTML = `<div class="p">${N.path}</div><h4>${N.title}</h4><div id="nb"></div>`; $('#stage').append(noteEl);
+const cap = keycaps(['⌘', 'S']); const tst = toast(N.toast, N.path);
+const rc = P.cards[0];
+Motion.at((t) => {
+  const a = Math.min(prog(t, 0.2, 0.8, ease.out), 1 - prog(t, 7.4, 7.9));
+  P.panel.style.opacity = a; P.panel.style.transform = `translateY(${(1 - a) * 22}px)`;
+  P.cards.forEach((c, i) => { const k = prog(t, 0.4 + i * 0.08, 1.0 + i * 0.08, ease.back); put(c, { x: slotX(i), y: (1 - k) * 18, o: k, sel: i === 0 ? 1 : 0, flash: i === 0 ? 0.35 * Math.exp(-(((t - 2.9) / 0.12) ** 2)) : 0 }); });
+  // OCR sweep over the receipt 1.4–2.4
+  const sw = prog(t, 1.4, 2.4, ease.inOut);
+  rc._.scan.style.opacity = sw > 0 && sw < 1 ? 1 : 0; rc._.scan.style.top = 52 + 110 * sw + 'px';
+  cap(t, 2.5, 3.6, 2.9);
+  tst(t, 3.0, 5.8);
+  const n = prog(t, 3.2, 3.8, ease.out) * (1 - prog(t, 7.3, 7.8));
+  noteEl.style.opacity = n; noteEl.style.transform = `translateY(${(1 - n) * 24}px)`;
+  $('#nb').textContent = typed(N.body.join('\n'), t, 3.7, 36);
+  $('#nb').style.whiteSpace = 'pre';
+  P.count.textContent = '8 clips';
+});
+window.__ready = true;
+</script>

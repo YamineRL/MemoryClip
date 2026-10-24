@@ -1,0 +1,94 @@
+/* MemoryClip motion kit — tokens are the app's own (Design.Palette / Design.Size),
+   the same ones Scripts/make_panel_svg.py draws the static mockups with. */
+:root {
+  --label: #f2f2f7;
+  --second: #98989d;
+  --accent: #0a84ff;
+  --header: #35353a;
+  --body: #2a2a2d;
+  --sel-header: #35496c;
+  --sel-body: #2d4164;
+  --sel-border: #b3c7e8;
+  --hair: rgba(255, 255, 255, 0.1);
+  --chip: rgba(255, 255, 255, 0.055);
+  --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", Arial, sans-serif;
+  --cjk: "PingFang SC", "Hiragino Sans GB", "Heiti SC", sans-serif;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { width: 1200px; height: var(--h, 720px); overflow: hidden; background: #0d0f1c; font-family: var(--font); color: var(--label); -webkit-font-smoothing: antialiased; }
+
+/* flat, the site's dark --bg: a gradient bands and dithers in a GIF palette */
+#stage { position: relative; width: 1200px; height: var(--h, 720px); overflow: hidden; background: #191919; }
+
+/* ---- panel: a translucent slab, not a window ---- */
+#panel { position: absolute; left: 60px; top: 70px; width: 1080px; height: 340px; border-radius: 28px;
+  background: linear-gradient(rgba(255,255,255,.14), rgba(255,255,255,.06) 55%, rgba(255,255,255,.03)), rgba(11, 11, 16, 0.55);
+  box-shadow: 0 16px 40px rgba(0,0,0,.5), inset 0 0 0 1px rgba(255,255,255,.14); overflow: hidden; }
+#topbar { position: absolute; left: 16px; top: 10px; height: 44px; width: 1048px; display: flex; align-items: center; }
+#mag { width: 14px; height: 14px; margin-right: 5px; flex: none; }
+#searchbox { width: 162px; font-size: 13px; color: var(--second); white-space: nowrap; overflow: hidden; margin-left: 4px; }
+#searchbox.on { color: var(--label); width: 330px; }
+#caret { display: inline-block; width: 1.5px; height: 14px; background: var(--accent); vertical-align: -2px; margin-left: 1px; }
+.chip { display: inline-flex; align-items: center; gap: 6px; height: 25px; padding: 0 12px; border-radius: 13px; background: var(--chip);
+  box-shadow: inset 0 0 0 1px var(--hair); font-size: 11px; font-weight: 500; color: var(--second); margin-right: 6px; white-space: nowrap; position: relative; }
+.chip i { width: 7px; height: 7px; border-radius: 50%; display: block; }
+.chip b { font-weight: 400; margin-left: 1px; }
+.chip.on { background: rgba(10,132,255,.22); box-shadow: inset 0 0 0 1.5px rgba(10,132,255,.75); color: var(--label); }
+.chip .pin { color: #ff9f0a; font-size: 10px; }
+#strip { position: absolute; left: 16px; top: 54px; height: 32px; display: flex; align-items: center; }
+.plus { width: 30px; justify-content: center; padding: 0; }
+
+/* ---- cards ---- */
+#cards { position: absolute; left: 0; top: 94px; width: 1080px; height: 200px; }
+.card { position: absolute; top: 0; width: 200px; height: 200px; border-radius: 16px; overflow: hidden; background: var(--body);
+  box-shadow: 0 1px 3px rgba(0,0,0,.42); will-change: transform, opacity; }
+.card .hd { position: absolute; inset: 0 0 auto 0; height: 40px; background: var(--header); }
+.card .sel { position: absolute; inset: 0; opacity: 0; background: var(--sel-body); box-shadow: inset 0 0 0 1.5px var(--sel-border); border-radius: 16px; }
+.card .sel::before { content: ""; position: absolute; inset: 0 0 auto 0; height: 40px; background: var(--sel-header); }
+.card img.ic { position: absolute; left: 12px; top: 10px; width: 20px; height: 20px; }
+.card .app { position: absolute; left: 40px; top: 8px; font-size: 11px; font-weight: 600; }
+.card .time { position: absolute; left: 40px; top: 22px; font-size: 10px; color: var(--second); }
+.card .txt { position: absolute; left: 12px; top: 51px; width: 176px; font-size: 12px; line-height: 15px; white-space: pre; }
+.card .txt.cjk { font-family: var(--cjk); }
+.card .stat { position: absolute; left: 12px; bottom: 9px; font-size: 10px; color: var(--second); }
+.card .key { position: absolute; right: 11px; bottom: 8px; font-size: 10px; color: var(--second); }
+.card .calc { position: absolute; left: 12px; top: 84px; font-size: 22px; font-weight: 600; color: #7ee2a8; }
+.card .mask { position: absolute; left: 12px; top: 54px; font-size: 16px; letter-spacing: 3px; color: var(--label); }
+.card .receipt { position: absolute; left: 25px; top: 52px; width: 150px; height: 112px; background: #f4f1ea; border-radius: 6px; color: #57564f; font-size: 8px; }
+.card .receipt .shop { position: absolute; top: 14px; width: 100%; text-align: center; font-weight: 700; font-size: 8.5px; color: #3a3a38; }
+.card .receipt .row { position: absolute; left: 12px; right: 12px; display: flex; justify-content: space-between; }
+.card .receipt .rule { position: absolute; left: 12px; right: 12px; top: 88px; height: 1px; background: #c9c5ba; }
+.card .receipt .tot { position: absolute; left: 12px; right: 12px; top: 96px; display: flex; justify-content: space-between; font-weight: 700; font-size: 8.5px; color: #3a3a38; }
+.card .flash { position: absolute; inset: 0; background: #fff; opacity: 0; border-radius: 16px; pointer-events: none; }
+.card .scan { position: absolute; left: 25px; width: 150px; height: 2px; top: 52px; background: linear-gradient(90deg, transparent, #5ac8fa, transparent); opacity: 0; box-shadow: 0 0 12px #5ac8fa; }
+
+/* ---- footer ---- */
+#footer { position: absolute; left: 0; bottom: 0; width: 1080px; height: 34px; display: flex; align-items: center; justify-content: space-between; padding: 0 24px; font-size: 12px; color: var(--second); }
+
+/* ---- preview pane ---- */
+#pane { position: absolute; left: 16px; top: 316px; width: 1048px; height: 250px; border-radius: 16px; background: rgba(255,255,255,.035);
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,.10); padding: 12px; overflow: hidden; opacity: 0; }
+#pane .tabs { display: flex; gap: 6px; align-items: center; font-size: 11px; font-weight: 500; }
+#pane .tab { padding: 4px 11px; border-radius: 11px; color: var(--second); background: var(--chip); }
+#pane .tab.on { color: var(--label); background: rgba(10,132,255,.22); box-shadow: inset 0 0 0 1px rgba(10,132,255,.6); }
+#pane .pair { margin-left: auto; color: var(--second); font-weight: 400; }
+#pane .body { position: absolute; left: 12px; top: 54px; width: 1020px; font-size: 15px; line-height: 23px; white-space: pre; }
+#pane .body.cjk { font-family: var(--cjk); }
+
+/* ---- overlays ---- */
+#keys { position: absolute; left: 0; right: 0; bottom: min(34px, calc(var(--h, 720px) - 466px)); display: flex; justify-content: center; gap: 8px; pointer-events: none; }
+.kc { min-width: 54px; height: 54px; padding: 0 14px; border-radius: 12px; display: grid; place-items: center; font-size: 22px; font-weight: 500;
+  background: rgba(30,30,36,.82); box-shadow: inset 0 0 0 1px rgba(255,255,255,.16), 0 6px 18px rgba(0,0,0,.4); color: var(--label); }
+.kc.wide { min-width: 96px; font-size: 16px; }
+#toast { position: absolute; right: 60px; top: 24px; width: 380px; padding: 12px 16px; border-radius: 14px; background: rgba(40,40,46,.9);
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,.14), 0 12px 30px rgba(0,0,0,.45); opacity: 0; font-size: 13px; }
+#toast .t1 { font-weight: 600; } #toast .t2 { color: var(--second); font-size: 11px; margin-top: 3px; }
+#suggest { position: absolute; left: 76px; top: 58px; width: 220px; padding: 5px; border-radius: 12px; background: rgba(40,40,46,.96);
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,.14), 0 12px 30px rgba(0,0,0,.45); opacity: 0; font-size: 12px; z-index: 5; }
+#suggest div { padding: 5px 9px; border-radius: 7px; } #suggest div.on { background: rgba(10,132,255,.35); }
+#sheet { position: absolute; left: 50%; top: 50%; width: 320px; margin: -80px 0 0 -160px; padding: 24px; border-radius: 18px; text-align: center; opacity: 0;
+  background: rgba(40,40,46,.94); box-shadow: inset 0 0 0 1px rgba(255,255,255,.14), 0 20px 50px rgba(0,0,0,.55); font-size: 13px; z-index: 6; }
+#sheet .fp { width: 52px; height: 52px; margin: 0 auto 12px; border-radius: 50%; border: 2px solid var(--accent); display: grid; place-items: center; font-size: 26px; }
+#note { position: absolute; left: 330px; top: 400px; width: 540px; padding: 18px 22px; border-radius: 14px; background: #fbfbfd; color: #1c1c22; opacity: 0;
+  box-shadow: 0 18px 44px rgba(0,0,0,.5); font-size: 13px; line-height: 20px; }
+#note .p { color: #8a8a95; font-size: 11px; margin-bottom: 6px; } #note h4 { font-size: 17px; margin-bottom: 6px; }

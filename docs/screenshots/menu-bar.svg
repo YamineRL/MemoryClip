@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 420 400" width="420" height="400" font-family="-apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Helvetica Neue', Arial, sans-serif">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 420 424" width="420" height="424" font-family="-apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Helvetica Neue', Arial, sans-serif">
   <defs>
     <linearGradient id="desk" x1="0" y1="0" x2="1" y2="1">
       <stop offset="0" stop-color="#2b2340"/><stop offset="1" stop-color="#16202e"/>
@@ -17,8 +17,8 @@
   <g fill="#c7c7cc" font-size="10.5"><text x="332" y="17">100%</text><text x="378" y="17">14:32</text></g>
 
   <!-- dropdown -->
-  <rect x="150" y="32" width="256" height="318" rx="10" fill="#1f1f22" opacity="0.98"/>
-  <rect x="150.5" y="32.5" width="255" height="317" rx="9.5" fill="none" stroke="#3a3a3d"/>
+  <rect x="150" y="32" width="256" height="342" rx="10" fill="#1f1f22" opacity="0.98"/>
+  <rect x="150.5" y="32.5" width="255" height="341" rx="9.5" fill="none" stroke="#3a3a3d"/>
 
   <text x="164" y="52" fill="#8e8e93" font-size="10" font-weight="600" letter-spacing="0.6">RECENT CLIPS</text>
   <g font-size="12.5" fill="#e8e8ea">
@@ -39,14 +39,15 @@
   <line x1="156" y1="248" x2="400" y2="248" stroke="#3a3a3d"/>
   <g font-size="12.5" fill="#e8e8ea">
     <text x="164" y="270">Settings…</text>
-    <text x="164" y="294">Clear All History…</text>
+    <text x="164" y="294">Permissions…</text>
+    <text x="164" y="318">Clear All History…</text>
   </g>
-  <line x1="156" y1="308" x2="400" y2="308" stroke="#3a3a3d"/>
+  <line x1="156" y1="332" x2="400" y2="332" stroke="#3a3a3d"/>
   <g font-size="12.5" fill="#e8e8ea">
-    <text x="164" y="330">Quit MemoryClip</text>
+    <text x="164" y="354">Quit MemoryClip</text>
   </g>
   <g font-size="11.5" fill="#8e8e93" text-anchor="end">
     <text x="396" y="270">⌘,</text>
-    <text x="396" y="330">⌘Q</text>
+    <text x="396" y="354">⌘Q</text>
   </g>
 </svg>

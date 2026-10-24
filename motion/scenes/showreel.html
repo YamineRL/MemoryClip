@@ -1,0 +1,444 @@
+<!doctype html><meta charset="utf-8"><title>showreel</title>
+<link rel="stylesheet" href="../kit/kit.css">
+<style>
+  /* a 16:9 film frame: the panel lives in a world layer the camera moves over */
+  /* lit like a set: a dark room, one key light on the subject, depth of field around it */
+  #stage { background: #07080f; perspective: 2000px; }
+  #world, #zw { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; }
+  #panel { left: 420px; top: 300px; }
+  .card { will-change: auto; }
+  #amb, #vig, #dof, #scrim { position: absolute; inset: 0; pointer-events: none; }
+  #amb { background: radial-gradient(34% 44% at var(--lx, 50%) var(--ly, 50%), rgba(78, 92, 220, 0.30), rgba(40, 46, 120, 0.10) 50%, transparent 78%); }
+  #dof { backdrop-filter: blur(var(--b, 0px)); -webkit-backdrop-filter: blur(var(--b, 0px));
+    -webkit-mask-image: radial-gradient(var(--rw, 600px) var(--rh, 400px) at var(--fx, 50%) var(--fy, 50%), transparent 45%, #000 100%);
+    mask-image: radial-gradient(var(--rw, 600px) var(--rh, 400px) at var(--fx, 50%) var(--fy, 50%), transparent 45%, #000 100%); }
+  #vig { background: radial-gradient(70% 78% at 50% 50%, transparent 38%, rgba(3, 4, 9, 0.72) 82%, rgba(2, 2, 6, 0.92)); }
+  #scrim { background: linear-gradient(90deg, rgba(5, 6, 12, 0.9) 0%, rgba(5, 6, 12, 0.7) 30%, transparent 52%); opacity: 0; }
+
+  /* ⇧⌘V, as physical keys */
+  #ikeys { position: absolute; left: 742px; top: 1270px; display: flex; gap: 20px; }
+  .ik { position: relative; width: 132px; height: 132px; border-radius: 26px; overflow: hidden; display: grid; place-items: center;
+    background: linear-gradient(#25252b, #19191e); font-size: 56px; font-weight: 400;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.16), inset 0 0 0 1px rgba(255,255,255,.07), 0 3px 0 #08080b, 0 18px 40px rgba(0,0,0,.6); }
+  .ik .sheen { position: absolute; top: -20%; height: 140%; width: 55%; left: 0;
+    background: linear-gradient(100deg, transparent, rgba(255,255,255,.13) 50%, transparent); }
+
+  /* panel surface additions: the specular pass and the icon's skin it becomes */
+  #spec { position: absolute; top: 0; left: 0; width: 520px; height: 100%; pointer-events: none;
+    background: linear-gradient(100deg, transparent 20%, rgba(255,255,255,.055) 50%, transparent 80%); }
+  #skin { position: absolute; inset: 0; opacity: 0; background: linear-gradient(160deg, #6d7cf5 0%, #5562e4 48%, #3d45c3 100%); }
+  .wash { position: absolute; inset: 0; background: #fff; opacity: 0; }
+  #tab { position: absolute; left: 0; top: 0; background: #dfe4ff; opacity: 0; }
+
+  /* a cleaned link: the tracking line is struck and goes; the badge is the app's */
+  .badge { position: absolute; left: 34px; bottom: 7px; padding: 1px 6px; border-radius: 7px; font-size: 9px; font-weight: 600; opacity: 0;
+    color: #40c8e0; background: rgba(64, 200, 224, 0.16); box-shadow: inset 0 0 0 1px rgba(64, 200, 224, 0.42); }
+  .trk { display: inline-block; background: linear-gradient(#ff453a, #ff453a) no-repeat 0 58% / 0% 1.5px; }
+  .ghost { pointer-events: none; }
+
+  /* the calendar offer, as a notification banner in screen space */
+  #offer { position: absolute; right: 48px; top: 40px; width: 640px; padding: 22px 24px 18px; border-radius: 26px; opacity: 0;
+    display: grid; grid-template-columns: 60px 1fr; column-gap: 18px; font-size: 21px; line-height: 29px;
+    background: rgba(44, 44, 50, 0.94); box-shadow: inset 0 0 0 1px rgba(255,255,255,.14), 0 20px 50px rgba(0,0,0,.5); }
+  #offer img { width: 60px; height: 60px; margin-top: 2px; }
+  #offer .ot { position: relative; height: 29px; font-weight: 600; }
+  #offer .ot span { position: absolute; left: 0; top: 0; white-space: nowrap; }
+  #offer .oe { font-weight: 500; }
+  #offer .ow, #offer .ol { color: var(--second); }
+  #offer .btns { grid-column: 1 / 3; display: flex; gap: 10px; justify-content: flex-end; overflow: hidden; }
+  #offer .btns span { height: 42px; padding: 0 22px; border-radius: 12px; display: grid; place-items: center; font-size: 18px; font-weight: 500; background: rgba(255,255,255,.1); }
+  #offer .btns .add { background: var(--accent); }
+
+  /* the note and the toast, at film size */
+  #note { left: 914px; top: 668px; transform-origin: 50% 0; background: #1c1d25; color: var(--label);
+    box-shadow: inset 0 0 0 1px rgba(255,255,255,.13), inset 0 1px 0 rgba(255,255,255,.08), 0 18px 44px rgba(0,0,0,.6); }
+  #note .p { color: var(--second); }
+  #nb { white-space: pre; }
+  #toast { right: 48px; top: 40px; width: 640px; padding: 22px 26px; border-radius: 26px; font-size: 21px; }
+  #toast .t2 { font-size: 16px; margin-top: 4px; }
+  #suggest { left: 1296px; top: 446px; width: 214px; z-index: 6; }
+  #pq { color: var(--second); padding: 6px 9px; }
+
+  /* the end card */
+  #brand { position: absolute; left: 0; top: 0; width: 1920px; }
+  #icon { position: absolute; left: 860px; top: 400px; width: 200px; height: 200px; opacity: 0; filter: drop-shadow(0 16px 40px rgba(0,0,0,.5)); }
+  .line { position: absolute; left: 0; width: 1920px; text-align: center; overflow: hidden; }
+  .line > div { will-change: transform; }
+  #name { top: 572px; height: 100px; font-size: 80px; line-height: 100px; font-weight: 600; letter-spacing: -0.025em; }
+  #tag { top: 678px; height: 46px; font-size: 30px; line-height: 46px; font-weight: 400; color: var(--second); letter-spacing: -0.005em; }
+  #copy { position: absolute; inset: 0; pointer-events: none; }
+  .head { height: 74px; font-size: 54px; line-height: 74px; font-weight: 600; letter-spacing: -0.022em; }
+  /* headlines sit beside the subject, not under it */
+  .side { left: 150px; width: 600px; height: 184px; text-align: left; font-size: 72px; line-height: 92px; font-weight: 650; letter-spacing: -0.034em; }
+
+  /* the Touch ID sheet, in screen space over the card */
+  #lock { position: absolute; left: 980px; top: 400px; width: 520px; height: 250px; border-radius: 26px; text-align: center; opacity: 0;
+    background: rgba(36, 36, 42, .94); box-shadow: inset 0 0 0 1px rgba(255,255,255,.14), 0 24px 60px rgba(0,0,0,.6); font-size: 24px; }
+  #lock svg { display: block; margin: 40px auto 22px; }
+  #keys { bottom: 64px; gap: 12px; }
+  #keys .kc { min-width: 78px; height: 78px; border-radius: 17px; font-size: 32px; }
+</style>
+<div id="stage"><div id="amb"></div><div id="world"><div id="zw"><div id="ikeys"></div><div id="brand"></div></div></div><div id="dof"></div><div id="vig"></div><div id="scrim"></div><div id="copy"></div></div>
+<script type="module">
+import { clips, loadFixtures, buildPanel, slotX, keycaps, toast, typed, lerp, $ } from '../kit/kit.js';
+import { curve, prog, track, camera, line } from '../kit/cinema.js';
+const fx = await loadFixtures();
+const S = fx.showreel, N = fx.note, O = S.offer;
+Motion.duration = 30;
+Motion.size(1080, 1920);
+Motion.poster = 29.9;
+
+// ---- build -------------------------------------------------------------
+const world = $('#zw'), ZOOM = 2.6;
+world.style.zoom = ZOOM;
+const el = (tag, cls, html) => { const e = document.createElement(tag); if (cls) e.className = cls; if (html != null) e.innerHTML = html; return e; };
+// the list as it opens, then two clips copied during the film
+const BASE = ['calc', 'warranty', 'deploy', 'token', 'receipt', 'address'];
+const P = buildPanel(fx, { clipIds: [...BASE, 'link', 'invite'] });
+world.insertBefore(P.panel, $('#brand'));
+const skin = el('div'); skin.id = 'skin'; P.panel.prepend(skin);
+const spec = el('div'); spec.id = 'spec'; P.panel.append(spec);
+const tab = el('div'); tab.id = 'tab'; $('#cards', P.panel).append(tab);
+P.cards.forEach((c) => { const w = el('div', 'wash'); c.append(w); c._.wash = w; });
+const card = Object.fromEntries(P.cards.map((c) => [c._.id, c]));
+const chrome = ['#topbar', '#strip', '#footer'].map((s) => $(s, P.panel));
+BASE.forEach((id, i) => (card[id]._.time.textContent = fx.times[i]));
+card.link._.time.textContent = card.invite._.time.textContent = S.now;
+
+const ikeys = ['⇧', '⌘', 'V'].map((k) => {
+  const e = el('div', 'ik', `<div class="sheen"></div><span>${k}</span>`);
+  $('#ikeys').append(e); return e;
+});
+
+// preview pane: one element per line, so a translation can replace the original line by line
+P.pane.innerHTML = `<div class="tabs"><span class="tab" id="t1">Original</span><span class="tab" id="t2">English</span><span class="pair">${fx.translation.pair}</span></div><div class="body" id="pb"></div>`;
+const mk = (txt, cjk) => { const d = el('div'); d.textContent = txt; d.style.position = 'absolute'; d.style.left = 0; if (cjk) d.style.fontFamily = 'var(--cjk)'; $('#pb').append(d); return d; };
+const orig = fx.clips.warranty.lines.map((l, i) => Object.assign(mk(l, true), { _y: i * 23 }));
+const eng = fx.translation.lines.map((l, i) => Object.assign(mk(l), { _y: i * 23 }));
+
+// the link card, one element per line so the tracking line can go on its own
+const L = card.link;
+L._.txt.textContent = '';
+const urlLines = fx.clips.link.lines.map((s) => { const d = el('div'); d.textContent = s; L._.txt.append(d); return d; });
+const trk = urlLines[2]; trk.className = 'trk';
+const badge = el('span', 'badge'); badge.textContent = S.cleaned; L.append(badge);
+
+// the calendar offer
+const offer = el('div'); offer.id = 'offer';
+offer.innerHTML = `<img src="../icons/memoryclip-512.png"><div><div class="ot"><span id="oa"></span><span id="ob"></span></div>
+  <div class="oe"></div><div class="ow"></div><div class="ol"></div></div>
+  <div class="btns"><span class="add"></span><span class="edit"></span><span class="later"></span></div>`;
+$('#stage').append(offer);
+[['#oa', O.title], ['#ob', O.added], ['.oe', O.event], ['.ow', O.when], ['.ol', O.where], ['.add', O.add], ['.edit', O.edit], ['.later', O.later]]
+  .forEach(([s, v]) => ($(s, offer).textContent = v));
+const btns = $('.btns', offer), addBtn = $('.add', offer);
+
+// the note the receipt becomes, and the board picker, both in the world under the camera
+const note = el('div'); note.id = 'note'; note.innerHTML = `<div class="p">${N.path}</div><h4>${N.title}</h4><div id="nb"></div>`;
+world.insertBefore(note, $('#brand'));
+const tst = toast(N.toast, N.path);
+const pk = el('div'); pk.id = 'suggest'; pk.innerHTML = `<div id="pq"></div><div class="on">${fx.boards[0].name}</div>`;
+world.insertBefore(pk, $('#brand'));
+const bAddr = P.boards[2], bCount = bAddr.querySelector('b');
+// a copy of the address card files itself into the board
+const ghost = card.address.cloneNode(true); ghost.classList.add('ghost');
+ghost.querySelector('.sel').style.opacity = 1; ghost.querySelector('.key').textContent = ''; ghost.querySelector('.wash').remove();
+$('#cards', P.panel).append(ghost);
+
+const icon = el('img'); icon.id = 'icon'; icon.src = '../icons/memoryclip-512.png'; $('#brand').append(icon);
+const name = line($('#brand'), S.name); $('#brand .line:last-child').id = 'name';
+const tag = line($('#brand'), S.tagline); $('#brand .line:last-child').id = 'tag';
+const copied = line($('#copy'), S.copied, 'side'); $('#copy .line:last-child').style.top = '448px';
+const clean = line($('#copy'), S.links, 'side'); $('#copy .line:last-child').style.top = '448px';
+const priv = line($('#copy'), S.private, 'side'); $('#copy .line:last-child').style.top = '448px';
+
+const lock = el('div'); lock.id = 'lock';
+lock.innerHTML = `<svg width="96" height="96" viewBox="0 0 64 64" fill="none" stroke="#0a84ff" stroke-width="2.4" stroke-linecap="round">
+  <path class="fp" d="M12 30a20 20 0 0 1 40 0"/><path class="fp" d="M18 46V32a14 14 0 0 1 28 0v8"/>
+  <path class="fp" d="M24 52V32a8 8 0 0 1 16 0v16"/><path class="fp" d="M32 32v24"/><path class="fp" d="M46 46v6"/></svg>
+  <div>${fx.secret.prompt}</div>`;
+$('#stage').append(lock);
+const fps = [...lock.querySelectorAll('.fp')].map((p) => { const len = p.getTotalLength(); p.style.strokeDasharray = len; return [p, len]; });
+const capsT = keycaps(['⌘', 'T']), capsS = keycaps(['⌘', 'S']), capsP = keycaps(['⌘', 'P']);
+const cam = camera($('#world'), 1920, 1080, ZOOM);
+
+// ---- time ----------------------------------------------------------------
+const PX = 420, PY = 300, CPS = 24;
+const T_TYPE = 4.85, T_NARROW = T_TYPE + 27 / CPS, T_CLEAR = 7.05, T_FLIP = 9.1;
+const T_LINK = 10.9, T_INV = 13.75, T_ADD = 15.3, T_SAVE = 18.65, T_FILE = 22.9;
+const F = 26.5;                                           // the fold begins
+const IX = 860, IY = 400, IS = 200;                       // where the icon sits when the panel becomes it
+const GLYPH = { token: [0.396, 0.279, 1], deploy: [0.344, 0.338, 0.55], warranty: [0.293, 0.396, 0.22] };
+const LAYER = 0.322, LAYER_R = 0.07;   // glyph layer size and corner, as fractions of the icon
+const bump = (t, t0, w) => Math.exp(-(((t - t0) / w) ** 2));
+
+// the camera: framing, and a turn in depth on every shot (rx pitch, ry yaw, rz roll)
+const K = (x, y, s, rx = 0, ry = 0, rz = 0) => ({ x, y, s, rx, ry, rz });
+const CAM = [
+  [0, K(960, 1336, 1.5, 14)],
+  [1.0, K(960, 1336, 1.58, 12), curve.drift],
+  // establishing: the panel on the right, turned toward the line on the left
+  [2.2, K(684, 470, 1.05, 8, 13, -1)],
+  [4.1, K(700, 468, 1.09, 7, 11, -1), curve.drift],
+  [4.85, K(650, 392, 2.3, 4, -5, 0)],
+  [6.1, K(662, 396, 2.34, 4, -4, 0), curve.drift],
+  [6.9, K(700, 452, 2.2, 5, -2, 0)],
+  [T_CLEAR, K(702, 452, 2.21, 5, -2, 0), curve.drift],
+  [7.7, K(960, 470, 1.42, 9, 5, 0)],
+  [7.85, K(960, 470, 1.42, 9, 5, 0)],
+  [8.6, K(960, 650, 1.55, 12, -7, 1)],
+  [10.25, K(960, 700, 1.7, 11, -9, 1), curve.drift],
+  // a link is copied: it lands at the front, framed right of the line
+  [11.15, K(470, 500, 2.2, 6, 13, -1)],
+  [11.9, K(427, 494, 2.56, 6, 15, -1.5), curve.drift],
+  [12.95, K(427, 494, 2.62, 6, 16, -1.5), curve.drift],
+  // an invite: room on the right for the offer
+  [13.75, K(800, 500, 1.9, 6, -9, 1)],
+  [16.65, K(792, 498, 1.96, 6, -10, 1), curve.drift],
+  // the list scrolls back to the receipt
+  [18.2, K(1184, 494, 2.5, 10, 6, 0.5)],
+  [18.8, K(1184, 494, 2.56, 10, 7, 0.5), curve.drift],
+  [19.55, K(1184, 612, 1.75, 16, 4, 0)],
+  [20.45, K(1188, 614, 1.78, 16, 3, 0), curve.drift],
+  // the address and the board strip in one frame
+  [21.25, K(968, 440, 1.62, 9, -8, -1)],
+  [22.95, K(960, 436, 1.66, 9, -9, -1), curve.drift],
+  // the key, framed right of the line
+  [23.85, K(851, 500, 2.4, 6, 13, -1)],
+  [F - 0.1, K(851, 498, 2.46, 6, 14, -1.2), curve.drift],
+  [F + 0.95, K(960, 540, 1, 0, 0, 0)],
+];
+// where the lens is sharp (screen px, the sharp zone is 55% of rw × rh) and how soft the rest is
+const Q = (fx, fy, rw, rh, b) => ({ fx, fy, rw, rh, b });
+const FOC = [
+  [0, Q(960, 540, 1400, 900, 0)],
+  [1.0, Q(960, 540, 1400, 900, 0)],
+  [2.2, Q(1250, 540, 1050, 760, 6)],
+  [4.1, Q(1250, 540, 1050, 760, 6), curve.drift],
+  [4.85, Q(960, 540, 980, 520, 8)],
+  [T_CLEAR, Q(960, 560, 980, 560, 8), curve.drift],
+  [7.7, Q(960, 560, 1300, 820, 4)],
+  [8.6, Q(960, 600, 1300, 760, 5)],
+  [10.25, Q(960, 600, 1300, 760, 5), curve.drift],
+  [11.15, Q(1200, 540, 700, 640, 9)],
+  [12.95, Q(1240, 530, 660, 620, 10), curve.drift],
+  [13.75, Q(470, 530, 700, 640, 8)],
+  [16.65, Q(470, 530, 700, 640, 8), curve.drift],
+  [17.65, Q(960, 540, 1200, 760, 4)],
+  [18.2, Q(960, 540, 680, 640, 10)],
+  [18.8, Q(960, 540, 680, 640, 10), curve.drift],
+  [19.55, Q(960, 590, 1050, 820, 8)],
+  [20.45, Q(960, 590, 1050, 820, 8), curve.drift],
+  [21.25, Q(960, 470, 1300, 720, 6)],
+  [22.95, Q(960, 470, 1300, 720, 6), curve.drift],
+  [23.85, Q(1240, 520, 700, 620, 10)],
+  [F - 0.1, Q(1240, 520, 700, 620, 10), curve.drift],
+  [F + 0.95, Q(960, 540, 1400, 900, 0)],
+];
+// how far the cards that are not the subject step back into the dark
+const DIM = [[0, 0], [7.85, 0], [8.3, 1, curve.drift], [F - 0.1, 1], [F + 0.2, 0, curve.drift]];
+// the lens breathes on a move: blur in proportion to how fast the frame travels
+const blurOf = (t) => {
+  const a = track(t - 1 / 120, CAM), b = track(t + 1 / 120, CAM);
+  const v = Math.hypot((b.x - a.x) * b.s, (b.y - a.y) * b.s, (b.s - a.s) * 700, (b.ry - a.ry) * 30, (b.rx - a.rx) * 30) * 60;
+  return Math.min(2.6, v / 650);
+};
+// which card holds the selection, and when it moves
+const SEL = [[0, 'calc'], [T_NARROW, 'deploy'], [7.9, 'warranty'], [11.05, 'link'], [14.0, 'invite'], [17.75, 'receipt'], [20.85, 'address'], [23.55, 'token']];
+const tick = (t) => SEL.reduce((a, [t0]) => a + (t >= t0 && t0 > 0 ? 0.13 * Math.max(0, 1 - (t - t0) / 0.3) : 0), 0);
+const selOf = (id, t) => {
+  let w = 0;
+  for (let i = 0; i < SEL.length; i++) {
+    const [t0, who] = SEL[i], t1 = SEL[i + 1]?.[0] ?? 99;
+    const on = i === 0 ? prog(t, 1.95, 2.2) : prog(t, t0, t0 + 0.22);
+    const off = prog(t, t1, t1 + 0.22);
+    if (who === id) w = Math.max(w, Math.min(on, 1 - off));
+  }
+  return w;
+};
+// newest first; a copied clip pushes the rest one slot right, and the strip scrolls
+const ORDER = ['invite', 'link', ...BASE];
+const aLink = (t) => prog(t, T_LINK, T_LINK + 0.55);
+const aInv = (t) => prog(t, T_INV, T_INV + 0.55);
+const pos = (id, t) => {
+  const f = ORDER.indexOf(id);
+  const p = id === 'invite' ? 0 : id === 'link' ? aInv(t) : f - (1 - aInv(t)) - (1 - aLink(t));
+  return p - 3 * prog(t, 16.85, 17.65, curve.move);
+};
+const narrowed = (t) => t >= T_NARROW && t < T_CLEAR;
+
+Motion.at((t) => {
+  // a slow handheld drift on top of the framing, so no shot is ever quite still
+  const c = track(t, CAM), live = 1 - prog(t, F, F + 0.9, curve.drift);
+  cam({ ...c, rx: c.rx + live * 0.9 * Math.sin(t * 0.43 + 1), ry: c.ry + live * 1.3 * Math.sin(t * 0.31), rz: c.rz + live * 0.35 * Math.sin(t * 0.37 + 2) });
+  const f = track(t, FOC), st = $('#stage').style;
+  st.setProperty('--fx', f.fx + 'px'); st.setProperty('--fy', f.fy + 'px');
+  st.setProperty('--rw', f.rw + 'px'); st.setProperty('--rh', f.rh + 'px'); st.setProperty('--b', f.b.toFixed(2) + 'px');
+  st.setProperty('--lx', f.fx + 'px'); st.setProperty('--ly', f.fy + 'px');
+  $('#amb').style.opacity = 0.35 + 0.65 * prog(t, 0.8, 2.4) + 0.25 * prog(t, F + 0.3, F + 1.3);
+  const mb = blurOf(t);
+
+  // ⇧⌘V: emerge, catch the light, press
+  ikeys.forEach((k, i) => {
+    const a = prog(t, -0.3 + i * 0.09, 0.75 + i * 0.09);
+    const dip = bump(t, 0.98 + i * 0.025, 0.085);
+    const lit = prog(t, 0.94, 1.08);
+    k.style.opacity = a;
+    k.style.transform = `translateY(${(1 - a) * 34 + dip * 5}px)`;
+    k.querySelector('span').style.color = `rgb(${lerp(242, 10, lit)}, ${lerp(242, 132, lit)}, ${lerp(247, 255, lit)})`;
+    k.querySelector('.sheen').style.transform = `translateX(${lerp(-120, 300, prog(t, 0.3 + i * 0.07, 1.25 + i * 0.07, curve.drift))}%)`;
+  });
+
+  // panel rises as the camera arrives
+  const fold = prog(t, F, F + 0.95, curve.move);           // panel → icon
+  const rise = prog(t, 1.1, 2.0);
+  const open = Math.min(prog(t, 7.95, 8.55), 1 - prog(t, 10.3, 10.7, curve.move));
+  const ph = 340 + 260 * open;
+  const paneA = Math.min(prog(t, 8.1, 8.6), 1 - prog(t, 10.25, 10.45, curve.drift));
+  const R = { x: lerp(PX, IX, fold), y: lerp(PY + (1 - rise) * 60, IY, fold), w: lerp(1080, IS, fold), h: lerp(ph, IS, fold) };
+  Object.assign(P.panel.style, { left: R.x + 'px', top: R.y + 'px', width: R.w + 'px', height: R.h + 'px',
+    borderRadius: lerp(28, IS * 0.225, fold) + 'px', opacity: rise * (1 - prog(t, F + 1.0, F + 1.25, curve.drift)) });
+  skin.style.opacity = prog(t, F + 0.25, F + 0.8, curve.drift);
+  const chromeA = 1 - prog(t, F - 0.05, F + 0.3, curve.drift);
+  chrome.forEach((e) => (e.style.opacity = chromeA));
+  P.pane.style.opacity = paneA;
+  spec.style.transform = `translateX(${lerp(-560, 1200, prog(t, 1.9, 3.1, curve.drift))}px)`;
+
+  // search
+  const txt = t >= T_TYPE && t < T_CLEAR ? typed(fx.search.sentence, t, T_TYPE, CPS) : '';
+  P.search(txt, t, false);
+  if (t >= 4.7 && t < T_TYPE) P.caret.style.display = 'inline-block';
+  P.count.textContent = clips(narrowed(t) ? 1 : 8 + (t >= T_LINK + 0.2) + (t >= T_INV + 0.2));
+
+  // cards: settle in, reflow on the search and on each new copy, fold into the icon's glyph
+  const NARROW = [[0, 0], [T_NARROW, 0], [T_NARROW + 0.45, 1], [T_CLEAR, 1], [T_CLEAR + 0.45, 0]];
+  const nk = track(t, NARROW.map(([a, b]) => [a, b, curve.out]));
+  const gk = prog(t, F + 0.05, F + 0.95, curve.move);
+  const content = 1 - prog(t, F + 0.1, F + 0.45, curve.drift);
+  const tk = tick(t), dk = track(t, DIM);
+  P.cards.forEach((c) => {
+    const id = c._.id, hit = id === 'deploy', b = BASE.indexOf(id);
+    const p = pos(id, t);
+    const k = b >= 0 ? prog(t, 1.45 + b * 0.07, 2.25 + b * 0.07) : id === 'link' ? aLink(t) : aInv(t);
+    const x0 = slotX(p);
+    // search layout: hits slide to the front, the rest sink and fade
+    let x = lerp(x0, hit ? slotX(0) : x0, nk), y = (b >= 0 ? (1 - k) * 22 : (1 - k) * -26) + (hit ? 0 : nk * 10);
+    let s = (hit ? 1 : 1 - nk * 0.04) * (b >= 0 ? 1 : 0.94 + 0.06 * k), o = k * (hit ? 1 : 1 - nk);
+    // the fold: three cards become the glyph's three layers, the rest step back
+    const g = GLYPH[id];
+    let r = 16;
+    if (g) {
+      // world top-left and size, from the card's slot to the glyph layer
+      const W = lerp(200, LAYER * IS, gk), cs = W / 200;
+      const wx = lerp(PX + x0, IX + g[0] * IS, gk), wy = lerp(PY + 94, IY + g[1] * IS, gk);
+      if (gk > 0) { x = wx - R.x - 100 + 100 * cs; y = wy - (R.y + 94) - 100 + 100 * cs; s = cs; }
+      r = lerp(16, (LAYER_R * IS) / cs, gk);
+      c._.wash.style.opacity = g[2] * prog(t, F + 0.3, F + 0.75, curve.drift);
+    } else {
+      o *= 1 - prog(t, F - 0.05, F + 0.35, curve.drift);
+      s *= 1 - 0.06 * prog(t, F - 0.05, F + 0.35);
+    }
+    c.style.transform = `translate(${x}px, ${y}px) scale(${s})`;
+    c.style.opacity = o;
+    c.style.borderRadius = r + 'px';
+    c.style.background = g && gk > 0 ? `rgba(42,42,45,${content})` : '';
+    c.style.boxShadow = g ? `0 1px 3px rgba(0,0,0,${0.42 * content})` : '';
+    [...c.children].forEach((e) => e !== c._.wash && e !== c._.sel && e !== c._.flash && (e.style.opacity = content));
+    const sw = selOf(id, t);
+    c.style.opacity = o * (1 - 0.62 * dk * (1 - sw));
+    c._.sel.style.opacity = sw * content;
+    c._.sel.style.borderRadius = r + 'px';
+    c._.flash.style.opacity = sw > 0.5 ? tk : 0;
+    const n = Math.round(p);
+    c._.key.textContent = n >= 0 && n < 9 ? `⌘${n + 1}` : '';
+  });
+  // the glyph's clip tab
+  const tw = 0.113 * IS, th = 0.074 * IS;
+  Object.assign(tab.style, { left: IX + 0.5 * IS - R.x + 'px', top: IY + 0.24 * IS - (R.y + 94) + 'px', width: tw + 'px', height: th + 'px',
+    borderRadius: th / 2 + 'px', opacity: prog(t, F + 0.55, F + 0.85, curve.drift) });
+
+  // the link: its tracking line is struck through, then goes; the badge says so
+  const strike = prog(t, 11.95, 12.3, curve.drift), gone = prog(t, 12.45, 12.85, curve.drift);
+  trk.style.color = `rgb(${lerp(242, 255, strike)}, ${lerp(242, 105, strike)}, ${lerp(247, 96, strike)})`;
+  trk.style.backgroundSize = `${strike * 100}% 1.5px`;
+  trk.style.opacity = 1 - gone;
+  trk.style.transform = `translateY(${-5 * gone}px)`;
+  trk.style.filter = gone > 0 ? `blur(${2.5 * gone}px)` : 'none';
+  const ba = prog(t, 12.75, 13.15);
+  badge.style.opacity = ba * content;
+  badge.style.transform = `scale(${0.7 + 0.3 * ba})`;
+  clean(t, 12.0, 13.45);
+
+  // the invite: the offer arrives, Add, and the card says where it went
+  const oa = Math.min(prog(t, 14.45, 14.95), 1 - prog(t, 16.45, 16.8, curve.in));
+  offer.style.opacity = oa;
+  offer.style.transform = `translateX(${(1 - prog(t, 14.45, 14.95)) * 40 + prog(t, 16.45, 16.8, curve.in) * 60}px)`;
+  const added = prog(t, T_ADD + 0.1, T_ADD + 0.35, curve.drift);
+  $('#oa', offer).style.opacity = 1 - added; $('#ob', offer).style.opacity = added;
+  const press = bump(t, T_ADD, 0.08);
+  addBtn.style.filter = `brightness(${1 + 0.45 * press})`;
+  addBtn.style.transform = `scale(${1 - 0.05 * press})`;
+  const shut = prog(t, T_ADD + 0.2, T_ADD + 0.6, curve.move);
+  Object.assign(btns.style, { height: 42 * (1 - shut) + 'px', marginTop: 16 * (1 - shut) + 'px', opacity: 1 - prog(t, T_ADD + 0.1, T_ADD + 0.35) });
+  const inv = card.invite._.stat;
+  inv.textContent = t < T_ADD + 0.25 ? fx.clips.invite.stat : O.stat;
+  inv.style.opacity = content * (1 - 0.95 * bump(t, T_ADD + 0.25, 0.09));
+
+  // the receipt: read, then ⌘S makes it a note
+  const rc = card.receipt;
+  const sw = prog(t, 17.95, 18.55, curve.drift);
+  rc._.scan.style.opacity = sw > 0 && sw < 1 ? 1 : 0;
+  rc._.scan.style.top = 52 + 110 * sw + 'px';
+  rc._.flash.style.opacity = Math.max(+rc._.flash.style.opacity, 0.3 * bump(t, T_SAVE, 0.1));
+  capsS(t, 18.3, 19.15, T_SAVE);
+  tst(t, 19.0, 20.6);
+  const na = prog(t, 18.85, 19.45) * (1 - prog(t, 20.4, 20.8, curve.in));
+  note.style.opacity = na;
+  note.style.transform = `translateY(${(1 - prog(t, 18.85, 19.45)) * -60 + prog(t, 20.4, 20.8, curve.in) * 24}px) scale(${0.62 + 0.38 * prog(t, 18.85, 19.45)})`;
+  $('#nb').textContent = typed(N.body.join('\n'), t, 19.3, 60);
+
+  // the address: ⌘P, the board picker, and a copy files itself into the board
+  capsP(t, 21.05, 21.95, 21.35);
+  pk.style.opacity = Math.min(prog(t, 21.4, 21.65), 1 - prog(t, 22.2, 22.45, curve.in));
+  pk.style.transform = `translateY(${(1 - prog(t, 21.4, 21.65)) * -8}px)`;
+  $('#pq').textContent = typed(fx.pinPicker.query, t, 21.6, 10) + '▏';
+  const fl = prog(t, 22.3, T_FILE, curve.move), fy = prog(t, 22.3, T_FILE, curve.out);
+  const ad = card.address, ax = slotX(pos('address', t));
+  const cx = 16 + bAddr.offsetLeft + bAddr.offsetWidth / 2 - 100, cy = 70 - 94 - 100;
+  ghost.style.transform = `translate(${lerp(ax, cx, fl)}px, ${lerp(0, cy, fy)}px) scale(${lerp(1, 0.08, fl)})`;
+  ghost.style.opacity = t < 22.3 || t > T_FILE ? 0 : 0.9 * (1 - prog(t, 22.7, T_FILE, curve.drift));
+  bCount.textContent = fx.boards[0].count + (t >= T_FILE ? 1 : 0);
+  bAddr.style.transform = `scale(${1 + 0.14 * bump(t, T_FILE + 0.1, 0.16)})`;
+  bAddr.classList.toggle('on', bump(t, T_FILE + 0.1, 0.25) > 0.5);
+  ad._.flash.style.opacity = Math.max(+ad._.flash.style.opacity, 0.25 * bump(t, 22.3, 0.1));
+
+  // secret: masked, then the Touch ID sheet
+  card.token._.mask.textContent = fx.secret.mask;
+  const lk = Math.min(prog(t, 24.4, 24.8), 1 - prog(t, F - 0.45, F - 0.2, curve.in));
+  lock.style.opacity = lk;
+  lock.style.transform = `translateY(${(1 - prog(t, 24.4, 24.85)) * 14}px) scale(${0.96 + 0.04 * prog(t, 24.4, 24.85)})`;
+  fps.forEach(([p, len], i) => (p.style.strokeDashoffset = len * (1 - prog(t, 24.45 + i * 0.05, 24.9 + i * 0.05, curve.out))));
+  world.style.filter = `${lk > 0 ? `brightness(${1 - 0.35 * lk}) ` : ''}${mb > 0.05 ? `blur(${mb.toFixed(2)}px)` : ''}` || 'none';
+
+  // preview: original, then ⌘T, line by line into English
+  const flip = t >= T_FLIP + 0.05;
+  $('#t1').classList.toggle('on', !flip); $('#t2').classList.toggle('on', flip);
+  orig.forEach((d, i) => { const k = prog(t, T_FLIP + i * 0.02, T_FLIP + 0.16 + i * 0.02, curve.drift); d.style.top = d._y - k * 10 + 'px'; d.style.opacity = 1 - k; });
+  eng.forEach((d, i) => { const k = prog(t, T_FLIP + 0.27 + i * 0.07, T_FLIP + 0.87 + i * 0.07); d.style.top = d._y + (1 - k) * 14 + 'px'; d.style.opacity = k; });
+  capsT(t, 8.7, 9.75, T_FLIP);
+
+  // copy
+  copied(t, 2.45, 4.0);
+  priv(t, 24.55, F - 0.1);
+  $('#scrim').style.opacity = Math.max(Math.min(prog(t, 2.2, 2.8), 1 - prog(t, 3.7, 4.3)), Math.min(prog(t, 11.7, 12.3), 1 - prog(t, 13.2, 13.7)),
+    Math.min(prog(t, 24.3, 24.9), 1 - prog(t, F - 0.4, F + 0.1))) * 0.85;
+
+  // end card: the real icon takes over from the folded panel, then the name
+  icon.style.opacity = prog(t, F + 0.85, F + 1.15, curve.drift);
+  const up = prog(t, F + 1.1, F + 1.85);
+  icon.style.transform = `translateY(${-70 * up}px)`;
+  name(t, F + 1.22, 99, 0.75);
+  tag(t, F + 1.4, 99, 0.75);
+});
+window.__ready = true;
+</script>

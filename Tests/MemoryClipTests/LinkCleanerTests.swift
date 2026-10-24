@@ -56,6 +56,15 @@ final class LinkCleanerTests: XCTestCase {
         )
     }
 
+    /// The per-share link ID Instagram attaches to a post shared from the
+    /// app: base64 of an opaque token, like `igsh`.
+    func testTheInstagramShareLinkID() throws {
+        XCTAssertEqual(
+            try cleaned("https://www.instagram.com/p/DeecCV5AkJk/?psln=a3hybWt4dmszbTZ5"),
+            "https://www.instagram.com/p/DeecCV5AkJk/"
+        )
+    }
+
     /// Share and affiliate parameters the platforms attach, one per host.
     func testTheShareParametersEachPlatformAttaches() throws {
         let cases = [
