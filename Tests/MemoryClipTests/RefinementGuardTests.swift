@@ -672,6 +672,20 @@ final class PromptEchoTests: XCTestCase {
         XCTAssertEqual(FoundationModelsRefiner.promptEchoStripped(text), "The answer.")
     }
 
+    /// The observed shape on short screenshots: the hint and the captured-from
+    /// line run together onto one line after the answer.
+    func testPromptSentencesRunTogetherOnOneLineAreCut() {
+        let text = [
+            "Build Failed",
+            "Static property 'fade' is not concurrency-safe",
+            FoundationModelsRefiner.screenshotHint + " " + FoundationModelsRefiner.capturedFromPrefix + "Xcode",
+        ].joined(separator: "\n")
+        XCTAssertEqual(
+            FoundationModelsRefiner.promptEchoStripped(text),
+            "Build Failed\nStatic property 'fade' is not concurrency-safe"
+        )
+    }
+
     /// The common case pays nothing: an answer with no echo in it is returned
     /// as it came.
     func testACleanAnswerIsUntouched() {

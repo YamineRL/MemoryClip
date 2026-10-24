@@ -301,6 +301,7 @@ struct FoundationModelsRefiner: NoteRefiner {
         }
 
         lines.removeAll(where: isPromptLine)
+        lines = lines.map(withoutPromptSentences)
         let kept = lines.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
         if !kept.isEmpty { return kept }
 
@@ -315,6 +316,21 @@ struct FoundationModelsRefiner: NoteRefiner {
         if trimmed == promptLead || trimmed == screenshotHint { return true }
         if trimmed == beginMarker || trimmed == endMarker { return true }
         return trimmed.hasPrefix(capturedFromPrefix)
+    }
+
+    /// `line` with the prompt's sentences cut out of it, for an echo that ran
+    /// them together on one line or onto the end of a line of the answer. The
+    /// captured-from sentence takes the rest of its line, since the app name
+    /// that follows it is ours too.
+    private static func withoutPromptSentences(_ line: String) -> String {
+        var cut = line
+        for sentence in [promptLead, screenshotHint] {
+            cut = cut.replacingOccurrences(of: sentence, with: "")
+        }
+        if let range = cut.range(of: capturedFromPrefix.trimmingCharacters(in: .whitespaces)) {
+            cut = String(cut[..<range.lowerBound])
+        }
+        return cut == line ? line : cut.trimmingCharacters(in: .whitespaces)
     }
 
     /// Kept `static` and free of any model type so it is testable on a
