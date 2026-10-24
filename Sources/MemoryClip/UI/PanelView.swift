@@ -1550,7 +1550,6 @@ struct PanelContentView: View {
     @State private var namingPinboard = false
     @State private var editingPinboard: Pinboard?
     @State private var pinboardName = ""
-    @FocusState private var pinboardNameFocused: Bool
     /// The scope chip an in-panel clip drag is hovering over, for the
     /// drop highlight.
     @State private var dropTargetScope: PinboardScope?
@@ -2389,6 +2388,22 @@ struct PanelContentView: View {
     /// inline name field. Every chip is also a drop target for a card being
     /// dragged, which is how filing by mouse works.
     private var pinboardStrip: some View {
+        ScrollViewReader { proxy in
+            pinboardStripScroll
+                // Bring the name field into view when it opens at the end of
+                // a strip wider than the panel.
+                .onChange(of: namingPinboard) { _, naming in
+                    guard naming else { return }
+                    DispatchQueue.main.async {
+                        withAnimation(Design.Motion.quick) {
+                            proxy.scrollTo(Self.pinboardNameFieldID, anchor: .trailing)
+                        }
+                    }
+                }
+        }
+    }
+
+    private var pinboardStripScroll: some View {
         ScrollView(.horizontal) {
             HStack(spacing: Design.Space.snug) {
                 scopeChip(loc("All"), scope: .all)
@@ -2424,12 +2439,12 @@ struct PanelContentView: View {
 
     /// The field that names a new board or renames `editingPinboard`.
     private var pinboardNameField: some View {
-        TextField(
-            editingPinboard == nil ? loc("Name pinboard") : loc("Rename pinboard"),
-            text: $pinboardName
+        AutoFocusTextField(
+            placeholder: editingPinboard == nil ? loc("Name pinboard") : loc("Rename pinboard"),
+            text: $pinboardName,
+            onSubmit: commitPinboardName,
+            onCancel: cancelPinboardName
         )
-        .textFieldStyle(.plain)
-        .font(Design.Typography.chip)
         .frame(width: 120)
         .padding(.horizontal, Design.Space.roomy)
         .padding(.vertical, Design.Space.snug)
@@ -2443,13 +2458,10 @@ struct PanelContentView: View {
                 lineWidth: Design.Stroke.selection
             )
         )
-        .focused($pinboardNameFocused)
-        .onSubmit(commitPinboardName)
-        .onExitCommand(perform: cancelPinboardName)
-        // Deferred a turn: focus set while the field is still being inserted
-        // is dropped, and the search field keeps the keys.
-        .onAppear { Task { @MainActor in pinboardNameFocused = true } }
+        .id(Self.pinboardNameFieldID)
     }
+
+    private static let pinboardNameFieldID = "pinboard-name-field"
 
     /// The `+` at the end of the strip.
     private var newPinboardButton: some View {
@@ -2748,7 +2760,10 @@ struct PanelContentView: View {
         namingPinboard = false
         editingPinboard = nil
         pinboardName = ""
-        searchFocused = true
+        // The name field took the keys outside SwiftUI, so `searchFocused`
+        // may still read true; cycle it so the search field takes them back.
+        searchFocused = false
+        DispatchQueue.main.async { searchFocused = true }
     }
 
     /// Confirmed deletion: the clips return to Pinned, the survivors'
