@@ -983,6 +983,7 @@ final class ClipStore {
             cipher = try vault.seal(plaintext)
         } catch {
             log.error("Secret sealing failed; the clip was dropped, not stored in the clear: \(error.localizedDescription)")
+            FailureNotifier.post(.secretNotKept)
             return nil
         }
 

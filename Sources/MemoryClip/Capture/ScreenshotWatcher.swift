@@ -70,6 +70,14 @@ final class ScreenshotWatcher {
     /// Longest wait between attempts to re-open a folder that has gone away.
     nonisolated static let maxReopenDelay: Duration = .seconds(30)
 
+    /// Whether watching is on but this build has no recorded access to a
+    /// folder macOS guards, so the watcher will not open it.
+    static var lacksFolderAccess: Bool {
+        isEnabled
+            && FolderAccess.isGuarded(resolvedFolder())
+            && !PermissionLedger().worksUnderThisBuild(.filesAndFolders)
+    }
+
     /// The folder to watch: the one the user picked, else the one
     /// `screencapture` is configured to write to.
     ///

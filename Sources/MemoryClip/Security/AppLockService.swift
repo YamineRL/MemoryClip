@@ -61,6 +61,7 @@ final class AppLockService {
         guard context.canEvaluatePolicy(.deviceOwnerAuthentication, error: &preflightError) else {
             // No Touch ID hardware/enrollment (and no passcode) — don't lock the user out.
             log.notice("AppLock skipped, device can't authenticate: \(preflightError?.localizedDescription ?? "unknown reason")")
+            FailureNotifier.post(.appLockUnavailable)
             return true
         }
         do {
