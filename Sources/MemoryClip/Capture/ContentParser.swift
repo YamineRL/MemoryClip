@@ -235,13 +235,22 @@ enum ContentParser {
     private static func boundedImageData(_ data: Data) -> Data? {
         guard data.count <= maxImageBytes else {
             log.notice("Image clip skipped: payload over the \(maxImageBytes, privacy: .public)-byte cap")
+            postImageTooLarge()
             return nil
         }
         if let size = pixelSize(of: data), size.pixels > maxImagePixels {
             log.notice("Image clip skipped: \(size.pixels, privacy: .public) pixels over the cap")
+            postImageTooLarge()
             return nil
         }
         return data
+    }
+
+    private static func postImageTooLarge() {
+        FailureNotifier.post(.imageTooLarge(
+            megabytes: maxImageBytes / (1024 * 1024),
+            megapixels: maxImagePixels / 1_000_000
+        ))
     }
 
     /// Pixel dimensions from an encoded image's header, or nil when the

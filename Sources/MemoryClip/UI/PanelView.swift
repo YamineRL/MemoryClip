@@ -1994,7 +1994,7 @@ struct PanelContentView: View {
             guard statusMessage != nil else { return }
             try? await Task.sleep(for: .seconds(5))
             guard !Task.isCancelled else { return }
-            statusMessage = nil
+            withAnimation(Design.Motion.standard) { statusMessage = nil }
         }
         // Debounced for the same reason the preview pane is: the filter is
         // rebuilt on every keystroke, and counting once the typing comes to
@@ -2388,6 +2388,22 @@ struct PanelContentView: View {
     /// inline name field. Every chip is also a drop target for a card being
     /// dragged, which is how filing by mouse works.
     private var pinboardStrip: some View {
+        ScrollViewReader { proxy in
+            pinboardStripScroll
+                // Bring the name field into view when it opens at the end of
+                // a strip wider than the panel.
+                .onChange(of: namingPinboard) { _, naming in
+                    guard naming else { return }
+                    DispatchQueue.main.async {
+                        withAnimation(Design.Motion.quick) {
+                            proxy.scrollTo(Self.pinboardNameFieldID, anchor: .trailing)
+                        }
+                    }
+                }
+        }
+    }
+
+    private var pinboardStripScroll: some View {
         ScrollView(.horizontal) {
             HStack(spacing: Design.Space.snug) {
                 scopeChip(loc("All"), scope: .all)
@@ -2423,12 +2439,12 @@ struct PanelContentView: View {
 
     /// The field that names a new board or renames `editingPinboard`.
     private var pinboardNameField: some View {
-        TextField(
-            editingPinboard == nil ? loc("Name pinboard") : loc("Rename pinboard"),
-            text: $pinboardName
+        AutoFocusTextField(
+            placeholder: editingPinboard == nil ? loc("Name pinboard") : loc("Rename pinboard"),
+            text: $pinboardName,
+            onSubmit: commitPinboardName,
+            onCancel: cancelPinboardName
         )
-        .textFieldStyle(.plain)
-        .font(Design.Typography.chip)
         .frame(width: 120)
         .padding(.horizontal, Design.Space.roomy)
         .padding(.vertical, Design.Space.snug)
@@ -2442,9 +2458,10 @@ struct PanelContentView: View {
                 lineWidth: Design.Stroke.selection
             )
         )
-        .onSubmit(commitPinboardName)
-        .onExitCommand(perform: cancelPinboardName)
+        .id(Self.pinboardNameFieldID)
     }
+
+    private static let pinboardNameFieldID = "pinboard-name-field"
 
     /// The `+` at the end of the strip.
     private var newPinboardButton: some View {
@@ -2725,11 +2742,21 @@ struct PanelContentView: View {
 
     /// Commit or abandon the strip's name field.
     private func commitPinboardName() {
-        defer {
-            namingPinboard = false
-            editingPinboard = nil
-            pinboardName = ""
+        let trimmed = pinboardName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            cancelPinboardName()
+            return
         }
+        // A name that cannot be used keeps the field open, with the reason.
+        guard Pinboard.normalizedName(trimmed) != nil else {
+            showStatus(loc("Pinboard names can be up to %d characters.", Pinboard.maximumNameLength))
+            return
+        }
+        if let existing = Pinboard.named(trimmed, in: pinboards), existing.uuid != editingPinboard?.uuid {
+            showStatus(loc("A pinboard named %@ already exists.", existing.name))
+            return
+        }
+        defer { cancelPinboardName() }
         if let board = editingPinboard {
             if board.rename(to: pinboardName, in: modelContext) {
                 modelContext.saveLogged()
@@ -2747,6 +2774,10 @@ struct PanelContentView: View {
         namingPinboard = false
         editingPinboard = nil
         pinboardName = ""
+        // The name field took the keys outside SwiftUI, so `searchFocused`
+        // may still read true; cycle it so the search field takes them back.
+        searchFocused = false
+        DispatchQueue.main.async { searchFocused = true }
     }
 
     /// Confirmed deletion: the clips return to Pinned, the survivors'
@@ -3227,13 +3258,13 @@ struct PanelContentView: View {
                     // must see the selection it is reacting to.
                     guard let index = selection.index(in: visible.map(\.uuid)),
                           visible.indices.contains(index) else { return }
-                    withAnimation(Design.Motion.quick) {
-                        // `.center` rather than the default: on a horizontal
-                        // axis the leading anchor parks the selected card
-                        // against the panel's left edge with its neighbours
-                        // off-screen, which loses the sense of a deck.
-                        proxy.scrollTo(visible[index].uuid, anchor: .center)
-                    }
+                    // Not animated: the arrow keys drive this, and a scroll
+                    // that eases trails a held key.
+                    // `.center` rather than the default: on a horizontal
+                    // axis the leading anchor parks the selected card
+                    // against the panel's left edge with its neighbours
+                    // off-screen, which loses the sense of a deck.
+                    proxy.scrollTo(visible[index].uuid, anchor: .center)
                 }
             }
         }

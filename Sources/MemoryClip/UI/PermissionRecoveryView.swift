@@ -80,7 +80,8 @@ struct PermissionRecoveryView: View {
                 symbol: "lock.rotation",
                 tint: Color(nsColor: .systemOrange),
                 size: Design.Size.settingsIcon * 2,
-                radius: Design.Radius.pane
+                radius: Design.Radius.pane,
+                tiled: true
             )
             VStack(alignment: .leading, spacing: Design.Space.snug) {
                 Text(title)

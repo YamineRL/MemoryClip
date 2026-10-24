@@ -208,24 +208,30 @@ final class LanguageDetectorTests: XCTestCase {
 
 /// Which floor a text has to clear, and why there is more than one.
 ///
-/// `minimumCharacters` is a count of an alphabet's letters. Asking a script
-/// that does not spell its words in letters to clear it turned away text the
-/// recognizer had already named at 1.00 — sixteen ideographs read as nothing
-/// because they were written in nineteen characters.
+/// `minimumCharacters` is a count of an alphabet's letters, and only the
+/// alphabet needs it: Latin-script languages are mistaken for each other in
+/// short fragments. A non-Latin script names itself from its first character,
+/// so it clears a floor of one — the recognizer had already named nineteen
+/// characters of Chinese at 1.00 while the twenty-character floor turned them
+/// away, and seven were turned away for the same non-reason.
 final class LanguageFloorTests: XCTestCase {
     /// Four Traditional Chinese phrases: nineteen characters, one under the
-    /// alphabet's floor, and sixteen words over the script's.
+    /// alphabet's floor.
     private let phrase = "若主願之 如主所願 萬贊歸主 祈主恕饒"
 
     func testTheFloorFollowsTheScript() {
-        XCTAssertEqual(LanguageDetector.minimumCharacters(for: phrase),
-                       LanguageDetector.minimumScriptCharacters)
-        XCTAssertEqual(LanguageDetector.minimumCharacters(for: arabic),
-                       LanguageDetector.minimumScriptCharacters)
+        XCTAssertEqual(LanguageDetector.minimumCharacters(for: phrase), 1)
+        XCTAssertEqual(LanguageDetector.minimumCharacters(for: arabic), 1)
+        // The reported screenshot: seven ideographs, seven words.
+        XCTAssertEqual(LanguageDetector.minimumCharacters(for: "这条裙子好美啊"), 1)
+        // A script outside the census's model is still a script, not an
+        // alphabet: Tamil and Georgian name themselves just as plainly.
+        XCTAssertEqual(LanguageDetector.minimumCharacters(for: "நன்றி"), 1)
+        XCTAssertEqual(LanguageDetector.minimumCharacters(for: "გამარჯობა"), 1)
         XCTAssertEqual(LanguageDetector.minimumCharacters(for: "Paste as plain text"),
                        LanguageDetector.minimumCharacters)
         // A Latin page quoting a few ideographs is a Latin page, and holding
-        // it to the lower floor is how a logo becomes a language.
+        // it to the alphabet's floor is how a logo becomes a language.
         XCTAssertEqual(LanguageDetector.minimumCharacters(for: "Buy 老干妈 crisp"),
                        LanguageDetector.minimumCharacters)
         // Text with no letters in it names no script, so the floor stands.
@@ -257,10 +263,28 @@ final class LanguageFloorTests: XCTestCase {
         }
     }
 
-    /// A lower floor is still a floor: two ideographs are a logo rather than
-    /// a sentence, which is what `minimumScriptCharacters` is set to exclude.
-    func testAScriptStillHasToClearItsOwnFloor() {
-        XCTAssertNil(LanguageDetector.dominantLanguage(of: "谢谢"))
+    /// With no Latin prose for them to hide in, a couple of ideographs are a
+    /// word rather than a logo, and the recognizer names them at 1.00.
+    func testAShortPhraseInAScriptIsIdentified() {
+        XCTAssertEqual(LanguageDetector.dominantLanguage(of: "谢谢")?
+            .languageCode?.identifier, "zh")
+        XCTAssertEqual(LanguageDetector.dominantLanguage(of: "这条裙子好美啊")?
+            .languageCode?.identifier, "zh")
+    }
+
+    /// Scripts the census does not model reach the recognizer without a
+    /// script prior in front of them, and are named just as plainly: a
+    /// Tamil, Bengali, Georgian or Lao phrase of a few characters is not
+    /// Latin, so no alphabet's count stands in its way.
+    func testShortTextInUnmodelledScriptsIsIdentified() {
+        XCTAssertEqual(LanguageDetector.dominantLanguage(of: "நன்றி")?
+            .languageCode?.identifier, "ta")
+        XCTAssertEqual(LanguageDetector.dominantLanguage(of: "নমস্কার")?
+            .languageCode?.identifier, "bn")
+        XCTAssertEqual(LanguageDetector.dominantLanguage(of: "გამარჯობა")?
+            .languageCode?.identifier, "ka")
+        XCTAssertEqual(LanguageDetector.dominantLanguage(of: "ສະບາຍດີ")?
+            .languageCode?.identifier, "lo")
     }
 }
 

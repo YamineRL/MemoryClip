@@ -290,8 +290,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Two offers, never both at once: what an update took away, and —
         // for the release that introduces the ledger, which has no history to
         // read — what a switched-on feature is missing outright.
-        if !PermissionRecoveryController.shared.showIfNeeded() {
-            PermissionRecoveryController.shared.showBlockedOnce()
+        if !PermissionRecoveryController.shared.showIfNeeded(),
+           !PermissionRecoveryController.shared.showBlockedOnce(),
+           ScreenshotWatcher.lacksFolderAccess {
+            FailureNotifier.post(.screenshotAccessMissing)
         }
 
         // An "Open MemoryClip" intent that arrived during this launch —
@@ -409,6 +411,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 return try ClipStore()
             } catch {
                 log.error("Store reset failed: \(error.localizedDescription)")
+                FailureNotifier.post(.historyNotPersisted)
             }
         }
 

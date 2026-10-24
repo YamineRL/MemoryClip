@@ -96,3 +96,12 @@
 --disable opaqueGenericParameters
 # Tests force-unwrap values they constructed a line earlier.
 --disable noForceUnwrapInTests
+# One condition per guard — `guard exists(legacy) else { return false }` then
+# `guard !exists(destination) else { return false }` — each read on its own line.
+--disable repeatedGuard
+# Same reason as redundantViewBuilder: @ViewBuilder stays on helpers that
+# return a single container today.
+--disable contentBuilder
+# SettingsPane's extension marks @MainActor on the member that needs it, not on
+# the extension as a whole.
+--disable extensionAttributes

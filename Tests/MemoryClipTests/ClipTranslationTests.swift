@@ -167,6 +167,20 @@ final class ClipTranslationPlanTests: XCTestCase {
         XCTAssertEqual(request.text, phrase)
     }
 
+    /// The reported clip: seven ideographs on one screenshot line, named
+    /// Chinese at 1.00 and skipped because the floor was a count of alphabet
+    /// letters. A script is the evidence, so there is no count to clear.
+    func testASevenCharacterIdeographicClipIsTranslated() {
+        let phrase = "这条裙子好美啊"
+        XCTAssertLessThan(phrase.count, LanguageDetector.minimumCharacters)
+
+        guard case .translate(let request) = plan(text: phrase) else {
+            return XCTFail("expected seven ideographs to be translated")
+        }
+        XCTAssertEqual(request.source.languageCode?.identifier, "zh")
+        XCTAssertEqual(request.text, phrase)
+    }
+
     /// The budget is the note pipeline's, and so is the promise that the rest
     /// of the clip is marked rather than dropped.
     func testLongTextIsBoundedAndMarkedTruncated() {

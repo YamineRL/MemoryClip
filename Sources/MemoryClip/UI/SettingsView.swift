@@ -635,6 +635,10 @@ private struct PrivacySettingsPane: View {
     /// What is in the "never clean" field, before it is added.
     @State private var hostDraft = ""
 
+    /// The link cleaner's two keys, both registered as `true` at launch.
+    @AppStorage(LinkSettingsKeys.cleanEnabled) private var cleanLinks = true
+    @AppStorage(LinkSettingsKeys.removeCampaignParameters) private var removeCampaignParameters = true
+
     /// How many stored plaintext clips look like secrets — nil while the
     /// off-actor scan runs, so the "Already in your history" row simply is
     /// not there until it has an answer.
@@ -755,21 +759,21 @@ private struct PrivacySettingsPane: View {
             }
 
             Section(loc("Links")) {
-                Toggle(isOn: cleanLinksBinding) {
+                Toggle(isOn: $cleanLinks) {
                     Label {
                         Text(loc("Clean tracking parameters from copied links"))
                     } icon: {
                         SettingsIcon(symbol: "link", tint: Color(nsColor: .systemPink))
                     }
                 }
-                Toggle(isOn: campaignParametersBinding) {
+                Toggle(isOn: $removeCampaignParameters) {
                     Label {
                         Text(loc("Also remove campaign parameters (utm_*)"))
                     } icon: {
                         SettingsIcon(symbol: "megaphone.fill", tint: Color(nsColor: .systemPink))
                     }
                 }
-                .disabled(!UserDefaults.standard.bool(forKey: LinkSettingsKeys.cleanEnabled))
+                .disabled(!cleanLinks)
                 ForEach(excludedHosts, id: \.self) { host in
                     LabeledContent {
                         Button(loc("Remove")) { removeHost(host) }
@@ -901,22 +905,6 @@ private struct PrivacySettingsPane: View {
         reloadExcludedHosts()
     }
 
-    /// Manual bindings to the link cleaner's two UserDefaults keys (both
-    /// registered as `true` at launch).
-    private var cleanLinksBinding: Binding<Bool> {
-        Binding(
-            get: { UserDefaults.standard.bool(forKey: LinkSettingsKeys.cleanEnabled) },
-            set: { UserDefaults.standard.set($0, forKey: LinkSettingsKeys.cleanEnabled) }
-        )
-    }
-
-    private var campaignParametersBinding: Binding<Bool> {
-        Binding(
-            get: { UserDefaults.standard.bool(forKey: LinkSettingsKeys.removeCampaignParameters) },
-            set: { UserDefaults.standard.set($0, forKey: LinkSettingsKeys.removeCampaignParameters) }
-        )
-    }
-
     private func addApp() {
         switch ExcludedApps.chooseApp() {
         case .cancelled:
@@ -1023,6 +1011,9 @@ private struct ExcludedAppIcon: View {
 // MARK: - Shortcuts
 
 private struct ShortcutsSettingsPane: View {
+    /// Width of the widest cap, so every description starts on one column.
+    @State private var capColumnWidth: CGFloat = 0
+
     var body: some View {
         Form {
             Section(loc("Global")) {
@@ -1035,14 +1026,19 @@ private struct ShortcutsSettingsPane: View {
             ForEach(ShortcutReference.groups) { group in
                 Section(group.title) {
                     ForEach(group.entries) { entry in
-                        LabeledContent {
+                        HStack(alignment: .firstTextBaseline, spacing: Design.Space.normal) {
+                            ShortcutCap(keys: entry.keys)
+                                .fixedSize()
+                                .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width in
+                                    capColumnWidth = max(capColumnWidth, width)
+                                }
+                                .frame(minWidth: capColumnWidth, alignment: .leading)
                             Text(entry.detail)
                                 .foregroundStyle(.secondary)
                                 .multilineTextAlignment(.leading)
                                 .frame(maxWidth: .infinity, alignment: .leading)
-                        } label: {
-                            ShortcutCap(keys: entry.keys)
                         }
+                        .accessibilityElement(children: .combine)
                     }
                     if let note = group.note {
                         SettingsHint(note)
@@ -1256,7 +1252,7 @@ private struct TranslationSettingsPane: View {
             }
 
             Section(loc("Notes")) {
-                Toggle(isOn: $translateEnabled) {
+                Toggle(isOn: $translateEnabled.animation(Design.Motion.quick)) {
                     Label {
                         Text(loc("Translate other languages"))
                     } icon: {
@@ -1695,7 +1691,7 @@ private struct NotesSettingsPane: View {
             }
 
             Section(loc("When")) {
-                Toggle(isOn: $autoNoteEnabled) {
+                Toggle(isOn: $autoNoteEnabled.animation(Design.Motion.quick)) {
                     Label {
                         Text(loc("Write a note for every screenshot"))
                     } icon: {
@@ -1704,7 +1700,11 @@ private struct NotesSettingsPane: View {
                 }
                 if autoNoteEnabled {
                     Stepper(value: $minimumCharacters, in: 0...2000, step: 20) {
-                        Text(loc("…with at least %d characters of text", minimumCharacters))
+                        Label {
+                            Text(loc("…with at least %d characters of text", minimumCharacters))
+                        } icon: {
+                            SettingsIcon(symbol: "text.alignleft", tint: Color(nsColor: .systemYellow))
+                        }
                     }
                 }
                 SettingsHint(autoNoteEnabled

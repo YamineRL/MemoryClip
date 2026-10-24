@@ -197,12 +197,16 @@ final class UpdateChecker: ObservableObject {
     /// Download the disk image and open it, which is where MemoryClip's part
     /// ends: what Finder then shows is the app and the `/Applications`
     /// symlink beside it.
-    func download(_ update: AvailableUpdate) {
+    ///
+    /// `announcesFailure` posts a notice when the download fails, for a
+    /// download started from a banner, where no Settings window shows the
+    /// status.
+    func download(_ update: AvailableUpdate, announcesFailure: Bool = false) {
         guard work == nil else { return }
         status = .downloading
         work = Task { [weak self] in
             defer { self?.work = nil }
-            await self?.fetchAndOpen(update)
+            await self?.fetchAndOpen(update, announcesFailure: announcesFailure)
         }
     }
 
@@ -212,7 +216,7 @@ final class UpdateChecker: ObservableObject {
         return update
     }
 
-    private func fetchAndOpen(_ update: AvailableUpdate) async {
+    private func fetchAndOpen(_ update: AvailableUpdate, announcesFailure: Bool) async {
         do {
             let (temporary, _) = try await session.download(from: update.diskImage)
             // Moved out of the URL loader's own scratch file, which it
@@ -224,6 +228,7 @@ final class UpdateChecker: ObservableObject {
         } catch {
             status = .failed(Self.describe(error))
             log.error("Update download failed: \(String(describing: error), privacy: .public)")
+            if announcesFailure { FailureNotifier.post(.updateDownloadFailed) }
         }
     }
 

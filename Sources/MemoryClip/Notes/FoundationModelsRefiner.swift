@@ -89,6 +89,12 @@ struct FoundationModelsRefiner: NoteRefiner {
         return defaults.bool(forKey: NoteSettingsKeys.refineEnabled)
     }
 
+    /// Whether refinement is on because the user switched it on, rather than
+    /// by default.
+    static var wasTurnedOnByUser: Bool {
+        UserDefaults.standard.object(forKey: NoteSettingsKeys.refineEnabled) as? Bool == true
+    }
+
     /// Whether the on-device model could run right now.
     ///
     /// Read live, never cached: Apple Intelligence can be switched on and
@@ -163,6 +169,10 @@ struct FoundationModelsRefiner: NoteRefiner {
         guard Self.isEnabled else { return await fallback.refine(input) }
         guard isAvailable else {
             log.notice("Note refinement skipped: on-device model unavailable")
+            if Self.wasTurnedOnByUser,
+               case .unavailable(.appleIntelligenceNotEnabled) = SystemLanguageModel.default.availability {
+                await FailureNotifier.post(.appleIntelligenceOff)
+            }
             return await fallback.refine(input)
         }
 
@@ -301,6 +311,7 @@ struct FoundationModelsRefiner: NoteRefiner {
         }
 
         lines.removeAll(where: isPromptLine)
+        lines = lines.map(withoutPromptSentences)
         let kept = lines.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
         if !kept.isEmpty { return kept }
 
@@ -315,6 +326,21 @@ struct FoundationModelsRefiner: NoteRefiner {
         if trimmed == promptLead || trimmed == screenshotHint { return true }
         if trimmed == beginMarker || trimmed == endMarker { return true }
         return trimmed.hasPrefix(capturedFromPrefix)
+    }
+
+    /// `line` with the prompt's sentences cut out of it, for an echo that ran
+    /// them together on one line or onto the end of a line of the answer. The
+    /// captured-from sentence takes the rest of its line, since the app name
+    /// that follows it is ours too.
+    private static func withoutPromptSentences(_ line: String) -> String {
+        var cut = line
+        for sentence in [promptLead, screenshotHint] {
+            cut = cut.replacingOccurrences(of: sentence, with: "")
+        }
+        if let range = cut.range(of: capturedFromPrefix.trimmingCharacters(in: .whitespaces)) {
+            cut = String(cut[..<range.lowerBound])
+        }
+        return cut == line ? line : cut.trimmingCharacters(in: .whitespaces)
     }
 
     /// Kept `static` and free of any model type so it is testable on a
@@ -364,7 +390,10 @@ private struct GeneratedNote {
 
     @Guide(description: """
         A short noun phrase naming what this text is, at most 8 words, using \
-        words that appear in the text. Not a sentence.
+        words that appear in the text. Name its specific subject — the \
+        thing, event, person or problem it is about — and what kind of text \
+        it is (receipt, error, message, article, list). Not the app it was \
+        captured from. Not a sentence.
         """)
     var title: String
 

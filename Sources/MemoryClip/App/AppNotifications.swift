@@ -23,6 +23,7 @@ enum AppNotifications {
             EventNotifier.category,
             EventNotifier.offerCategory,
             UpdateNotifier.category,
+            FailureNotifier.category,
         ])
     }
 }
@@ -76,27 +77,40 @@ final class AppNotificationDelegate: NSObject, UNUserNotificationCenterDelegate 
             .flatMap(UUID.init(uuidString:))
         let eventStart = (content.userInfo["eventStart"] as? TimeInterval)
             .map(Date.init(timeIntervalSinceReferenceDate:))
+        let destination = (content.userInfo[FailureNotice.Destination.userInfoKey] as? String)
+            .flatMap(FailureNotice.Destination.init(userInfoValue:))
         log.notice("Notification action \(response.actionIdentifier, privacy: .public) on \(content.categoryIdentifier, privacy: .public)")
         await handle(
             response.actionIdentifier,
             operation: operation,
             clipUUID: clipUUID,
             eventStart: eventStart,
+            destination: destination,
             category: content.categoryIdentifier
         )
     }
 
-    private func handle(_ action: String, operation: UUID?, clipUUID: UUID?, eventStart: Date?, category: String) async {
+    private func handle(
+        _ action: String,
+        operation: UUID?,
+        clipUUID: UUID?,
+        eventStart: Date?,
+        destination: FailureNotice.Destination?,
+        category: String
+    ) async {
         switch action {
         case EventNotifier.undoActionIdentifier:
             // The banner names the creation it announced; undo retracts THAT
             // one, not whatever was saved most recently. A banner from an
             // older run carries no operation the coordinator still knows —
             // the answer is `.undoUnavailable`, not silence.
-            if let operation {
-                _ = await calendarCoordinator.undoEvent(operation)
+            let result = if let operation {
+                await calendarCoordinator.undoEvent(operation)
             } else {
-                _ = await calendarCoordinator.undoLastEvent()
+                await calendarCoordinator.undoLastEvent()
+            }
+            if case .failure(let error) = result {
+                FailureNotifier.post(.calendarActionFailed(error, undo: true))
             }
         case EventNotifier.openActionIdentifier:
             Self.openCalendar(showing: eventStart)
@@ -104,7 +118,7 @@ final class AppNotificationDelegate: NSObject, UNUserNotificationCenterDelegate 
             // The offer's yes. A clip that disappeared behind its banner is
             // answered by the coordinator's own error path.
             if let clipUUID {
-                _ = await calendarCoordinator.acceptOfferedEvent(forClipWith: clipUUID)
+                await acceptOffer(forClipWith: clipUUID)
             }
         case EventNotifier.editActionIdentifier:
             // The offer's edit: the appointment becomes a draft .ics in the
@@ -124,7 +138,7 @@ final class AppNotificationDelegate: NSObject, UNUserNotificationCenterDelegate 
             // in Notification Centre days later — so the release is looked up
             // again rather than taken from whatever `status` still holds.
             if let update = updateChecker.pendingUpdate {
-                updateChecker.download(update)
+                updateChecker.download(update, announcesFailure: true)
             } else {
                 updateChecker.check(userInitiated: false)
             }
@@ -139,6 +153,8 @@ final class AppNotificationDelegate: NSObject, UNUserNotificationCenterDelegate 
                 Self.openCalendar(showing: eventStart)
             } else if category == EventNotifier.offerCategoryIdentifier, let clipUUID {
                 presentOfferDialog(forClipWith: clipUUID)
+            } else if category == FailureNotifier.categoryIdentifier, let destination {
+                FailureNotifier.open(destination)
             }
         default:
             // The banner's own close control and dismissals — neither is
@@ -176,11 +192,19 @@ final class AppNotificationDelegate: NSObject, UNUserNotificationCenterDelegate 
         NSApp.activate()
         switch alert.runModal() {
         case .alertFirstButtonReturn:
-            Task { _ = await calendarCoordinator.acceptOfferedEvent(forClipWith: uuid) }
+            Task { await acceptOffer(forClipWith: uuid) }
         case .alertSecondButtonReturn:
             EventICSDocument.openDraft(for: detected, uid: uuid.uuidString)
         default:
             break
+        }
+    }
+
+    /// Add the offered event, and say so when it could not be added: the
+    /// banner or dialog that asked is gone by the time the answer is known.
+    private func acceptOffer(forClipWith uuid: UUID) async {
+        if case .failure(let error) = await calendarCoordinator.acceptOfferedEvent(forClipWith: uuid) {
+            FailureNotifier.post(.calendarActionFailed(error, undo: false))
         }
     }
 
