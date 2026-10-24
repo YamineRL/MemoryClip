@@ -1252,7 +1252,7 @@ private struct TranslationSettingsPane: View {
             }
 
             Section(loc("Notes")) {
-                Toggle(isOn: $translateEnabled) {
+                Toggle(isOn: $translateEnabled.animation(Design.Motion.quick)) {
                     Label {
                         Text(loc("Translate other languages"))
                     } icon: {
@@ -1691,7 +1691,7 @@ private struct NotesSettingsPane: View {
             }
 
             Section(loc("When")) {
-                Toggle(isOn: $autoNoteEnabled) {
+                Toggle(isOn: $autoNoteEnabled.animation(Design.Motion.quick)) {
                     Label {
                         Text(loc("Write a note for every screenshot"))
                     } icon: {
@@ -1700,7 +1700,11 @@ private struct NotesSettingsPane: View {
                 }
                 if autoNoteEnabled {
                     Stepper(value: $minimumCharacters, in: 0...2000, step: 20) {
-                        Text(loc("…with at least %d characters of text", minimumCharacters))
+                        Label {
+                            Text(loc("…with at least %d characters of text", minimumCharacters))
+                        } icon: {
+                            SettingsIcon(symbol: "text.alignleft", tint: Color(nsColor: .systemYellow))
+                        }
                     }
                 }
                 SettingsHint(autoNoteEnabled

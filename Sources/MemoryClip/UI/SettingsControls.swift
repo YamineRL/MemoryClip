@@ -339,11 +339,27 @@ struct NoteDestinationSetup: View {
             Button(loc("Choose…")) { chooseVault() }
         }
         if showsDetail {
-            Toggle(loc("Sort notes into folders by date"), isOn: $dateFolders)
-            Toggle(loc("Copy the screenshot into the folder"), isOn: $copyAttachments)
+            Toggle(isOn: $dateFolders) {
+                Label {
+                    Text(loc("Sort notes into folders by date"))
+                } icon: {
+                    SettingsIcon(symbol: "calendar", tint: Color(nsColor: .systemBlue))
+                }
+            }
+            Toggle(isOn: $copyAttachments.animation(Design.Motion.quick)) {
+                Label {
+                    Text(loc("Copy the screenshot into the folder"))
+                } icon: {
+                    SettingsIcon(symbol: "photo.on.rectangle", tint: Color(nsColor: .systemBlue))
+                }
+            }
             if copyAttachments {
                 HStack(spacing: Design.Space.normal) {
-                    Text(loc("Attachments subfolder"))
+                    Label {
+                        Text(loc("Attachments subfolder"))
+                    } icon: {
+                        SettingsIcon(symbol: "folder", tint: Color(nsColor: .systemBlue))
+                    }
                     TextField(loc("Attachments subfolder"), text: $attachmentFolder)
                         .labelsHidden()
                         // Fills the rest of the row, the way a field labelled
@@ -529,7 +545,7 @@ struct CalendarAutoCreateSetup: View {
                     SettingsIcon(symbol: "calendar.badge.plus", tint: Color(nsColor: .systemRed))
                 }
                 Spacer(minLength: Design.Space.normal)
-                Toggle(loc("Suggest calendar events"), isOn: $autoCreate)
+                Toggle(loc("Suggest calendar events"), isOn: $autoCreate.animation(Design.Motion.quick))
                     .labelsHidden()
             }
 
@@ -630,7 +646,7 @@ struct UpdateCheckToggle: View {
                     SettingsIcon(symbol: "arrow.down.circle", tint: Color(nsColor: .systemBlue))
                 }
                 Spacer(minLength: Design.Space.normal)
-                Toggle(loc("Check for updates daily"), isOn: $automaticUpdates)
+                Toggle(loc("Check for updates daily"), isOn: $automaticUpdates.animation(Design.Motion.quick))
                     .labelsHidden()
             }
 
