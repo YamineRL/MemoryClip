@@ -268,6 +268,9 @@ final class ScreenshotWatcher {
         guard descriptor >= 0 else {
             log.error("Could not watch screenshot folder \(self.folder.path, privacy: .private)")
             scheduleReopen()
+            if reopenAttempt >= Self.reopenAttemptsBeforeNotice {
+                FailureNotifier.post(.screenshotFolderUnreachable)
+            }
             return
         }
 
@@ -575,6 +578,10 @@ final class ScreenshotWatcher {
         }
         return ([current] + eligible).max() ?? current
     }
+
+    /// Failed reopens, about half a minute of them, after which the user is
+    /// told the folder is out of reach.
+    nonisolated static let reopenAttemptsBeforeNotice = 5
 
     /// Backoff before retrying a folder that could not be opened: 1s, 2s, 4s,
     /// 8s, 16s, then `maxReopenDelay` forever.
