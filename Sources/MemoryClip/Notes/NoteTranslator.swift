@@ -501,23 +501,29 @@ enum LanguageDetector {
     /// answers are confident and wrong: "Bio" comes back Croatian at 0.81,
     /// "TODO" Spanish at 0.81, "Nike" Turkish at 0.70.
     ///
-    /// Outside Latin script that floor measures the wrong thing. Twenty
-    /// ideographs are twenty words, and no script but Latin has to compete
-    /// with a dozen languages spelled the same way, so the recognizer is
-    /// saturated far below it: two characters of Chinese, five of Japanese
-    /// and seven of Cyrillic each come back at 1.00 with the runner-up at
-    /// nothing. Held to twenty, text like that is turned away while it is
-    /// still perfectly identifiable. So the census picks the floor —
-    /// `minimumScriptCharacters`, which this type already trusts to say when
-    /// there is enough of a script to read, and which is set at the width of
-    /// about eight ideographic words. The confidence and margin rules are
-    /// what actually rule on the answer, whichever floor let it through.
+    /// Outside Latin script that floor measures the wrong thing. Writing in a
+    /// script is already the language signal, from the first character: one
+    /// Han character is Chinese-or-Japanese, one Hangul syllable is Korean,
+    /// and no script but Latin has to compete with a dozen languages spelled
+    /// the same way. The recognizer is saturated far below twenty — two
+    /// characters of Chinese, five of Japanese and seven of Cyrillic each
+    /// come back at 1.00 with the runner-up at nothing — so a count is a
+    /// floor with no work to do. Held to one character, a seven-ideograph
+    /// caption that was identifiable all along is translated instead of
+    /// turned away. The confidence and margin rules are what actually rule
+    /// on the answer.
+    ///
+    /// Mixed text is decided by `dominantScript`, not by counting: a Latin
+    /// page quoting a Chinese place name is a Latin page and keeps the
+    /// alphabet's floor, and text with no letters in it keeps it too.
     static func minimumCharacters(for text: String) -> Int {
         let script = dominantScript(of: text)
-        // `.other` keeps the alphabet's floor: a script this type does not
-        // model is not one it can claim to know the shape of.
-        guard let script, script != .latin, script != .other else { return minimumCharacters }
-        return minimumScriptCharacters
+        // `.other` is a script as well — one this type does not model, not
+        // one that spells its words in letters. Tamil, Bengali, Georgian and
+        // the rest are as self-evident as Han; they simply reach the
+        // recognizer without a script census in front of them.
+        guard let script, script != .latin else { return minimumCharacters }
+        return 1
     }
 
     /// The share of CJK characters that have to be kana before the text is
@@ -702,9 +708,10 @@ enum LanguageDetector {
     /// asked about the Laoganma label it says Portuguese, asked about the
     /// twenty-eight ideographs on the Laoganma label it says Simplified
     /// Chinese at 1.00. `minimumCharacters` is not re-applied to the
-    /// projection — that floor is a count of Latin letters, and
-    /// twenty-eight ideographs are twenty-eight words — but
-    /// `minimumScriptCharacters` has already been met.
+    /// projection: that floor is a count of Latin letters, and
+    /// twenty-eight ideographs are twenty-eight words. The script itself is
+    /// the evidence here — either it cleared `dominantScript`'s share
+    /// against Latin text, or there was no Latin to clear it against.
     ///
     /// Nil when the projection is not decisive, which is the honest answer
     /// for a script whose languages the recognizer cannot separate on this
