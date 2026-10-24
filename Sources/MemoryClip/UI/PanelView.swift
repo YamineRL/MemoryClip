@@ -1550,6 +1550,7 @@ struct PanelContentView: View {
     @State private var namingPinboard = false
     @State private var editingPinboard: Pinboard?
     @State private var pinboardName = ""
+    @FocusState private var pinboardNameFocused: Bool
     /// The scope chip an in-panel clip drag is hovering over, for the
     /// drop highlight.
     @State private var dropTargetScope: PinboardScope?
@@ -2442,8 +2443,12 @@ struct PanelContentView: View {
                 lineWidth: Design.Stroke.selection
             )
         )
+        .focused($pinboardNameFocused)
         .onSubmit(commitPinboardName)
         .onExitCommand(perform: cancelPinboardName)
+        // Deferred a turn: focus set while the field is still being inserted
+        // is dropped, and the search field keeps the keys.
+        .onAppear { Task { @MainActor in pinboardNameFocused = true } }
     }
 
     /// The `+` at the end of the strip.
@@ -2725,11 +2730,7 @@ struct PanelContentView: View {
 
     /// Commit or abandon the strip's name field.
     private func commitPinboardName() {
-        defer {
-            namingPinboard = false
-            editingPinboard = nil
-            pinboardName = ""
-        }
+        defer { cancelPinboardName() }
         if let board = editingPinboard {
             if board.rename(to: pinboardName, in: modelContext) {
                 modelContext.saveLogged()
@@ -2747,6 +2748,7 @@ struct PanelContentView: View {
         namingPinboard = false
         editingPinboard = nil
         pinboardName = ""
+        searchFocused = true
     }
 
     /// Confirmed deletion: the clips return to Pinned, the survivors'
