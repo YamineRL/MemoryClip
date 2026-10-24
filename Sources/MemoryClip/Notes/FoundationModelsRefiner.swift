@@ -380,7 +380,10 @@ private struct GeneratedNote {
 
     @Guide(description: """
         A short noun phrase naming what this text is, at most 8 words, using \
-        words that appear in the text. Not a sentence.
+        words that appear in the text. Name its specific subject — the \
+        thing, event, person or problem it is about — and what kind of text \
+        it is (receipt, error, message, article, list). Not the app it was \
+        captured from. Not a sentence.
         """)
     var title: String
 
