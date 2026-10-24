@@ -89,6 +89,12 @@ struct FoundationModelsRefiner: NoteRefiner {
         return defaults.bool(forKey: NoteSettingsKeys.refineEnabled)
     }
 
+    /// Whether refinement is on because the user switched it on, rather than
+    /// by default.
+    static var wasTurnedOnByUser: Bool {
+        UserDefaults.standard.object(forKey: NoteSettingsKeys.refineEnabled) as? Bool == true
+    }
+
     /// Whether the on-device model could run right now.
     ///
     /// Read live, never cached: Apple Intelligence can be switched on and
@@ -163,6 +169,10 @@ struct FoundationModelsRefiner: NoteRefiner {
         guard Self.isEnabled else { return await fallback.refine(input) }
         guard isAvailable else {
             log.notice("Note refinement skipped: on-device model unavailable")
+            if Self.wasTurnedOnByUser,
+               case .unavailable(.appleIntelligenceNotEnabled) = SystemLanguageModel.default.availability {
+                await FailureNotifier.post(.appleIntelligenceOff)
+            }
             return await fallback.refine(input)
         }
 

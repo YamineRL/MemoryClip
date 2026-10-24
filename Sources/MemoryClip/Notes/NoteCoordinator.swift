@@ -388,6 +388,9 @@ final class NoteCoordinator {
         case .needsDownload:
             NoteTranslation.notePendingDownload(identifier)
             log.notice("Translation skipped: \(identifier, privacy: .public) assets are not downloaded")
+            if !NoteTranslation.dismissedDownloads.contains(identifier) {
+                FailureNotifier.post(.translationNeedsDownload(identifier: identifier))
+            }
         case .unsupported:
             log.notice("Translation skipped: \(identifier, privacy: .public) is not supported by this Mac")
         case .ready, nil:
@@ -420,7 +423,9 @@ final class NoteCoordinator {
               item.contentRevision == revision,
               item.notePath == nil
         else { return }
-        _ = await exportNote(for: item)
+        if case .failure(let error) = await exportNote(for: item) {
+            FailureNotifier.post(.noteExportFailed(error))
+        }
     }
 
     /// Write (or rewrite) the note for one clip.
