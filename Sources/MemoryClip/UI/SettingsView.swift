@@ -1023,6 +1023,9 @@ private struct ExcludedAppIcon: View {
 // MARK: - Shortcuts
 
 private struct ShortcutsSettingsPane: View {
+    /// Width of the widest cap, so every description starts on one column.
+    @State private var capColumnWidth: CGFloat = 0
+
     var body: some View {
         Form {
             Section(loc("Global")) {
@@ -1035,14 +1038,19 @@ private struct ShortcutsSettingsPane: View {
             ForEach(ShortcutReference.groups) { group in
                 Section(group.title) {
                     ForEach(group.entries) { entry in
-                        LabeledContent {
+                        HStack(alignment: .firstTextBaseline, spacing: Design.Space.normal) {
+                            ShortcutCap(keys: entry.keys)
+                                .fixedSize()
+                                .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width in
+                                    capColumnWidth = max(capColumnWidth, width)
+                                }
+                                .frame(minWidth: capColumnWidth, alignment: .leading)
                             Text(entry.detail)
                                 .foregroundStyle(.secondary)
                                 .multilineTextAlignment(.leading)
                                 .frame(maxWidth: .infinity, alignment: .leading)
-                        } label: {
-                            ShortcutCap(keys: entry.keys)
                         }
+                        .accessibilityElement(children: .combine)
                     }
                     if let note = group.note {
                         SettingsHint(note)
