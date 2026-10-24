@@ -635,6 +635,10 @@ private struct PrivacySettingsPane: View {
     /// What is in the "never clean" field, before it is added.
     @State private var hostDraft = ""
 
+    /// The link cleaner's two keys, both registered as `true` at launch.
+    @AppStorage(LinkSettingsKeys.cleanEnabled) private var cleanLinks = true
+    @AppStorage(LinkSettingsKeys.removeCampaignParameters) private var removeCampaignParameters = true
+
     /// How many stored plaintext clips look like secrets — nil while the
     /// off-actor scan runs, so the "Already in your history" row simply is
     /// not there until it has an answer.
@@ -755,21 +759,21 @@ private struct PrivacySettingsPane: View {
             }
 
             Section(loc("Links")) {
-                Toggle(isOn: cleanLinksBinding) {
+                Toggle(isOn: $cleanLinks) {
                     Label {
                         Text(loc("Clean tracking parameters from copied links"))
                     } icon: {
                         SettingsIcon(symbol: "link", tint: Color(nsColor: .systemPink))
                     }
                 }
-                Toggle(isOn: campaignParametersBinding) {
+                Toggle(isOn: $removeCampaignParameters) {
                     Label {
                         Text(loc("Also remove campaign parameters (utm_*)"))
                     } icon: {
                         SettingsIcon(symbol: "megaphone.fill", tint: Color(nsColor: .systemPink))
                     }
                 }
-                .disabled(!UserDefaults.standard.bool(forKey: LinkSettingsKeys.cleanEnabled))
+                .disabled(!cleanLinks)
                 ForEach(excludedHosts, id: \.self) { host in
                     LabeledContent {
                         Button(loc("Remove")) { removeHost(host) }
@@ -899,22 +903,6 @@ private struct PrivacySettingsPane: View {
     private func removeHost(_ host: String) {
         LinkExclusions().remove(host)
         reloadExcludedHosts()
-    }
-
-    /// Manual bindings to the link cleaner's two UserDefaults keys (both
-    /// registered as `true` at launch).
-    private var cleanLinksBinding: Binding<Bool> {
-        Binding(
-            get: { UserDefaults.standard.bool(forKey: LinkSettingsKeys.cleanEnabled) },
-            set: { UserDefaults.standard.set($0, forKey: LinkSettingsKeys.cleanEnabled) }
-        )
-    }
-
-    private var campaignParametersBinding: Binding<Bool> {
-        Binding(
-            get: { UserDefaults.standard.bool(forKey: LinkSettingsKeys.removeCampaignParameters) },
-            set: { UserDefaults.standard.set($0, forKey: LinkSettingsKeys.removeCampaignParameters) }
-        )
     }
 
     private func addApp() {
