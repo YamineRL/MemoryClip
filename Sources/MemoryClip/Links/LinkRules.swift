@@ -11,6 +11,10 @@ struct LinkHostRule: Sendable, Equatable {
     /// Parameter names, each either exact (`igsh`) or a suffix wildcard
     /// (`pd_rd_*`).
     let parameters: [String]
+    /// Path prefixes (`/p/`) whose pages need no query string at all: every
+    /// parameter on them is dropped, so a renamed tracking parameter is
+    /// dropped with the rest.
+    var barePaths: [String] = []
 }
 
 /// The three tiers of cleaning rules, as data.
@@ -54,7 +58,11 @@ enum LinkRules {
     /// the same name elsewhere may well be load-bearing — `si` is Spotify's
     /// share identifier and somebody else's sort index.
     static let hostRules: [LinkHostRule] = [
-        LinkHostRule(domain: "instagram.com", parameters: ["igsh", "igshid", "img_index", "psln", "stkn"]),
+        LinkHostRule(
+            domain: "instagram.com",
+            parameters: ["igsh", "igshid", "img_index", "psln", "stkn"],
+            barePaths: ["/p/", "/reel/", "/reels/", "/tv/", "/stories/"]
+        ),
         LinkHostRule(domain: "threads.net", parameters: ["igsh", "igshid", "xmt"]),
         LinkHostRule(domain: "threads.com", parameters: ["igsh", "igshid", "xmt"]),
         LinkHostRule(domain: "youtube.com", parameters: ["si", "pp", "feature", "kw"]),
@@ -157,11 +165,12 @@ enum LinkRules {
 
     /// The parameter patterns to strip on `host`, from every tier that
     /// applies to it.
-    static func parameters(forHost host: String, removingCampaigns: Bool) -> [String] {
+    static func parameters(forHost host: String, path: String = "", removingCampaigns: Bool) -> [String] {
         var patterns = globalParameters
         if removingCampaigns { patterns += campaignParameters }
         for rule in hostRules where Self.host(host, matches: rule.domain) {
             patterns += rule.parameters
+            if rule.barePaths.contains(where: { path.lowercased().hasPrefix($0) }) { patterns.append("*") }
         }
         return patterns
     }

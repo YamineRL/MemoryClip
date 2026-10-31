@@ -59,6 +59,7 @@ enum LinkCleaner {
 
         let patterns = LinkRules.parameters(
             forHost: host,
+            path: path(of: url),
             removingCampaigns: options.removeCampaignParameters
         )
         var removed: [String] = []
@@ -92,6 +93,12 @@ enum LinkCleaner {
         if let scheme = parsed.scheme?.lowercased(), scheme != "http", scheme != "https" { return nil }
         guard let host = parsed.host?.lowercased(), host.contains(".") else { return nil }
         return host
+    }
+
+    /// The path of a web URL, empty when it has none.
+    private static func path(of url: String) -> String {
+        let candidate = url.lowercased().hasPrefix("www.") ? "https://" + url : url
+        return URL(string: candidate)?.path ?? ""
     }
 
     /// Whether this host's query string is out of bounds — allowlisted here,

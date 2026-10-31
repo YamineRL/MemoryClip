@@ -65,6 +65,27 @@ final class LinkCleanerTests: XCTestCase {
         )
     }
 
+    /// A post or reel needs no query string, so any parameter on one goes,
+    /// including names no rule lists yet.
+    func testAnInstagramPostDropsEveryParameter() throws {
+        XCTAssertEqual(
+            try cleaned("https://www.instagram.com/p/DfFsv0XM4iL/?e=ba115247-98b5-438a-9501-4dc8fa2ee197&g=5"),
+            "https://www.instagram.com/p/DfFsv0XM4iL/"
+        )
+        XCTAssertEqual(
+            try cleaned("https://www.instagram.com/reel/DbGys85Oyxx/?brand_new_tracker=1"),
+            "https://www.instagram.com/reel/DbGys85Oyxx/"
+        )
+    }
+
+    /// Off the post paths only the listed parameters go.
+    func testAnInstagramProfileKeepsUnlistedParameters() throws {
+        XCTAssertEqual(
+            try cleaned("https://www.instagram.com/someone/?hl=fr&igsh=abc"),
+            "https://www.instagram.com/someone/?hl=fr"
+        )
+    }
+
     /// Share and affiliate parameters the platforms attach, one per host.
     func testTheShareParametersEachPlatformAttaches() throws {
         let cases = [
