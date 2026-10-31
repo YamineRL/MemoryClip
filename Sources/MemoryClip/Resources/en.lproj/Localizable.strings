@@ -768,6 +768,7 @@
 /* Command palette (⌘K) — the field, its empty state, the key hint and the group names the panel's own commands are filed under. */
 "Run an action…" = "Run an action…";
 "No matching actions" = "No matching actions";
+"Filter clips" = "Filter clips";
 "↩ paste · ⌘↩ replace · ⌥↩ copy · esc close" = "↩ paste · ⌘↩ replace · ⌥↩ copy · esc close";
 "Pin to…" = "Pin to…";
 "Note" = "Note";

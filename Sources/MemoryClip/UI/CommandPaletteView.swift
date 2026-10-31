@@ -18,13 +18,25 @@ struct CommandPaletteView: View {
     let counts: [String: Int]
     let onRun: (PaletteAction, PaletteAction.Mode) -> Void
     let onCancel: () -> Void
+    /// A search query typed into the palette (`app:brave is:secret`), handed
+    /// to the panel's search field.
+    var onSearch: (String) -> Void = { _ in }
 
     @State private var field = ""
     @FocusState private var fieldFocused: Bool
     @State private var cursor = 0
 
     private var rows: [PaletteAction] {
-        PaletteAction.ranked(actions, query: field, counts: counts)
+        searchQuery == nil ? PaletteAction.ranked(actions, query: field, counts: counts) : []
+    }
+
+    private var searchQuery: String? { Self.searchQuery(for: field) }
+
+    /// The field as a clip search, when it holds at least one operator.
+    /// No action title contains `key:value`, so an operator means a search.
+    static func searchQuery(for field: String) -> String? {
+        let trimmed = field.trimmingCharacters(in: .whitespacesAndNewlines)
+        return ClipQuery.operatorTokens(in: trimmed).isEmpty ? nil : trimmed
     }
 
     var body: some View {
@@ -53,11 +65,15 @@ struct CommandPaletteView: View {
             ScrollViewReader { proxy in
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 0) {
+                        if let searchQuery {
+                            searchRow(searchQuery)
+                                .onTapGesture { onSearch(searchQuery) }
+                        }
                         ForEach(Array(rows.enumerated()), id: \.element.id) { index, action in
                             row(action, cursor: cursor == index)
                                 .onTapGesture { onRun(action, .paste) }
                         }
-                        if rows.isEmpty {
+                        if rows.isEmpty, searchQuery == nil {
                             Text(loc("No matching actions"))
                                 .font(Design.Typography.footnote)
                                 .foregroundStyle(Color(nsColor: .secondaryLabelColor))
@@ -129,6 +145,33 @@ struct CommandPaletteView: View {
         .accessibilityAddTraits(isCursor ? [.isButton, .isSelected] : .isButton)
     }
 
+    private func searchRow(_ query: String) -> some View {
+        HStack(spacing: Design.Space.roomy) {
+            Image(systemName: "magnifyingglass")
+                .foregroundStyle(Color(nsColor: .secondaryLabelColor))
+            Text(query)
+                .font(Design.Typography.chip)
+                .lineLimit(1)
+                .truncationMode(.middle)
+            Spacer()
+            Text(loc("Filter clips"))
+                .font(Design.Typography.footnote)
+                .foregroundStyle(Color(nsColor: .secondaryLabelColor))
+                .lineLimit(1)
+        }
+        .padding(.horizontal, Design.Space.loose)
+        .padding(.vertical, Design.Space.snug)
+        .background(
+            RoundedRectangle(cornerRadius: Design.Radius.control, style: .continuous)
+                .fill(Design.Palette.accent.opacity(0.15))
+        )
+        .contentShape(Rectangle())
+        .accessibilityElement()
+        .accessibilityLabel(loc("Filter clips"))
+        .accessibilityValue(query)
+        .accessibilityAddTraits([.isButton, .isSelected])
+    }
+
     private func moveCursor(_ delta: Int) {
         let count = rows.count
         guard count > 0 else { return }
@@ -136,6 +179,10 @@ struct CommandPaletteView: View {
     }
 
     private func commit(mode: PaletteAction.Mode) {
+        if let searchQuery {
+            onSearch(searchQuery)
+            return
+        }
         let visible = rows
         guard visible.indices.contains(cursor) else { return }
         onRun(visible[cursor], mode)

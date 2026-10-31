@@ -2143,7 +2143,11 @@ struct PanelContentView: View {
                     actions: PaletteAction.available(for: item, isQueued: queue.position(of: item) != nil),
                     counts: PaletteRunCounts().load(),
                     onRun: { action, mode in runPaletteAction(action, mode: mode, on: item) },
-                    onCancel: { paletteItem = nil }
+                    onCancel: { paletteItem = nil },
+                    onSearch: { query in
+                        paletteItem = nil
+                        uiState.pendingSearch = query
+                    }
                 )
             }
         }
