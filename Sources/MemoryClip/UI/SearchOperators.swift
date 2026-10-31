@@ -37,7 +37,7 @@ enum ClipOperatorKey: String, CaseIterable, Sendable {
         switch self {
         case .app, .in: return []
         case .is: return ClipStateValue.allCases.map(\.rawValue)
-        case .type: return TypeFilter.typeableValues.map(\.rawValue)
+        case .type: return TypeFilter.typeableValues.map(\.rawValue) + ClipStateValue.allCases.map(\.rawValue)
         case .after, .before, .on: return ["today", "yesterday", "2026-09-01", "7d", "2w", "3m"]
         }
     }
@@ -263,7 +263,11 @@ struct ClipConstraints: Equatable {
             }
             return true
         case .type:
-            guard let type = TypeFilter(rawValue: value.lowercased()), type != .all else { return false }
+            guard let type = TypeFilter(rawValue: value.lowercased()), type != .all else {
+                // `type:secret` reads as naturally as `is:secret`.
+                guard ClipStateValue(rawValue: value.lowercased()) != nil else { return false }
+                return apply(.is, value: value, negated: negated, now: now, calendar: calendar)
+            }
             if negated {
                 if notTypes.insert(type).inserted { phrases.append(loc("not %@", type.phrase)) }
             } else if types.insert(type).inserted {
