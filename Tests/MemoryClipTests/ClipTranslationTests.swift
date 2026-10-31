@@ -427,8 +427,8 @@ final class ClipTranslationSettingsTests: XCTestCase {
 
     override func setUp() {
         super.setUp()
-        storedEnabled = UserDefaults.standard.object(forKey: enabledKey)
-        storedTarget = UserDefaults.standard.object(forKey: targetKey)
+        storedEnabled = UserDefaults.standard.storedObject(forKey: enabledKey)
+        storedTarget = UserDefaults.standard.storedObject(forKey: targetKey)
     }
 
     override func tearDown() {

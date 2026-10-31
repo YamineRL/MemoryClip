@@ -545,7 +545,7 @@ final class NoteTranslationTargetTests: XCTestCase {
 
     override func setUp() {
         super.setUp()
-        stored = UserDefaults.standard.object(forKey: key)
+        stored = UserDefaults.standard.storedObject(forKey: key)
     }
 
     override func tearDown() {
@@ -931,7 +931,7 @@ final class TranslatedNoteCompositionTests: XCTestCase {
     /// English would be wrong about the one thing the heading is for.
     func testUpdatingAnOlderNoteKeepsTheHeadingItsTranslationEarned() {
         let key = NoteSettingsKeys.clipTranslationTarget
-        let stored = UserDefaults.standard.object(forKey: key)
+        let stored = UserDefaults.standard.storedObject(forKey: key)
         defer { UserDefaults.standard.set(stored, forKey: key) }
 
         UserDefaults.standard.set("fr", forKey: key)
@@ -971,7 +971,7 @@ final class TranslationPipelineTests: XCTestCase {
         // Pinned rather than inherited: the target is a setting now, and a
         // suite that read whichever language the tester's Mac is set to would
         // pass or fail on the machine running it.
-        storedTarget = UserDefaults.standard.object(forKey: targetKey)
+        storedTarget = UserDefaults.standard.storedObject(forKey: targetKey)
         UserDefaults.standard.set("en", forKey: targetKey)
     }
 
