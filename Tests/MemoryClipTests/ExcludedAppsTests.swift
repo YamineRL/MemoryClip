@@ -143,7 +143,7 @@ final class ExcludedAppsTests: XCTestCase {
     /// explicitly and put back as found.
     private func withFiltering(_ enabled: Bool, _ body: () -> Void) {
         let key = SensitiveFilter.filteringEnabledKey
-        let saved = UserDefaults.standard.object(forKey: key)
+        let saved = UserDefaults.standard.storedObject(forKey: key)
         UserDefaults.standard.set(enabled, forKey: key)
         defer {
             if let saved {
@@ -228,8 +228,8 @@ final class ExcludedAppCaptureTests: XCTestCase {
 
     override func setUp() {
         super.setUp()
-        savedExclusions = UserDefaults.standard.object(forKey: ExcludedApps.bundleIDsKey)
-        savedFiltering = UserDefaults.standard.object(forKey: SensitiveFilter.filteringEnabledKey)
+        savedExclusions = UserDefaults.standard.storedObject(forKey: ExcludedApps.bundleIDsKey)
+        savedFiltering = UserDefaults.standard.storedObject(forKey: SensitiveFilter.filteringEnabledKey)
         UserDefaults.standard.set([String](), forKey: ExcludedApps.bundleIDsKey)
         UserDefaults.standard.set(true, forKey: SensitiveFilter.filteringEnabledKey)
         UserDefaults.standard.set(0, forKey: SettingsKeys.historyCap)
