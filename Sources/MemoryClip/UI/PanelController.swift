@@ -181,6 +181,7 @@ final class PanelController: NSObject, NSWindowDelegate {
     private let quickLookController = QuickLookController()
 
     private var panel: KeyablePanel?
+    private var authHold = AuthPromptHold()
     private var cancellables: Set<AnyCancellable> = []
 
     var isVisible: Bool {
@@ -274,6 +275,11 @@ final class PanelController: NSObject, NSWindowDelegate {
     /// the panel is hidden, so an unlocked history is never re-exposed.
     @objc private func appDidResignActive() {
         guard let panel, panel.isVisible else { return }
+        guard authHold.resign() else { return }
+        hideAfterResign(panel)
+    }
+
+    private func hideAfterResign(_ panel: KeyablePanel) {
         // Quick Look is a window of the app's, not of the panel's, so it would
         // otherwise be left floating over the desktop after the history it
         // came from has been put away.
@@ -281,6 +287,19 @@ final class PanelController: NSObject, NSWindowDelegate {
         panel.orderOut(nil)
         previousApp = nil
         uiState.focusToken = UUID()
+    }
+
+    /// Runs `body`, which may show a Touch ID prompt, without letting the
+    /// prompt's activation hide the panel.
+    private func holdingPanel<T>(_ body: () async -> T) async -> T {
+        authHold.begin()
+        let result = await body()
+        if authHold.end(appIsActive: NSApp.isActive) {
+            if let panel, panel.isVisible { hideAfterResign(panel) }
+        } else if let panel, panel.isVisible {
+            panel.makeKey()
+        }
+        return result
     }
 
     // MARK: Panel construction
@@ -404,7 +423,7 @@ final class PanelController: NSObject, NSWindowDelegate {
                 if item.isSecret {
                     Task { @MainActor [weak self] in
                         guard let self else { return }
-                        if await self.secretsService.paste(item, target: target) {
+                        if await self.holdingPanel({ await self.secretsService.paste(item, target: target) }) {
                             self.hide(restorePrevious: false)
                         } else {
                             self.uiState.secretNotice = loc("Not authenticated.")
@@ -438,7 +457,8 @@ final class PanelController: NSObject, NSWindowDelegate {
                 // `pasteService.write` path the row has nothing to feed.
                 if item.isSecret {
                     Task { @MainActor [weak self] in
-                        _ = await self?.secretsService.copy(item)
+                        guard let self else { return }
+                        _ = await self.holdingPanel { await self.secretsService.copy(item) }
                     }
                     return
                 }
@@ -521,11 +541,11 @@ final class PanelController: NSObject, NSWindowDelegate {
             },
             revealSecret: { [weak self] item in
                 guard let self else { return .failure(SecretSealerError.malformedSealedData) }
-                return await self.secretsService.reveal(item)
+                return await self.holdingPanel { await self.secretsService.reveal(item) }
             },
             demoteSecret: { [weak self] item in
                 guard let self else { return false }
-                return await self.secretsService.markNotSecret(item)
+                return await self.holdingPanel { await self.secretsService.markNotSecret(item) }
             },
             promoteSecret: { [weak self] item in
                 _ = self?.secretsService.markAsSecret(item)
