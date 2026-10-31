@@ -73,6 +73,8 @@ final class SecretDetectorTests: XCTestCase {
     func testNegativeCorpusIsUntouched() {
         let negatives: [(text: String, note: String)] = [
             ("https://example.com/path?q=1#section", "URL"),
+            ("instagram.com/reel/XyZ123/?igsh=abc&new_tracker=1", "URL without a scheme"),
+            ("example.co.uk/Products/A1b2C3d4?ref=Xy9", "URL without a scheme, two-label suffix"),
             ("#A1B2C3", "hex colour"),
             ("550e8400-e29b-41d4-a716-446655440000", "UUID"),
             ("86f7e437faa5a7fce15d1ddcb9eaeaea377667b8", "git SHA-1"),
