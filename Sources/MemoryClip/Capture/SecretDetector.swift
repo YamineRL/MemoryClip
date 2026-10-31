@@ -199,6 +199,7 @@ enum SecretDetector {
         // path, or base64 that opens as an image/document.
         if TextDetector.isWebURL(text)
             || isAnyURLWithHost(text)
+            || isSchemelessURL(text)
             || isAllHexDigits(text)
             || UUID(uuidString: text) != nil
             || isFilePath(text)
@@ -216,6 +217,19 @@ enum SecretDetector {
         guard let components = URLComponents(string: text),
               components.scheme != nil,
               let host = components.host, !host.isEmpty
+        else { return false }
+        return true
+    }
+
+    /// A link copied without its scheme: `instagram.com/reel/…`. A host of
+    /// at least two labels whose last is alphabetic, followed by a path or
+    /// query.
+    private static func isSchemelessURL(_ text: String) -> Bool {
+        guard let end = text.firstIndex(where: { $0 == "/" || $0 == "?" }) else { return false }
+        let labels = text[..<end].split(separator: ".", omittingEmptySubsequences: false)
+        guard labels.count >= 2,
+              labels.allSatisfy({ !$0.isEmpty && $0.allSatisfy { $0.isLetter || $0.isNumber || $0 == "-" } }),
+              let tld = labels.last, tld.count >= 2, tld.allSatisfy(\.isLetter)
         else { return false }
         return true
     }
