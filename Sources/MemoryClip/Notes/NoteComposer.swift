@@ -562,6 +562,8 @@ enum NoteComposer {
         for scalar in s.unicodeScalars {
             if scalar.value < 0x20 || scalar.value == 0x7F { pendingSpace = true; continue }
             if scalar == "/" || scalar == ":" { pendingSpace = true; continue }
+            // Obsidian cannot link to a file whose name holds any of these.
+            if "#^[]|".unicodeScalars.contains(scalar) { pendingSpace = true; continue }
             if CharacterSet.whitespaces.contains(scalar) { pendingSpace = true; continue }
             if pendingSpace, !out.isEmpty { out.append(" ") }
             pendingSpace = false

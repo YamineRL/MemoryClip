@@ -139,6 +139,11 @@ final class NoteComposerTests: XCTestCase {
         XCTAssertEqual(NoteComposer.sanitizedFileNameComponent("Fix: login"), "Fix login")
     }
 
+    func testObsidianLinkCharactersNeverReachAFileName() {
+        XCTAssertEqual(NoteComposer.sanitizedFileNameComponent("Issue #42"), "Issue 42")
+        XCTAssertEqual(NoteComposer.sanitizedFileNameComponent("a^b [draft] x|y"), "a b draft x y")
+    }
+
     func testHiddenFileNamesAreImpossible() {
         // `.Deploy.md` would not appear in the user's vault at all.
         XCTAssertEqual(NoteComposer.sanitizedFileNameComponent("...Deploy"), "Deploy")
